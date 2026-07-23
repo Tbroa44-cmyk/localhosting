@@ -39,11 +39,11 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     if (!company) throw new Error("Company not found");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
-      id: number; balance: number; is_admin: number;
+      id: number; balance: number; is_admin: any;
     } | undefined;
 
     if (!user) throw new Error("User not found");
-    const isAdmin = user.is_admin === 1;
+    const isAdmin = !!user.is_admin;
 
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND user_id != ? ORDER BY price_per_share ASC, created_at ASC"
@@ -60,8 +60,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
       const sellerRevenue = cost - taxAmount;
 
-      const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number; is_admin: number };
-      if (seller.is_admin !== 1) {
+      const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number; is_admin: any };
+      if (!seller.is_admin) {
         await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
       }
       await addToBankFund(db, taxAmount);
@@ -159,8 +159,8 @@ export async function executeSell(userId: number, companyId: number, shares: num
     const totalRevenue = grossRevenue - taxAmount;
     const newPrice = calculateSellPrice(company.share_price, shares);
 
-    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number; is_admin: number };
-    const isAdmin = user.is_admin === 1;
+    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number; is_admin: any };
+    const isAdmin = !!user.is_admin;
 
     if (!isAdmin) {
       await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, userId);
@@ -203,11 +203,11 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     if (priceCents <= 0) throw new Error("Price must be greater than 0");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
-      id: number; balance: number; is_admin: number;
+      id: number; balance: number; is_admin: any;
     } | undefined;
 
     if (!user) throw new Error("User not found");
-    const isAdmin = user.is_admin === 1;
+    const isAdmin = !!user.is_admin;
 
     if (type === "buy") {
       const totalCost = priceCents * shares;
@@ -319,8 +319,8 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
   const sellerRevenue = cost - taxAmount;
 
-  const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number; is_admin: number };
-  if (seller.is_admin !== 1) {
+  const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number; is_admin: any };
+  if (!seller.is_admin) {
     await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
   }
   await addToBankFund(db, taxAmount);

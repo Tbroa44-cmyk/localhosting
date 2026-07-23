@@ -371,29 +371,69 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
     whereParams = params.slice(params.length - qCount);
   }
 
+  const needsFetch = (clause: string) => {
+    return /\w+\s*=\s*\w+\s*[-+]/.test(clause) || /MAX\(/i.test(clause);
+  };
+
+  let fetchCol: string | null = null;
+  let fetchWhereCol: string | null = null;
+  let fetchWhereVal: any = null;
+  if (whereMatch) {
+    fetchWhereCol = extractFirstWhereCol(whereMatch[1]);
+    fetchWhereVal = whereParams[0];
+  }
+
+  for (const clause of setClauses) {
+    if (needsFetch(clause) && fetchWhereCol) {
+      const colMatch = clause.match(/(\w+)\s*=/);
+      if (colMatch) fetchCol = colMatch[1];
+      break;
+    }
+  }
+
+  let currentRow: Record<string, any> = {};
+  if (fetchCol && fetchWhereCol) {
+    const { data } = await sb.from(table).select(`${fetchCol}, ${fetchWhereCol}`).eq(fetchWhereCol, fetchWhereVal).single();
+    currentRow = data || {};
+  }
+
   const setValues: { column: string; value: any }[] = [];
   let paramIdx = 0;
 
   for (const clause of setClauses) {
-    const arithmeticAdd = clause.match(/(\w+)\s*=\s*\w+\s*\+\s*\?/i);
-    if (arithmeticAdd) {
-      const column = arithmeticAdd[1];
+    const arithmeticAddParam = clause.match(/(\w+)\s*=\s*\w+\s*\+\s*\?/i);
+    if (arithmeticAddParam) {
+      const column = arithmeticAddParam[1];
       const increment = params[paramIdx++];
-      const table2 = table;
-      const whereCol2 = whereMatch ? extractFirstWhereCol(whereMatch[1]) : null;
-      const whereVal2 = whereParams[0];
-      if (whereCol2) {
-        const { data: current } = await sb.from(table2).select(column).eq(whereCol2, whereVal2).single();
-        setValues.push({ column, value: (Number((current as any)?.[column]) || 0) + Number(increment) });
-      }
+      const currentVal = Number(currentRow[column]) || 0;
+      setValues.push({ column, value: currentVal + Number(increment) });
       continue;
     }
 
-    const arithmeticSub = clause.match(/(\w+)\s*=\s*\w+\s*-\s*\?/i);
-    if (arithmeticSub) {
-      const column = arithmeticSub[1];
+    const arithmeticSubParam = clause.match(/(\w+)\s*=\s*\w+\s*-\s*\?/i);
+    if (arithmeticSubParam) {
+      const column = arithmeticSubParam[1];
       const decrement = params[paramIdx++];
-      setValues.push({ column, value: -Number(decrement) });
+      const currentVal = Number(currentRow[column]) || 0;
+      setValues.push({ column, value: currentVal - Number(decrement) });
+      continue;
+    }
+
+    const arithmeticAddLit = clause.match(/(\w+)\s*=\s*\w+\s*\+\s*(\d+\.?\d*)/i);
+    if (arithmeticAddLit) {
+      const column = arithmeticAddLit[1];
+      const increment = Number(arithmeticAddLit[2]);
+      const currentVal = Number(currentRow[column]) || 0;
+      setValues.push({ column, value: currentVal + increment });
+      continue;
+    }
+
+    const arithmeticSubLit = clause.match(/(\w+)\s*=\s*\w+\s*-\s*(\d+\.?\d*)/i);
+    if (arithmeticSubLit) {
+      const column = arithmeticSubLit[1];
+      const decrement = Number(arithmeticSubLit[2]);
+      const currentVal = Number(currentRow[column]) || 0;
+      setValues.push({ column, value: currentVal - decrement });
       continue;
     }
 
@@ -402,7 +442,8 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
       const column = maxMatch[1];
       const decrement = params[paramIdx++];
       const minVal = Number(maxMatch[2]);
-      setValues.push({ column, value: { _decrement: Number(decrement), _min: minVal } });
+      const currentVal = Number(currentRow[column]) || 0;
+      setValues.push({ column, value: Math.max(minVal, currentVal - Number(decrement)) });
       continue;
     }
 
@@ -436,16 +477,7 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
 
   const updateObj: Record<string, any> = {};
   for (const sv of setValues) {
-    if (sv.value && typeof sv.value === "object" && sv.value._decrement !== undefined) {
-      const whereCol = whereMatch ? extractFirstWhereCol(whereMatch[1]) : null;
-      const whereVal = whereParams[0];
-      if (whereCol) {
-        const { data: current } = await sb.from(table).select(sv.column).eq(whereCol, whereVal).single();
-        updateObj[sv.column] = Math.max(sv.value._min, (Number((current as any)?.[sv.column]) || 0) - sv.value._decrement);
-      }
-    } else {
-      updateObj[sv.column] = sv.value;
-    }
+    updateObj[sv.column] = sv.value;
   }
 
   let query = sb.from(table).update(updateObj);
