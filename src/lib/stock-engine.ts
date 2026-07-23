@@ -95,6 +95,38 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       remaining -= fillQty;
     }
 
+    if (remaining > 0) {
+      const totalSharesAllHoldings = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?").all(companyId) as { total: number }[];
+      const totalHeld = totalSharesAllHoldings[0]?.total || 0;
+      const availableShares = Math.max(0, company.total_shares - totalHeld);
+
+      let autoFillQty = 0;
+      if (availableShares > 0) {
+        autoFillQty = Math.min(remaining, availableShares);
+        if (!isAdmin) {
+          const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+          const canAfford = Math.floor((bal.balance - totalCost) / company.share_price);
+          if (canAfford <= 0) autoFillQty = 0;
+          else autoFillQty = Math.min(autoFillQty, canAfford);
+        }
+      }
+
+      if (autoFillQty > 0) {
+        const autoFillCost = company.share_price * autoFillQty;
+        totalCost += autoFillCost;
+        remaining -= autoFillQty;
+
+        await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(company.share_price, companyId);
+        await db.prepare(
+          "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
+        ).run(userId, companyId, autoFillQty, company.share_price, autoFillCost);
+        await db.prepare(
+          "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)"
+        ).run(userId, companyId, autoFillQty, company.share_price, new Date().toISOString());
+        await recordPriceHistory(db, companyId, company.share_price);
+      }
+    }
+
     let pendingShares = 0;
     if (remaining > 0) {
       const pendingCost = company.share_price * remaining;
