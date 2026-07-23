@@ -1,0 +1,1072 @@
+{
+  "users": {
+    "rows": [
+      {
+        "username": "T-ADMIN",
+        "email": "T-ADMIN@stocksim.com",
+        "password": "$2a$12$mI58.eV6lGUnvQmFA9/mxec9FXBfKQ4dXDCSrILTE8Hg/KQIfrEAa",
+        "balance": 0,
+        "is_admin": 1,
+        "id": 1
+      },
+      {
+        "username": "TDOG",
+        "email": "teej1909@Gmail.com",
+        "password": "$2a$12$9x4rsJw5fBY8PDJcdt1tEuKn.2sv/L9FxJNKeAEdJ/o9/8lpSFLci",
+        "balance": 6083,
+        "id": 2
+      }
+    ],
+    "autoIncrement": 3
+  },
+  "companies": {
+    "rows": [
+      {
+        "name": "test",
+        "ticker": "TST",
+        "description": "admin",
+        "share_price": 137,
+        "total_shares": 10,
+        "initial_price": 100,
+        "initial_shares": 10,
+        "id": 25
+      }
+    ],
+    "autoIncrement": 26
+  },
+  "holdings": {
+    "rows": [
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "shares_owned": 23,
+        "id": 14
+      }
+    ],
+    "autoIncrement": 16
+  },
+  "transactions": {
+    "rows": [
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 10,
+        "price_per_share": 120,
+        "total_amount": 1000,
+        "id": 65
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 300,
+        "total_amount": 300,
+        "id": 66
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 294,
+        "total_amount": 291,
+        "id": 67
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 300,
+        "total_amount": 294,
+        "id": 68
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 40000,
+        "total_amount": 40000,
+        "id": 69
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 40000,
+        "total_amount": 38800,
+        "id": 70
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 39200,
+        "total_amount": 38024,
+        "id": 71
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 38416,
+        "total_amount": 37264,
+        "id": 72
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 37648,
+        "total_amount": 36519,
+        "id": 73
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 36895,
+        "total_amount": 35788,
+        "id": 74
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 36157,
+        "total_amount": 35072,
+        "id": 75
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 35434,
+        "total_amount": 34371,
+        "id": 76
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 34725,
+        "total_amount": 33683,
+        "id": 77
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 34031,
+        "total_amount": 33010,
+        "id": 78
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_sell",
+        "shares": 1,
+        "price_per_share": 33350,
+        "total_amount": 32349,
+        "id": 79
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 33337,
+        "total_amount": 32683,
+        "id": 80
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 100,
+        "total_amount": 100,
+        "id": 81
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 9,
+        "price_per_share": 118,
+        "total_amount": 900,
+        "id": 82
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 3,
+        "price_per_share": 118,
+        "total_amount": 354,
+        "id": 83
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 2,
+        "price_per_share": 125,
+        "total_amount": 250,
+        "id": 84
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 118,
+        "total_amount": 118,
+        "id": 85
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 118,
+        "total_amount": 118,
+        "id": 86
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 1,
+        "price_per_share": 118,
+        "total_amount": 118,
+        "id": 87
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 120,
+        "total_amount": 120,
+        "id": 88
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 2,
+        "price_per_share": 120,
+        "total_amount": 240,
+        "id": 89
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 1,
+        "price_per_share": 120,
+        "total_amount": 120,
+        "id": 90
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 3,
+        "price_per_share": 122,
+        "total_amount": 366,
+        "id": 91
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 2,
+        "price_per_share": 129,
+        "total_amount": 258,
+        "id": 92
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 4,
+        "price_per_share": 134,
+        "total_amount": 536,
+        "id": 93
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 6,
+        "price_per_share": 134,
+        "total_amount": 804,
+        "id": 94
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "limit_buy",
+        "shares": 1,
+        "price_per_share": 134,
+        "total_amount": 134,
+        "id": 95
+      }
+    ],
+    "autoIncrement": 96
+  },
+  "currency_purchases": {
+    "rows": [],
+    "autoIncrement": 1
+  },
+  "price_history": {
+    "rows": [
+      {
+        "id": 169,
+        "company_id": 8,
+        "price": 9113,
+        "timestamp": 1784741986970
+      },
+      {
+        "id": 170,
+        "company_id": 8,
+        "price": 8961,
+        "timestamp": 1784745586970
+      },
+      {
+        "id": 171,
+        "company_id": 8,
+        "price": 9459,
+        "timestamp": 1784749186970
+      },
+      {
+        "id": 172,
+        "company_id": 8,
+        "price": 8958,
+        "timestamp": 1784752786970
+      },
+      {
+        "id": 173,
+        "company_id": 8,
+        "price": 9158,
+        "timestamp": 1784756386970
+      },
+      {
+        "id": 174,
+        "company_id": 8,
+        "price": 9317,
+        "timestamp": 1784759986970
+      },
+      {
+        "id": 175,
+        "company_id": 8,
+        "price": 9146,
+        "timestamp": 1784763586970
+      },
+      {
+        "id": 176,
+        "company_id": 8,
+        "price": 9071,
+        "timestamp": 1784767186970
+      },
+      {
+        "id": 177,
+        "company_id": 8,
+        "price": 9094,
+        "timestamp": 1784770786970
+      },
+      {
+        "id": 178,
+        "company_id": 8,
+        "price": 8972,
+        "timestamp": 1784774386970
+      },
+      {
+        "id": 179,
+        "company_id": 8,
+        "price": 8997,
+        "timestamp": 1784777986970
+      },
+      {
+        "id": 180,
+        "company_id": 8,
+        "price": 9403,
+        "timestamp": 1784781586970
+      },
+      {
+        "id": 181,
+        "company_id": 8,
+        "price": 9040,
+        "timestamp": 1784785186970
+      },
+      {
+        "id": 182,
+        "company_id": 8,
+        "price": 9258,
+        "timestamp": 1784788786970
+      },
+      {
+        "id": 183,
+        "company_id": 8,
+        "price": 9137,
+        "timestamp": 1784792386970
+      },
+      {
+        "id": 184,
+        "company_id": 8,
+        "price": 9368,
+        "timestamp": 1784795986970
+      },
+      {
+        "id": 185,
+        "company_id": 8,
+        "price": 9170,
+        "timestamp": 1784799586970
+      },
+      {
+        "id": 186,
+        "company_id": 8,
+        "price": 9424,
+        "timestamp": 1784803186970
+      },
+      {
+        "id": 187,
+        "company_id": 8,
+        "price": 9258,
+        "timestamp": 1784806786970
+      },
+      {
+        "id": 188,
+        "company_id": 8,
+        "price": 9210,
+        "timestamp": 1784810386970
+      },
+      {
+        "id": 189,
+        "company_id": 8,
+        "price": 9085,
+        "timestamp": 1784813986970
+      },
+      {
+        "id": 190,
+        "company_id": 8,
+        "price": 9455,
+        "timestamp": 1784817586970
+      },
+      {
+        "id": 191,
+        "company_id": 8,
+        "price": 9246,
+        "timestamp": 1784821186970
+      },
+      {
+        "id": 192,
+        "company_id": 8,
+        "price": 9175,
+        "timestamp": 1784824786970
+      },
+      {
+        "company_id": 8,
+        "price": 9384,
+        "timestamp": 1784830866223,
+        "id": 241
+      },
+      {
+        "company_id": 25,
+        "price": 100,
+        "timestamp": 1784835684946,
+        "id": 560
+      },
+      {
+        "company_id": 25,
+        "price": 120,
+        "timestamp": 1784835713361,
+        "id": 561
+      },
+      {
+        "company_id": 25,
+        "price": 300,
+        "timestamp": 1784835759077,
+        "id": 562
+      },
+      {
+        "company_id": 25,
+        "price": 294,
+        "timestamp": 1784835804576,
+        "id": 563
+      },
+      {
+        "company_id": 25,
+        "price": 300,
+        "timestamp": 1784835836038,
+        "id": 564
+      },
+      {
+        "company_id": 25,
+        "price": 40000,
+        "timestamp": 1784837420589,
+        "id": 565
+      },
+      {
+        "company_id": 25,
+        "price": 39200,
+        "timestamp": 1784837433785,
+        "id": 566
+      },
+      {
+        "company_id": 25,
+        "price": 38416,
+        "timestamp": 1784837452530,
+        "id": 567
+      },
+      {
+        "company_id": 25,
+        "price": 37648,
+        "timestamp": 1784837569356,
+        "id": 568
+      },
+      {
+        "company_id": 25,
+        "price": 36895,
+        "timestamp": 1784837612112,
+        "id": 569
+      },
+      {
+        "company_id": 25,
+        "price": 36157,
+        "timestamp": 1784837612962,
+        "id": 570
+      },
+      {
+        "company_id": 25,
+        "price": 35434,
+        "timestamp": 1784837613189,
+        "id": 571
+      },
+      {
+        "company_id": 25,
+        "price": 34725,
+        "timestamp": 1784837613420,
+        "id": 572
+      },
+      {
+        "company_id": 25,
+        "price": 34031,
+        "timestamp": 1784837613622,
+        "id": 573
+      },
+      {
+        "company_id": 25,
+        "price": 33350,
+        "timestamp": 1784837613817,
+        "id": 574
+      },
+      {
+        "company_id": 25,
+        "price": 32683,
+        "timestamp": 1784837614042,
+        "id": 575
+      },
+      {
+        "company_id": 25,
+        "price": 33337,
+        "timestamp": 1784837791903,
+        "id": 576
+      },
+      {
+        "company_id": 25,
+        "price": 100,
+        "timestamp": 1784838006190,
+        "id": 577
+      },
+      {
+        "company_id": 25,
+        "price": 118,
+        "timestamp": 1784838132729,
+        "id": 578
+      },
+      {
+        "company_id": 25,
+        "price": 125,
+        "timestamp": 1784838893032,
+        "id": 579
+      },
+      {
+        "company_id": 25,
+        "price": 130,
+        "timestamp": 1784838967397,
+        "id": 580
+      },
+      {
+        "company_id": 25,
+        "price": 120,
+        "timestamp": 1784839936523,
+        "id": 581
+      },
+      {
+        "company_id": 25,
+        "price": 122,
+        "timestamp": 1784840173113,
+        "id": 582
+      },
+      {
+        "company_id": 25,
+        "price": 129,
+        "timestamp": 1784840234590,
+        "id": 583
+      },
+      {
+        "company_id": 25,
+        "price": 134,
+        "timestamp": 1784840238402,
+        "id": 584
+      },
+      {
+        "company_id": 25,
+        "price": 137,
+        "timestamp": 1784840267283,
+        "id": 585
+      }
+    ],
+    "autoIncrement": 586
+  },
+  "bank_fund": {
+    "rows": [
+      {
+        "id": 1,
+        "balance": 12835
+      }
+    ],
+    "autoIncrement": 1
+  },
+  "settings": {
+    "rows": [
+      {
+        "id": 1,
+        "trading_enabled": 1,
+        "trading_open_hour": 0,
+        "trading_close_hour": 24
+      }
+    ],
+    "autoIncrement": 1
+  },
+  "orders": {
+    "rows": [
+      {
+        "user_id": 1,
+        "company_id": 11,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 100,
+        "status": "2026-07-23T18:53:08.573Z",
+        "created_at": null,
+        "id": 1
+      },
+      {
+        "user_id": 1,
+        "company_id": 11,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 400,
+        "status": "cancelled",
+        "created_at": "2026-07-23T19:07:59.819Z",
+        "id": 2
+      },
+      {
+        "user_id": 2,
+        "company_id": 12,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 200,
+        "status": "cancelled",
+        "created_at": "2026-07-23T19:17:59.958Z",
+        "id": 3
+      },
+      {
+        "user_id": 1,
+        "company_id": 14,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 400,
+        "status": "cancelled",
+        "created_at": "2026-07-23T19:27:00.266Z",
+        "id": 4
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 300,
+        "status": "filled",
+        "created_at": "2026-07-23T19:42:18.957Z",
+        "id": 5
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 40000,
+        "status": "filled",
+        "created_at": "2026-07-23T19:47:09.334Z",
+        "id": 6
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 40000,
+        "status": "filled",
+        "created_at": "2026-07-23T20:10:20.588Z",
+        "id": 7
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 40000,
+        "status": "filled",
+        "created_at": "2026-07-23T20:10:33.775Z",
+        "id": 8
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 1000,
+        "status": "filled",
+        "created_at": "2026-07-23T20:10:52.517Z",
+        "id": 9
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 38416,
+        "status": "filled",
+        "created_at": "2026-07-23T20:12:49.344Z",
+        "id": 10
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 37648,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:32.100Z",
+        "id": 11
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 36895,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:32.952Z",
+        "id": 12
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 36157,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:33.178Z",
+        "id": 13
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 35434,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:33.409Z",
+        "id": 14
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 34725,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:33.609Z",
+        "id": 15
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 34031,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:33.805Z",
+        "id": 16
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 33350,
+        "status": "filled",
+        "created_at": "2026-07-23T20:13:34.027Z",
+        "id": 17
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 33337,
+        "status": "filled",
+        "created_at": "2026-07-23T20:16:31.902Z",
+        "id": 18
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 100,
+        "status": "filled",
+        "created_at": "2026-07-23T20:19:44.306Z",
+        "id": 19
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 100,
+        "status": "filled",
+        "created_at": "2026-07-23T20:20:06.189Z",
+        "id": 20
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 9,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:22:12.728Z",
+        "id": 21
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:30:35.675Z",
+        "id": 22
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:30:42.106Z",
+        "id": 23
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 3,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:34:53.026Z",
+        "id": 24
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 2,
+        "price_per_share": 125,
+        "status": "filled",
+        "created_at": "2026-07-23T20:36:07.383Z",
+        "id": 25
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:52:16.503Z",
+        "id": 26
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:52:16.512Z",
+        "id": 27
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 118,
+        "status": "filled",
+        "created_at": "2026-07-23T20:52:16.513Z",
+        "id": 28
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 2,
+        "price_per_share": 120,
+        "status": "filled",
+        "created_at": "2026-07-23T20:55:53.572Z",
+        "id": 29
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 1,
+        "price_per_share": 120,
+        "status": "filled",
+        "created_at": "2026-07-23T20:56:00.356Z",
+        "id": 30
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 120,
+        "status": "filled",
+        "created_at": "2026-07-23T20:56:13.092Z",
+        "id": 31
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 2,
+        "price_per_share": 120,
+        "status": "filled",
+        "created_at": "2026-07-23T20:56:13.101Z",
+        "id": 32
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 120,
+        "status": "filled",
+        "created_at": "2026-07-23T20:56:13.103Z",
+        "id": 33
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 3,
+        "price_per_share": 122,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:14.581Z",
+        "id": 34
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 2,
+        "price_per_share": 129,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:18.391Z",
+        "id": 35
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 6,
+        "price_per_share": 134,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:26.768Z",
+        "id": 36
+      },
+      {
+        "user_id": 1,
+        "company_id": 25,
+        "type": "sell",
+        "shares": 4,
+        "price_per_share": 134,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:29.783Z",
+        "id": 37
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 4,
+        "price_per_share": 134,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:47.263Z",
+        "id": 38
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 6,
+        "price_per_share": 134,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:47.270Z",
+        "id": 39
+      },
+      {
+        "user_id": 2,
+        "company_id": 25,
+        "type": "buy",
+        "shares": 1,
+        "price_per_share": 134,
+        "status": "filled",
+        "created_at": "2026-07-23T20:57:47.272Z",
+        "id": 40
+      }
+    ],
+    "autoIncrement": 41
+  }
+}
