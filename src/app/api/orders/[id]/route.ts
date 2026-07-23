@@ -17,7 +17,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
     }
 
-    const result = cancelOrder(userId, orderId);
+    const result = await cancelOrder(userId, orderId);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Cancel order error:", error);

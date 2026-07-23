@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const result = placeLimitOrder(userId, companyId, "sell", shares, company.share_price);
+    const result = await placeLimitOrder(userId, companyId, "sell", shares, company.share_price);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Sell error:", error);

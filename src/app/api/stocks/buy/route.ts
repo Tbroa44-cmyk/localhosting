@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid parameters. Shares must be a positive whole number." }, { status: 400 });
     }
 
-    const result = executeBuy(userId, companyId, shares);
+    const result = await executeBuy(userId, companyId, shares);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Buy error:", error);

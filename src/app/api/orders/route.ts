@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Type must be 'buy' or 'sell'" }, { status: 400 });
     }
 
-    const result = placeLimitOrder(userId, companyId, type, shares, priceCents);
+    const result = await placeLimitOrder(userId, companyId, type, shares, priceCents);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Place order error:", error);

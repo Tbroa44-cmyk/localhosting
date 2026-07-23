@@ -237,22 +237,39 @@ async function executeJoinQuery(
     const companyCols: string[] = [];
 
     const colParts = colsStr.split(",").map((c) => c.trim());
+    let mainTableSelectAll = false;
     for (const col of colParts) {
-      const aliasMatch = col.match(/(?:\w+\.)?(\w+)(?:\s+as\s+(\w+))?/i);
+      const trimmedCol = col.trim();
+
+      if (/^\w+\.\*$/.test(trimmedCol)) {
+        const tbl = trimmedCol.split(".")[0].toLowerCase();
+        if (tbl === table.toLowerCase()) {
+          mainTableSelectAll = true;
+        }
+        continue;
+      }
+
+      const aliasMatch = trimmedCol.match(/(?:\w+\.)?(\w+)(?:\s+as\s+(\w+))?/i);
       if (!aliasMatch) continue;
       const colName = aliasMatch[1];
       const alias = aliasMatch[2];
 
-      if (/^(c\.|company)/i.test(col) || ["company_name", "ticker", "share_price", "total_shares", "current_price", "description"].includes(colName)) {
-        companyCols.push(colName);
+      const isCompanyRef = /^(c\.|company)/i.test(trimmedCol) || /^(c\.|company)/i.test(col);
+      const isKnownCompanyCol = ["company_name", "ticker", "share_price", "total_shares", "current_price", "description"].includes(colName) || ["ticker", "name", "share_price", "total_shares", "description"].includes(alias || "");
+
+      if (isCompanyRef || isKnownCompanyCol) {
+        companyCols.push(alias || colName);
       } else {
-        localCols.push(colName === "*" ? "*" : colName);
+        localCols.push(colName === "*" ? "*" : (alias || colName));
       }
     }
 
-    if (localCols.length === 0) localCols.push("*");
+    if (mainTableSelectAll || localCols.length === 0) localCols.unshift("*");
     if (companyCols.length > 0) {
-      selectCols = `${localCols.filter((c) => c !== "*").join(", ") || "*"}, ${joinTable}(${[...new Set(companyCols)].join(", ")})`;
+      const localPart = localCols.includes("*") ? "*" : localCols.join(", ");
+      selectCols = `${localPart}, ${joinTable}(${[...new Set(companyCols)].join(", ")})`;
+    } else {
+      selectCols = localCols.includes("*") ? "*" : localCols.join(", ");
     }
   }
 
