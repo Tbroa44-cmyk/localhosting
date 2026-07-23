@@ -154,7 +154,7 @@ export default function StockDetailPage() {
   const canTrade = session && !isGuest;
   const isAdmin = (session?.user as any)?.isAdmin;
   const priceHistory = company.price_history || [];
-  const currentPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : company.share_price;
+  const currentPrice = company.share_price;
   const startPrice = priceHistory.length > 0 ? priceHistory[0].price : company.share_price;
   const priceChange = currentPrice - startPrice;
   const priceChangePercent = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : "0.00";

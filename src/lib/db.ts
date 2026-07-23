@@ -366,7 +366,10 @@ async function executeInsert(sql: string, params: any[]): Promise<{ changes: num
   });
 
   const { data, error } = await sb.from(table).insert(row).select("id");
-  if (error) console.error("Insert error:", error);
+  if (error) {
+    console.error("Insert error:", JSON.stringify(error), "table:", table, "row:", JSON.stringify(row));
+    throw new Error(`Insert failed for ${table}: ${error.message || JSON.stringify(error)}`);
+  }
   return { changes: 1, lastInsertRowid: data?.[0]?.id ?? 0 };
 }
 
@@ -609,3 +612,12 @@ function getDbProxy() {
 }
 
 export default getDbProxy;
+
+export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
+  const sb = getSupabase();
+  const { error } = await sb.from("price_history").insert({ company_id: companyId, price, timestamp });
+  if (error) {
+    console.error("Direct price_history insert error:", JSON.stringify(error));
+    throw new Error(`price_history insert failed: ${error.message || JSON.stringify(error)}`);
+  }
+}

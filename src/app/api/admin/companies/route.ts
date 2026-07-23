@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import getDb from "@/lib/db";
+import getDb, { insertPriceHistory } from "@/lib/db";
 
 export async function GET() {
   try {
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     );
 
     const companyId = result.lastInsertRowid;
-    await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, share_price, Date.now());
+    await insertPriceHistory(companyId, share_price, Date.now());
 
     return NextResponse.json({ message: "Company created successfully" });
   } catch (error) {

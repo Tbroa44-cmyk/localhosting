@@ -1,4 +1,4 @@
-import getDb from "@/lib/db";
+import getDb, { insertPriceHistory } from "@/lib/db";
 import { formatCoins } from "@/lib/format";
 
 const PRICE_CHANGE_PERCENT = 0.02;
@@ -15,7 +15,11 @@ export function calculateSellPrice(currentPrice: number, shares: number): number
 }
 
 async function recordPriceHistory(db: any, companyId: number, price: number) {
-  await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, price, Date.now());
+  try {
+    await insertPriceHistory(companyId, price, Date.now());
+  } catch (e: any) {
+    console.error("Failed to record price history:", e?.message || e);
+  }
 }
 
 async function getBankFund(db: any): Promise<number> {
@@ -425,7 +429,7 @@ export async function resetMarket() {
       const initialPrice = company.initial_price || company.share_price;
       const initialShares = company.initial_shares || company.total_shares;
       await db.prepare("UPDATE companies SET share_price = ?, total_shares = ? WHERE id = ?").run(initialPrice, initialShares, company.id);
-      await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(company.id, initialPrice, Date.now());
+      await insertPriceHistory(company.id, initialPrice, Date.now());
     }
 
     return { message: "Market reset successfully" };
