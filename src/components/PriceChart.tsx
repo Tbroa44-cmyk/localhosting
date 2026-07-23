@@ -129,6 +129,8 @@ export default function PriceChart({ priceHistory }: { priceHistory: PricePoint[
   const change = currentPrice - startPrice;
   const changePercent = startPrice > 0 ? ((change / startPrice) * 100).toFixed(2) : "0.00";
 
+  const chartKey = filteredData.length > 0 ? `${filteredData.length}-${filteredData[filteredData.length - 1].timestamp}` : "empty";
+
   return (
     <div className="glass-card">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
@@ -158,7 +160,7 @@ export default function PriceChart({ priceHistory }: { priceHistory: PricePoint[
         </div>
       </div>
       <div className="h-64 sm:h-80">
-        <Line data={chartData} options={options} />
+        <Line key={chartKey} data={chartData} options={options} />
       </div>
     </div>
   );
