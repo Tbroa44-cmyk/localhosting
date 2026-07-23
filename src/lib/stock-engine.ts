@@ -37,6 +37,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     } | undefined;
 
     if (!company) throw new Error("Company not found");
+    if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
       id: number; balance: number; is_admin: any;
@@ -84,6 +85,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       }
 
       await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(fillPrice, companyId);
+      await recordPriceHistory(db, companyId, fillPrice);
       await db.prepare(
         "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
       ).run(userId, companyId, fillQty, fillPrice, cost);
@@ -180,6 +182,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
     } | undefined;
 
     if (!company) throw new Error("Company not found");
+    if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
 
     const holding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, companyId) as
       | { id: number; shares_owned: number } | undefined;
@@ -232,7 +235,7 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
 
     if (!company) throw new Error("Company not found");
     if (shares <= 0 || !Number.isInteger(shares)) throw new Error("Shares must be a positive whole number");
-    if (priceCents <= 0) throw new Error("Price must be greater than 0");
+    if (priceCents < 5) throw new Error("Price must be at least 0.05c");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
       id: number; balance: number; is_admin: any;

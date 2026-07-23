@@ -22,11 +22,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
     ).all(id);
 
     const pendingBuys = await db.prepare(
-      "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending' ORDER BY price_per_share DESC, created_at ASC LIMIT 20"
+      "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending' AND price_per_share > 0 ORDER BY price_per_share DESC, created_at ASC LIMIT 20"
     ).all(id);
 
     const pendingSells = await db.prepare(
-      "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC, created_at ASC LIMIT 20"
+      "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND price_per_share > 0 ORDER BY price_per_share ASC, created_at ASC LIMIT 20"
     ).all(id);
 
     const totalOwned = await db.prepare(
@@ -46,11 +46,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
       const userId = (session.user as any).id;
 
       const transactions = await db.prepare(
-        "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25"
+        "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? AND price_per_share > 0 ORDER BY created_at DESC LIMIT 25"
       ).all(id, userId);
 
       const filledOrders = await db.prepare(
-        "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'filled' ORDER BY created_at DESC LIMIT 50"
+        "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'filled' AND price_per_share > 0 ORDER BY created_at DESC LIMIT 50"
       ).all(id, userId);
 
       for (const tx of transactions as any[]) {
@@ -66,7 +66,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       }
 
       const myPendingOrders = await db.prepare(
-        "SELECT id, type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC"
+        "SELECT id, type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' AND price_per_share > 0 ORDER BY created_at DESC"
       ).all(id, userId);
 
       for (const o of myPendingOrders as any[]) {
@@ -82,7 +82,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       }
 
       const myCancelledOrders = await db.prepare(
-        "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20"
+        "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' AND price_per_share > 0 ORDER BY created_at DESC LIMIT 20"
       ).all(id, userId);
 
       for (const o of myCancelledOrders as any[]) {
@@ -103,7 +103,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       });
     } else {
       recentTransactions = await db.prepare(
-        "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 25"
+        "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND price_per_share > 0 ORDER BY created_at DESC LIMIT 25"
       ).all(id);
     }
 
