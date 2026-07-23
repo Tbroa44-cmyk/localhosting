@@ -41,7 +41,7 @@ export const authOptions: NextAuthOptions = {
           id: String(user.id),
           email: user.email,
           name: user.username,
-          isAdmin: user.is_admin === 1,
+          isAdmin: !!user.is_admin,
         };
       },
     }),
@@ -66,14 +66,14 @@ export const authOptions: NextAuthOptions = {
             id: number;
             username: string;
             balance: number;
-            is_admin: number;
+            is_admin: any;
           } | undefined;
 
           if (user) {
             (session.user as any).id = user.id;
             (session.user as any).username = user.username;
             (session.user as any).balance = user.balance;
-            (session.user as any).isAdmin = user.is_admin === 1;
+            (session.user as any).isAdmin = !!user.is_admin;
           }
         } catch {
           (session.user as any).balance = 0;
