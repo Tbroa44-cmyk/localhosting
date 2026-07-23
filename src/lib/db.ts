@@ -243,7 +243,7 @@ async function executeJoinQuery(
 
       if (/^\w+\.\*$/.test(trimmedCol)) {
         const tbl = trimmedCol.split(".")[0].toLowerCase();
-        if (tbl === table.toLowerCase()) {
+        if (tbl === table.toLowerCase() || tbl === localCol.toLowerCase()) {
           mainTableSelectAll = true;
         }
         continue;
@@ -258,7 +258,7 @@ async function executeJoinQuery(
       const isKnownCompanyCol = ["company_name", "ticker", "share_price", "total_shares", "current_price", "description"].includes(colName) || ["ticker", "name", "share_price", "total_shares", "description"].includes(alias || "");
 
       if (isCompanyRef || isKnownCompanyCol) {
-        companyCols.push(alias || colName);
+        companyCols.push(colName);
       } else {
         localCols.push(colName === "*" ? "*" : (alias || colName));
       }

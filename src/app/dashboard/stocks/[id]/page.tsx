@@ -347,16 +347,20 @@ export default function StockDetailPage() {
             <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders ({myOrders.length})</h3>
             <div className="space-y-2">
               {myOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between py-2 px-3 bg-gray-800/50 rounded-lg">
+                <div
+                  key={order.id}
+                  onClick={() => handleCancelOrder(order.id)}
+                  className="flex items-center justify-between py-2 px-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-red-500/10 transition-colors group"
+                >
                   <div className="flex items-center gap-3">
                     <span className={`text-xs font-bold px-2 py-1 rounded ${order.type === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                       {order.type.toUpperCase()}
                     </span>
-                    <span className="text-white">{order.shares} shares @ {formatCoins(order.price_per_share)}</span>
+                    <span className="text-white group-hover:text-red-400 transition-colors">{order.shares} shares @ {formatCoins(order.price_per_share)}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</span>
-                    <button onClick={() => handleCancelOrder(order.id)} className="text-red-400 hover:text-red-300 text-xs font-medium">Cancel</button>
+                    <span className="text-red-400 hover:text-red-300 text-xs font-medium">Cancel</span>
                   </div>
                 </div>
               ))}
@@ -446,36 +450,20 @@ export default function StockDetailPage() {
                   </svg>
                   <div className="grid grid-cols-2 gap-4 w-full mt-4">
                     <div className="text-center">
-                      <div className="text-xs text-gray-400">Shares</div>
+                      <div className="text-xs text-gray-400">Shares Owned</div>
                       <div className="text-lg font-bold text-white">{sharesOwned}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-gray-400">Available to Sell</div>
+                      <div className="text-lg font-bold text-blue-400">{availableToSell}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-gray-400">Market Share</div>
+                      <div className="text-lg font-bold text-gray-300">{company.total_shares > 0 ? ((sharesOwned / company.total_shares) * 100).toFixed(1) : "0.0"}%</div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-gray-400">Market Value</div>
                       <div className="text-lg font-bold text-green-400">{formatCoins(sharesOwned * currentPrice)}</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xs text-gray-400">Unowned</div>
-                      <div className="text-lg font-bold text-gray-300">{company.total_shares > 0 ? (((company.total_shares - sharesOwned) / company.total_shares) * 100).toFixed(1) : "100.0"}%</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xs text-gray-400">Total P&L</div>
-                      {(() => {
-                        const trades = (company as any).my_trades || [];
-                        let totalCost = 0;
-                        let totalRevenue = 0;
-                        for (const t of trades) {
-                          if (t.status !== "confirmed") continue;
-                          if (String(t.type).includes("buy")) totalCost += t.total_amount;
-                          else totalRevenue += t.total_amount;
-                        }
-                        const currentValue = sharesOwned * currentPrice;
-                        const pnl = currentValue - totalCost + totalRevenue;
-                        return (
-                          <div className={`text-lg font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {pnl >= 0 ? "+" : ""}{formatCoins(pnl)}
-                          </div>
-                        );
-                      })()}
                     </div>
                   </div>
                 </div>
@@ -495,7 +483,11 @@ export default function StockDetailPage() {
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                   {(company as any).my_trades?.map((tx: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                    <div
+                      key={i}
+                      onClick={() => tx.status === "pending" && tx.order_id ? handleCancelOrder(tx.order_id) : undefined}
+                      className={`flex items-center justify-between py-2 border-b border-gray-800 last:border-0 ${tx.status === "pending" ? "cursor-pointer hover:bg-red-500/10 rounded px-1 transition-colors group" : ""}`}
+                    >
                       <div className="flex items-center gap-3">
                         <span className={`text-xs font-bold px-2 py-1 rounded ${String(tx.type).includes("buy") ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                           {String(tx.type).toUpperCase().replace("_", " ")}
@@ -503,17 +495,20 @@ export default function StockDetailPage() {
                         <span className="text-white">{tx.shares} shares</span>
                         <span className={`text-xs px-2 py-0.5 rounded ${
                           tx.status === "confirmed" ? "bg-blue-500/20 text-blue-400" :
-                          tx.status === "pending" ? "bg-yellow-500/20 text-yellow-400" :
+                          tx.status === "pending" ? "bg-yellow-500/20 text-yellow-400 group-hover:bg-red-500/20 group-hover:text-red-400" :
                           "bg-gray-500/20 text-gray-400"
                         }`}>
                           {tx.status === "confirmed" ? "Confirmed" :
-                           tx.status === "pending" ? "On Market" :
+                           tx.status === "pending" ? "Click to Cancel" :
                            "Cancelled"}
                         </span>
                       </div>
                       <div className="text-right">
                         <div className="text-white">{formatCoins(tx.total_amount)}</div>
                         <div className="text-xs text-gray-500">@ {formatCoins(tx.price_per_share)}</div>
+                        {tx.created_at && (
+                          <div className="text-xs text-gray-600">{new Date(tx.created_at).toLocaleDateString()} {new Date(tx.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -532,6 +527,9 @@ export default function StockDetailPage() {
                     <div className="text-right">
                       <div className="text-white">{formatCoins(tx.total_amount)}</div>
                       <div className="text-xs text-gray-500">@ {formatCoins(tx.price_per_share)}</div>
+                      {tx.created_at && (
+                        <div className="text-xs text-gray-600">{new Date(tx.created_at).toLocaleDateString()} {new Date(tx.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                      )}
                     </div>
                   </div>
                 ))}
