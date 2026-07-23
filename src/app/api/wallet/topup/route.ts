@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
     const db = getDb();
 
-    const purchase = db.prepare("SELECT * FROM currency_purchases WHERE paypal_order_id = ? AND user_id = ?").get(paypalOrderId, userId) as any;
+    const purchase = await db.prepare("SELECT * FROM currency_purchases WHERE paypal_order_id = ? AND user_id = ?").get(paypalOrderId, userId) as any;
 
     if (!purchase) {
       return NextResponse.json({ error: "Purchase not found" }, { status: 404 });
@@ -25,10 +25,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Already processed", balance: 0 });
     }
 
-    db.prepare("UPDATE currency_purchases SET status = 'completed' WHERE id = ?").run(purchase.id);
-    db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(purchase.amount_cents, userId);
+    await db.prepare("UPDATE currency_purchases SET status = 'completed' WHERE id = ?").run(purchase.id);
+    await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(purchase.amount_cents, userId);
 
-    const user = db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+    const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
     return NextResponse.json({
       message: "Payment processed",

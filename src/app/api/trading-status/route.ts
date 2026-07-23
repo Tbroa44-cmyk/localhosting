@@ -4,7 +4,7 @@ import getDb from "@/lib/db";
 export async function GET() {
   try {
     const db = getDb();
-    const settings = db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
+    const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
 
     if (!settings || settings.trading_enabled === 1 && settings.trading_open_hour === 0 && settings.trading_close_hour === 24) {
       return NextResponse.json({ isOpen: true, message: "Markets open 24/7" });

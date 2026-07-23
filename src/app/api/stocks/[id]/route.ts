@@ -11,25 +11,25 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     const db = getDb();
-    const company = db.prepare("SELECT * FROM companies WHERE id = ?").get(id);
+    const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(id);
 
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const priceHistory = db.prepare(
+    const priceHistory = await db.prepare(
       "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
     ).all(id);
 
-    const pendingBuys = db.prepare(
+    const pendingBuys = await db.prepare(
       "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending' ORDER BY price_per_share DESC, created_at ASC LIMIT 20"
     ).all(id);
 
-    const pendingSells = db.prepare(
+    const pendingSells = await db.prepare(
       "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC, created_at ASC LIMIT 20"
     ).all(id);
 
-    const totalOwned = db.prepare(
+    const totalOwned = await db.prepare(
       "SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?"
     ).all(id) as { total: number }[];
 
@@ -45,11 +45,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
     if (session?.user) {
       const userId = (session.user as any).id;
 
-      const transactions = db.prepare(
+      const transactions = await db.prepare(
         "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25"
       ).all(id, userId);
 
-      const filledOrders = db.prepare(
+      const filledOrders = await db.prepare(
         "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'filled' ORDER BY created_at DESC LIMIT 50"
       ).all(id, userId);
 
@@ -65,7 +65,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         }
       }
 
-      const myPendingOrders = db.prepare(
+      const myPendingOrders = await db.prepare(
         "SELECT id, type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC"
       ).all(id, userId);
 
@@ -81,7 +81,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         });
       }
 
-      const myCancelledOrders = db.prepare(
+      const myCancelledOrders = await db.prepare(
         "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20"
       ).all(id, userId);
 
@@ -102,7 +102,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
         return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
       });
     } else {
-      recentTransactions = db.prepare(
+      recentTransactions = await db.prepare(
         "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 25"
       ).all(id);
     }

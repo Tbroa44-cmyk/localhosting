@@ -13,7 +13,7 @@ export async function GET() {
     const userId = (session.user as any).id;
     const db = getDb();
 
-    const holdings = db.prepare(`
+    const holdings = await db.prepare(`
       SELECT h.id, h.shares_owned, h.company_id,
              c.name as company_name, c.ticker, c.share_price, c.total_shares
       FROM holdings h
@@ -27,7 +27,7 @@ export async function GET() {
       0
     );
 
-    const transactions = db.prepare(`
+    const transactions = await db.prepare(`
       SELECT t.*, c.name as company_name, c.ticker
       FROM transactions t
       JOIN companies c ON t.company_id = c.id
@@ -36,11 +36,11 @@ export async function GET() {
       LIMIT 25
     `).all(userId);
 
-    const user = db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+    const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
     const priceHistories: Record<number, { price: number; timestamp: number }[]> = {};
     for (const h of holdings as any[]) {
-      priceHistories[h.company_id] = db.prepare(
+      priceHistories[h.company_id] = await db.prepare(
         "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
       ).all(h.company_id) as { price: number; timestamp: number }[];
     }

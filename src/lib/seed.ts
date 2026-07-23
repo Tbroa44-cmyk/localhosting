@@ -4,7 +4,7 @@ import getDb from "../lib/db";
 async function seed() {
   const db = getDb();
 
-  const existingAdmin = db.prepare("SELECT id FROM users WHERE email = 'T-ADMIN@stocksim.com'").get();
+  const existingAdmin = await db.prepare("SELECT id FROM users WHERE email = 'T-ADMIN@stocksim.com'").get();
   if (existingAdmin) {
     console.log("Admin user already exists.");
     process.exit(0);
@@ -12,7 +12,7 @@ async function seed() {
 
   const hashedPassword = await bcrypt.hash("Ichliebendu-2026!", 12);
 
-  db.prepare("INSERT INTO users (username, email, password, balance, is_admin) VALUES (?, ?, ?, ?, ?)").run(
+  await db.prepare("INSERT INTO users (username, email, password, balance, is_admin) VALUES (?, ?, ?, ?, ?)").run(
     "T-ADMIN",
     "T-ADMIN@stocksim.com",
     hashedPassword,

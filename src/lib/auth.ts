@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         const db = getDb();
-        const user = db.prepare("SELECT * FROM users WHERE email = ?").get(credentials.email) as DbUser | undefined;
+        const user = await db.prepare("SELECT * FROM users WHERE email = ?").get(credentials.email) as DbUser | undefined;
 
         if (!user) {
           return null;
@@ -62,7 +62,7 @@ export const authOptions: NextAuthOptions = {
 
         try {
           const db = getDb();
-          const user = db.prepare("SELECT id, username, balance, is_admin FROM users WHERE id = ?").get(token.id) as {
+          const user = await db.prepare("SELECT id, username, balance, is_admin FROM users WHERE id = ?").get(token.id) as {
             id: number;
             username: string;
             balance: number;

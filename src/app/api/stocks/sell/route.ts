@@ -4,10 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { placeLimitOrder } from "@/lib/stock-engine";
 import getDb from "@/lib/db";
 
-function isTradingOpen(): { open: boolean; message: string } {
+async function isTradingOpen(): Promise<{ open: boolean; message: string }> {
   try {
     const db = getDb();
-    const settings = db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
+    const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
     if (!settings || (settings.trading_enabled === 1 && settings.trading_open_hour === 0 && settings.trading_close_hour === 24)) {
       return { open: true, message: "" };
     }
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const trading = isTradingOpen();
+    const trading = await isTradingOpen();
     if (!trading.open) {
       return NextResponse.json({ error: trading.message }, { status: 403 });
     }
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     const db = getDb();
-    const company = db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as any;
+    const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as any;
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }

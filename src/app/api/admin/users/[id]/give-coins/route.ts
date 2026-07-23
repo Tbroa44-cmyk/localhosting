@@ -21,7 +21,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const db = getDb();
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -30,7 +30,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: "Cannot give coins to admin" }, { status: 400 });
     }
 
-    db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(amountCents, userId);
+    await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(amountCents, userId);
 
     return NextResponse.json({ success: true, newBalance: user.balance + amountCents });
   } catch (error) {

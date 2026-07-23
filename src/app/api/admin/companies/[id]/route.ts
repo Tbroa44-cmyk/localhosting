@@ -18,7 +18,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const { name, description, share_price, total_shares } = await request.json();
 
     const db = getDb();
-    db.prepare("UPDATE companies SET name = COALESCE(?, name), description = COALESCE(?, description), share_price = COALESCE(?, share_price), total_shares = COALESCE(?, total_shares) WHERE id = ?").run(
+    await db.prepare("UPDATE companies SET name = COALESCE(?, name), description = COALESCE(?, description), share_price = COALESCE(?, share_price), total_shares = COALESCE(?, total_shares) WHERE id = ?").run(
       name || null, description || null, share_price || null, total_shares || null, id
     );
 
@@ -43,10 +43,10 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
     const db = getDb();
 
-    db.prepare("DELETE FROM price_history WHERE company_id = ?").run(id);
-    db.prepare("DELETE FROM holdings WHERE company_id = ?").run(id);
-    db.prepare("DELETE FROM transactions WHERE company_id = ?").run(id);
-    db.prepare("DELETE FROM companies WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM price_history WHERE company_id = ?").run(id);
+    await db.prepare("DELETE FROM holdings WHERE company_id = ?").run(id);
+    await db.prepare("DELETE FROM transactions WHERE company_id = ?").run(id);
+    await db.prepare("DELETE FROM companies WHERE id = ?").run(id);
 
     return NextResponse.json({ message: "Company deleted" });
   } catch (error) {

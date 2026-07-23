@@ -11,13 +11,13 @@ export async function GET() {
     }
 
     const db = getDb();
-    const users = db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all();
-    const companies = db.prepare("SELECT * FROM companies ORDER BY ticker").all();
-    const totalBalanceRows = db.prepare("SELECT SUM(balance) as total FROM users").all() as { total: number }[];
+    const users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all();
+    const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all();
+    const totalBalanceRows = await db.prepare("SELECT SUM(balance) as total FROM users").all() as { total: number }[];
     const totalBalance = totalBalanceRows[0] || { total: 0 };
-    const totalTransactionsRows = db.prepare("SELECT COUNT(*) as count FROM transactions").all() as { count: number }[];
+    const totalTransactionsRows = await db.prepare("SELECT COUNT(*) as count FROM transactions").all() as { count: number }[];
     const totalTransactions = totalTransactionsRows[0] || { count: 0 };
-    const bankFund = db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
+    const bankFund = await db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
     const bankFundRow = bankFund[0] || { balance: 0 };
 
     return NextResponse.json({
@@ -50,12 +50,12 @@ export async function POST(request: Request) {
     }
 
     const db = getDb();
-    const existing = db.prepare("SELECT id FROM companies WHERE ticker = ?").get(ticker);
+    const existing = await db.prepare("SELECT id FROM companies WHERE ticker = ?").get(ticker);
     if (existing) {
       return NextResponse.json({ error: "Ticker already exists" }, { status: 409 });
     }
 
-    const result = db.prepare("INSERT INTO companies (name, ticker, description, share_price, total_shares, initial_price, initial_shares) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+    const result = await db.prepare("INSERT INTO companies (name, ticker, description, share_price, total_shares, initial_price, initial_shares) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
       name,
       ticker.toUpperCase(),
       description || "",
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     );
 
     const companyId = result.lastInsertRowid;
-    db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, share_price, Date.now());
+    await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, share_price, Date.now());
 
     return NextResponse.json({ message: "Company created successfully" });
   } catch (error) {

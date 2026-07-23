@@ -1,535 +1,561 @@
-import fs from "fs";
-import path from "path";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_FILE = path.join(DATA_DIR, "stockmarket.json");
+let client: SupabaseClient | null = null;
 
-interface Row {
-  [key: string]: any;
-  id?: number;
-}
-
-interface TableData {
-  rows: Row[];
-  autoIncrement: number;
-}
-
-interface Database {
-  users: TableData;
-  companies: TableData;
-  holdings: TableData;
-  transactions: TableData;
-  currency_purchases: TableData;
-  price_history: TableData;
-  bank_fund: TableData;
-  settings: TableData;
-  orders: TableData;
-}
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+function getSupabase(): SupabaseClient {
+  if (!client) {
+    client = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
   }
+  return client;
 }
 
-function loadDb(): Database {
-  ensureDataDir();
-  if (fs.existsSync(DB_FILE)) {
-    const raw = fs.readFileSync(DB_FILE, "utf-8");
-    return JSON.parse(raw);
-  }
-  const empty: Database = {
-    users: { rows: [], autoIncrement: 1 },
-    companies: { rows: [], autoIncrement: 1 },
-    holdings: { rows: [], autoIncrement: 1 },
-    transactions: { rows: [], autoIncrement: 1 },
-    currency_purchases: { rows: [], autoIncrement: 1 },
-    price_history: { rows: [], autoIncrement: 1 },
-    bank_fund: { rows: [], autoIncrement: 1 },
-    settings: { rows: [], autoIncrement: 1 },
-    orders: { rows: [], autoIncrement: 1 },
-  };
-  saveDb(empty);
-  return empty;
+interface WhereCondition {
+  column: string;
+  op: "=" | "!=" | "<" | ">";
+  value: any;
+  isParam: boolean;
 }
 
-function saveDb(db: Database) {
-  ensureDataDir();
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-}
+function parseWhere(whereStr: string, params: any[]): { conditions: WhereCondition[]; isOr: boolean; remainingParams: any[] } {
+  const trimmed = whereStr.trim();
+  if (!trimmed) return { conditions: [], isOr: false, remainingParams: [] };
 
-let dbInstance: Database | null = null;
-let dbPath = "";
-
-function getDb() {
-  if (!dbInstance) {
-    dbInstance = loadDb();
-    initializeDatabase(dbInstance);
-    saveDb(dbInstance);
-  }
-  return dbInstance;
-}
-
-function flushDb() {
-  if (dbInstance) {
-    saveDb(dbInstance);
-  }
-}
-
-class Statement {
-  private sql: string;
-  private params: any[];
-  private db: Database;
-
-  constructor(db: Database, sql: string, params: any[] = []) {
-    this.db = db;
-    this.sql = sql.trim();
-    this.params = params;
+  const upper = trimmed.toUpperCase();
+  if (upper.includes(" OR ")) {
+    const parts = trimmed.split(/\s+OR\s+/i);
+    const conditions: WhereCondition[] = [];
+    let paramIdx = 0;
+    for (const part of parts) {
+      const cond = parseSingleCondition(part.trim(), params, paramIdx);
+      conditions.push(cond.condition);
+      paramIdx = cond.nextIdx;
+    }
+    return { conditions, isOr: true, remainingParams: params.slice(paramIdx) };
   }
 
-  get(...args: any[]): Row | undefined {
-    const params = args.length > 0 ? args : this.params;
-    const table = this.getTable();
-    if (!table) return undefined;
+  const parts = trimmed.split(/\s+AND\s+/i);
+  const conditions: WhereCondition[] = [];
+  let paramIdx = 0;
+  for (const part of parts) {
+    const cond = parseSingleCondition(part.trim(), params, paramIdx);
+    conditions.push(cond.condition);
+    paramIdx = cond.nextIdx;
+  }
+  return { conditions, isOr: false, remainingParams: params.slice(paramIdx) };
+}
 
-    const parsed = this.parseSql(params);
-    const rows = this.filterRows(table.rows, parsed.where, parsed.whereParams);
+function parseSingleCondition(s: string, params: any[], paramIdx: number): { condition: WhereCondition; nextIdx: number } {
+  s = s.trim();
+  if (s.startsWith("(") && s.endsWith(")")) s = s.slice(1, -1).trim();
 
-    if (parsed.orderBy) {
-      rows.sort((a, b) => {
-        const aVal = a[parsed.orderBy!.replace(" DESC", "").replace(" ASC", "")];
-        const bVal = b[parsed.orderBy!.replace(" DESC", "").replace(" ASC", "")];
-        if (parsed.orderBy!.includes(" DESC")) return bVal > aVal ? 1 : -1;
-        return aVal > bVal ? 1 : -1;
+  const neqMatch = s.match(/(\w+)\s*!=\s*(?:'([^']*)'|(\d+)|(\?))/i);
+  if (neqMatch) {
+    const column = neqMatch[1];
+    if (neqMatch[4] === "?") return { condition: { column, op: "!=", value: params[paramIdx], isParam: true }, nextIdx: paramIdx + 1 };
+    return { condition: { column, op: "!=", value: neqMatch[2] ?? Number(neqMatch[3]), isParam: false }, nextIdx: paramIdx };
+  }
+
+  const ltMatch = s.match(/(\w+)\s*<\s*(\d+)/i);
+  if (ltMatch) {
+    return { condition: { column: ltMatch[1], op: "<", value: Number(ltMatch[2]), isParam: false }, nextIdx: paramIdx };
+  }
+
+  const eqMatch = s.match(/(\w+)\s*=\s*(?:'([^']*)'|(\d+)|(\?))/i);
+  if (eqMatch) {
+    const column = eqMatch[1];
+    if (eqMatch[4] === "?") return { condition: { column, op: "=", value: params[paramIdx], isParam: true }, nextIdx: paramIdx + 1 };
+    return { condition: { column, op: "=", value: eqMatch[2] !== undefined ? eqMatch[2] : Number(eqMatch[3]), isParam: false }, nextIdx: paramIdx };
+  }
+
+  return { condition: { column: s, op: "=", value: null, isParam: false }, nextIdx: paramIdx };
+}
+
+function applyFilters(query: any, conditions: WhereCondition[], isOr: boolean): any {
+  if (conditions.length === 0) return query;
+
+  if (isOr) {
+    const filterParts = conditions.map((c) => {
+      const val = typeof c.value === "string" ? c.value : c.value;
+      if (c.op === "=") return `${c.column}.eq.${val}`;
+      if (c.op === "!=") return `${c.column}.neq.${val}`;
+      if (c.op === "<") return `${c.column}.lt.${val}`;
+      return `${c.column}.eq.${val}`;
+    });
+    return query.or(filterParts.join(","));
+  }
+
+  for (const c of conditions) {
+    if (c.op === "=") query = query.eq(c.column, c.value);
+    else if (c.op === "!=") query = query.neq(c.column, c.value);
+    else if (c.op === "<") query = query.lt(c.column, c.value);
+    else if (c.op === ">") query = query.gt(c.column, c.value);
+  }
+  return query;
+}
+
+function applyOrderBy(query: any, orderByStr: string): any {
+  if (!orderByStr) return query;
+  const entries = orderByStr.split(",").map((e) => e.trim());
+  for (const entry of entries) {
+    const desc = entry.toUpperCase().includes(" DESC");
+    const col = entry.replace(/\s+(ASC|DESC)$/i, "").trim();
+    if (col.toUpperCase() === "RANDOM()") continue;
+    query = query.order(col, { ascending: !desc });
+  }
+  return query;
+}
+
+async function executeSelect(sql: string, params: any[], method: "get" | "all"): Promise<any> {
+  const sb = getSupabase();
+
+  const upper = sql.toUpperCase();
+  const tableMatch = sql.match(/FROM\s+(\w+)/i);
+  if (!tableMatch) return method === "get" ? undefined : [];
+  const table = tableMatch[1];
+
+  const isCount = /COUNT\(\*\)/i.test(sql);
+  const sumMatch = sql.match(/SUM\((\w+)\)\s+as\s+(\w+)/i);
+  const joinMatch = sql.match(/JOIN\s+(\w+)\s+\w+\s+ON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/i);
+
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)/is);
+  const orderMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
+  const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
+
+  const isRandomOrder = orderMatch && /RANDOM\(\)/i.test(orderMatch[1]);
+  let whereParams = params;
+  let extraParams: any[] = [];
+  if (whereMatch) {
+    const whereClause = whereMatch[1];
+    const qCount = (whereClause.match(/\?/g) || []).length;
+    whereParams = params.slice(0, qCount);
+    extraParams = params.slice(qCount);
+  }
+
+  if (joinMatch) {
+    return executeJoinQuery(sb, sql, table, joinMatch, whereParams, orderMatch, limitMatch, isCount, sumMatch, method);
+  }
+
+  let query;
+  if (isCount) {
+    query = sb.from(table).select("*", { count: "exact", head: true });
+  } else if (sumMatch) {
+    query = sb.from(table).select(sumMatch[1]);
+  } else {
+    const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
+    const colsStr = selectMatch ? selectMatch[1].trim() : "*";
+    if (colsStr !== "*") {
+      const cols = colsStr.split(",").map((c) => {
+        const m = c.trim().match(/(?:\w+\.)?(\w+)/);
+        return m ? m[1] : c.trim();
       });
+      query = sb.from(table).select(cols.join(","));
+    } else {
+      query = sb.from(table).select("*");
     }
-
-    if (parsed.limit) {
-      return rows.slice(0, parsed.limit)[0];
-    }
-
-    return rows[0];
   }
 
-  all(...args: any[]): Row[] {
-    const params = args.length > 0 ? args : this.params;
-    const table = this.getTable();
-    if (!table) return [];
+  if (whereMatch) {
+    const { conditions, isOr } = parseWhere(whereMatch[1], whereParams);
+    query = applyFilters(query, conditions, isOr);
+  }
 
-    const parsed = this.parseSql(params);
-    let rows = this.filterRows(table.rows, parsed.where, parsed.whereParams);
+  if (orderMatch && !isRandomOrder) {
+    query = applyOrderBy(query, orderMatch[1]);
+  }
 
-    if (parsed.orderBy) {
-      const field = parsed.orderBy.replace(" DESC", "").replace(" ASC", "");
-      rows = [...rows].sort((a, b) => {
-        const aVal = a[field];
-        const bVal = b[field];
-        if (parsed.orderBy!.includes(" DESC")) return aVal > bVal ? -1 : 1;
-        return aVal > bVal ? 1 : -1;
-      });
+  if (isRandomOrder) {
+    const { data } = await query;
+    if (!data || data.length === 0) return method === "get" ? undefined : [];
+    const shuffled = [...data].sort(() => Math.random() - 0.5);
+    if (limitMatch) return method === "get" ? shuffled[0] : shuffled.slice(0, Number(limitMatch[1]));
+    return method === "get" ? shuffled[0] : shuffled;
+  }
+
+  if (limitMatch && !isCount) {
+    query = query.limit(Number(limitMatch[1]));
+  }
+
+  const { data, error, count } = await query;
+
+  if (isCount) {
+    return [{ count: count || 0 }];
+  }
+
+  if (sumMatch) {
+    const alias = sumMatch[2];
+    const col = sumMatch[1];
+    const total = (data || []).reduce((sum: number, r: any) => sum + (Number(r[col]) || 0), 0);
+    return [{ [alias]: total }];
+  }
+
+  const results = (data || []).map((row: any) => flattenRow(row));
+  return method === "get" ? results[0] : results;
+}
+
+function flattenRow(row: any): any {
+  if (!row) return row;
+  const flat: any = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (key === "id") flat.id = row.id;
+    else if (value !== null && typeof value === "object" && !Array.isArray(value) && (value as any).id !== undefined && key.endsWith("s")) {
+      for (const [fk, fv] of Object.entries(value as Record<string, any>)) {
+        flat[fk] = fv;
+      }
+    } else {
+      flat[key] = value;
     }
+  }
+  return flat;
+}
 
-    if (parsed.limit) {
-      rows = rows.slice(0, parsed.limit);
-    }
+async function executeJoinQuery(
+  sb: SupabaseClient,
+  sql: string,
+  table: string,
+  joinMatch: RegExpMatchArray,
+  params: any[],
+  orderMatch: RegExpMatchArray | null,
+  limitMatch: RegExpMatchArray | null,
+  isCount: boolean,
+  sumMatch: RegExpMatchArray | null,
+  method: "get" | "all"
+): Promise<any> {
+  const joinTable = joinMatch[1];
+  const localCol = joinMatch[2];
 
-    if (parsed.select === "COUNT(*) as count") {
-      return [{ count: rows.length }] as any;
-    }
+  const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
+  const colsStr = selectMatch ? selectMatch[1] : "*";
 
-    if (parsed.select?.includes("SUM(")) {
-      const fieldMatch = parsed.select.match(/SUM\((\w+)\)\s*(?:,\s*\d+\))?\s+as\s+(\w+)/i);
-      if (fieldMatch) {
-        const field = fieldMatch[1];
-        const alias = fieldMatch[2];
-        const total = rows.reduce((sum: number, r: any) => sum + (r[field] || 0), 0);
-        return [{ [alias]: total }] as any;
+  const needsCompanyFields = /c\.(?:name|ticker|share_price|total_shares|description)/i.test(colsStr) || /c\.name\s+as\s+company_name/i.test(colsStr);
+
+  let selectCols = "*";
+  if (needsCompanyFields) {
+    const localCols: string[] = [];
+    const companyCols: string[] = [];
+
+    const colParts = colsStr.split(",").map((c) => c.trim());
+    for (const col of colParts) {
+      const aliasMatch = col.match(/(?:\w+\.)?(\w+)(?:\s+as\s+(\w+))?/i);
+      if (!aliasMatch) continue;
+      const colName = aliasMatch[1];
+      const alias = aliasMatch[2];
+
+      if (/^(c\.|company)/i.test(col) || ["company_name", "ticker", "share_price", "total_shares", "current_price", "description"].includes(colName)) {
+        companyCols.push(colName);
+      } else {
+        localCols.push(colName === "*" ? "*" : colName);
       }
     }
 
-    return rows;
+    if (localCols.length === 0) localCols.push("*");
+    if (companyCols.length > 0) {
+      selectCols = `${localCols.filter((c) => c !== "*").join(", ") || "*"}, ${joinTable}(${[...new Set(companyCols)].join(", ")})`;
+    }
   }
 
-  run(...args: any[]): { changes: number; lastInsertRowid: number } {
-    const params = args.length > 0 ? args : this.params;
-    const parsed = this.parseSql(params);
+  let query = sb.from(table).select(selectCols);
 
-    if (parsed.type === "INSERT") {
-      return this.runInsert(parsed);
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)/is);
+  if (whereMatch) {
+    const { conditions, isOr } = parseWhere(whereMatch[1], params);
+    query = applyFilters(query, conditions, isOr);
+  }
+
+  if (orderMatch) {
+    const entries = orderMatch[1].split(",").map((e) => e.trim());
+    for (const entry of entries) {
+      const desc = entry.toUpperCase().includes(" DESC");
+      let col = entry.replace(/\s+(ASC|DESC)$/i, "").trim();
+      col = col.replace(/^\w+\./, "");
+      if (col.toUpperCase() === "RANDOM()") continue;
+      const prefix = col.startsWith(joinTable + ".") ? "" : "";
+      const orderCol = prefix ? col : col;
+      if (tableColumns(col) || isCompanyColumn(col)) {
+        query = query.order(col, { ascending: !desc });
+      }
     }
-    if (parsed.type === "UPDATE") {
-      return this.runUpdate(parsed);
+  }
+
+  if (limitMatch) query = query.limit(Number(limitMatch[1]));
+
+  const { data, error, count } = await query;
+
+  if (isCount) return [{ count: count || 0 }];
+  if (sumMatch) {
+    const total = (data || []).reduce((s: number, r: any) => s + (Number(r[sumMatch[1]]) || 0), 0);
+    return [{ [sumMatch[2]]: total }];
+  }
+
+  const results = (data || []).map((row: any) => {
+    const flat: any = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (key === joinTable && value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [fk, fv] of Object.entries(value)) {
+          if (fk === "name" && colsStr.includes("as company_name")) flat["company_name"] = fv;
+          else if (fk === "share_price" && colsStr.includes("as current_price")) flat["current_price"] = fv;
+          else flat[fk] = fv;
+        }
+      } else {
+        flat[key] = value;
+      }
     }
-    if (parsed.type === "DELETE") {
-      return this.runDelete(parsed);
+    return flat;
+  });
+
+  return method === "get" ? results[0] : results;
+}
+
+function tableColumns(col: string): boolean {
+  return true;
+}
+function isCompanyColumn(col: string): boolean {
+  return ["name", "ticker", "share_price", "total_shares", "description", "id"].includes(col);
+}
+
+async function executeInsert(sql: string, params: any[]): Promise<{ changes: number; lastInsertRowid: number }> {
+  const sb = getSupabase();
+  const tableMatch = sql.match(/INTO\s+(\w+)/i);
+  if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
+  const table = tableMatch[1];
+
+  const colsMatch = sql.match(/\(([^)]+)\)\s+VALUES/i);
+  if (!colsMatch) return { changes: 0, lastInsertRowid: 0 };
+  const columns = colsMatch[1].split(",").map((c: string) => c.trim());
+
+  const valuesMatch = sql.match(/VALUES\s*\(([^)]+)\)/i);
+  let values: any[] = [];
+  if (valuesMatch) {
+    const parts = valuesMatch[1].split(",").map((s: string) => s.trim());
+    let paramIdx = 0;
+    for (const part of parts) {
+      if (part === "?") {
+        values.push(params[paramIdx++]);
+      } else if (part === "NOW()") {
+        values.push(new Date().toISOString());
+      } else {
+        values.push(part.replace(/^['"]|['"]$/g, ""));
+      }
     }
-    if (parsed.type === "CREATE") {
-      return { changes: 0, lastInsertRowid: 0 };
+  } else {
+    values = params;
+  }
+
+  const row: Record<string, any> = {};
+  columns.forEach((col, i) => {
+    row[col] = values[i] !== undefined ? values[i] : null;
+  });
+
+  const { data, error } = await sb.from(table).insert(row).select("id");
+  if (error) console.error("Insert error:", error);
+  return { changes: 1, lastInsertRowid: data?.[0]?.id ?? 0 };
+}
+
+async function executeUpdate(sql: string, params: any[]): Promise<{ changes: number; lastInsertRowid: number }> {
+  const sb = getSupabase();
+  const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
+  if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
+  const table = tableMatch[1];
+
+  const setMatch = sql.match(/SET\s+(.+?)(?:\s+WHERE|$)/is);
+  if (!setMatch) return { changes: 0, lastInsertRowid: 0 };
+  const setClauses = setMatch[1].split(",").map((s) => s.trim());
+
+  const whereMatch = sql.match(/WHERE\s+(.+?)$/is);
+  let whereParams: any[] = [];
+  if (whereMatch) {
+    const whereClause = whereMatch[1];
+    const qCount = (whereClause.match(/\?/g) || []).length;
+    whereParams = params.slice(params.length - qCount);
+  }
+
+  const setValues: { column: string; value: any }[] = [];
+  let paramIdx = 0;
+
+  for (const clause of setClauses) {
+    const arithmeticAdd = clause.match(/(\w+)\s*=\s*\w+\s*\+\s*\?/i);
+    if (arithmeticAdd) {
+      const column = arithmeticAdd[1];
+      const increment = params[paramIdx++];
+      const table2 = table;
+      const whereCol2 = whereMatch ? extractFirstWhereCol(whereMatch[1]) : null;
+      const whereVal2 = whereParams[0];
+      if (whereCol2) {
+        const { data: current } = await sb.from(table2).select(column).eq(whereCol2, whereVal2).single();
+        setValues.push({ column, value: (Number((current as any)?.[column]) || 0) + Number(increment) });
+      }
+      continue;
     }
 
+    const arithmeticSub = clause.match(/(\w+)\s*=\s*\w+\s*-\s*\?/i);
+    if (arithmeticSub) {
+      const column = arithmeticSub[1];
+      const decrement = params[paramIdx++];
+      setValues.push({ column, value: -Number(decrement) });
+      continue;
+    }
+
+    const maxMatch = clause.match(/(\w+)\s*=\s*MAX\(\w+\s*-\s*\?\s*,\s*(\d+)\)/i);
+    if (maxMatch) {
+      const column = maxMatch[1];
+      const decrement = params[paramIdx++];
+      const minVal = Number(maxMatch[2]);
+      setValues.push({ column, value: { _decrement: Number(decrement), _min: minVal } });
+      continue;
+    }
+
+    const coalesceMatch = clause.match(/(\w+)\s*=\s*COALESCE\(\?\s*,\s*(\w+)\)/i);
+    if (coalesceMatch) {
+      const column = coalesceMatch[1];
+      const paramVal = params[paramIdx++];
+      if (paramVal !== null && paramVal !== undefined) {
+        setValues.push({ column, value: paramVal });
+      }
+      continue;
+    }
+
+    const strLitMatch = clause.match(/(\w+)\s*=\s*'([^']*)'/i);
+    if (strLitMatch) {
+      setValues.push({ column: strLitMatch[1], value: strLitMatch[2] });
+      continue;
+    }
+
+    const numLitMatch = clause.match(/(\w+)\s*=\s*(\d+\.?\d*)/i);
+    if (numLitMatch) {
+      setValues.push({ column: numLitMatch[1], value: Number(numLitMatch[2]) });
+      continue;
+    }
+
+    const simpleMatch = clause.match(/(\w+)\s*=\s*\?/i);
+    if (simpleMatch) {
+      setValues.push({ column: simpleMatch[1], value: params[paramIdx++] });
+    }
+  }
+
+  const updateObj: Record<string, any> = {};
+  for (const sv of setValues) {
+    if (sv.value && typeof sv.value === "object" && sv.value._decrement !== undefined) {
+      const whereCol = whereMatch ? extractFirstWhereCol(whereMatch[1]) : null;
+      const whereVal = whereParams[0];
+      if (whereCol) {
+        const { data: current } = await sb.from(table).select(sv.column).eq(whereCol, whereVal).single();
+        updateObj[sv.column] = Math.max(sv.value._min, (Number((current as any)?.[sv.column]) || 0) - sv.value._decrement);
+      }
+    } else {
+      updateObj[sv.column] = sv.value;
+    }
+  }
+
+  let query = sb.from(table).update(updateObj);
+  if (whereMatch) {
+    const { conditions, isOr } = parseWhere(whereMatch[1], whereParams);
+    query = applyFilters(query, conditions, isOr);
+  }
+
+  const { data, error } = await query.select("id");
+  if (error) console.error("Update error:", error);
+  return { changes: data?.length ?? 0, lastInsertRowid: 0 };
+}
+
+function extractFirstWhereCol(whereStr: string): string | null {
+  const match = whereStr.match(/(\w+)\s*=/);
+  return match ? match[1] : null;
+}
+
+async function executeDelete(sql: string, params: any[]): Promise<{ changes: number; lastInsertRowid: number }> {
+  const sb = getSupabase();
+  const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
+  if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
+  const table = tableMatch[1];
+
+  let query = sb.from(table).delete();
+
+  const whereMatch = sql.match(/WHERE\s+(.+?)$/is);
+  if (whereMatch) {
+    const { conditions, isOr } = parseWhere(whereMatch[1], params);
+    query = applyFilters(query, conditions, isOr);
+  }
+
+  const { data, error } = await query.select("id");
+  if (error) console.error("Delete error:", error);
+  return { changes: data?.length ?? 0, lastInsertRowid: 0 };
+}
+
+async function executeQuery(sql: string, params: any[], method: "get" | "all" | "run"): Promise<any> {
+  const upper = sql.trim().toUpperCase();
+
+  if (upper.startsWith("SELECT")) {
+    return executeSelect(sql, params, method as "get" | "all");
+  }
+  if (upper.startsWith("INSERT")) {
+    return executeInsert(sql, params);
+  }
+  if (upper.startsWith("UPDATE")) {
+    return executeUpdate(sql, params);
+  }
+  if (upper.startsWith("DELETE")) {
+    return executeDelete(sql, params);
+  }
+  if (upper.startsWith("CREATE")) {
     return { changes: 0, lastInsertRowid: 0 };
   }
 
-  private getTable(): TableData | undefined {
-    const match = this.sql.match(/FROM\s+(\w+)/i) || this.sql.match(/INTO\s+(\w+)/i) || this.sql.match(/UPDATE\s+(\w+)/i) || this.sql.match(/DELETE\s+FROM\s+(\w+)/i);
-    if (!match) return undefined;
-    const tableName = match[1] as keyof Database;
-    return (this.db as any)[tableName];
-  }
-
-  private parseSql(params: any[]) {
-    const upper = this.sql.toUpperCase();
-    let type = "SELECT";
-    if (upper.startsWith("INSERT")) type = "INSERT";
-    else if (upper.startsWith("UPDATE")) type = "UPDATE";
-    else if (upper.startsWith("DELETE")) type = "DELETE";
-    else if (upper.startsWith("CREATE")) type = "CREATE";
-
-    const whereMatch = this.sql.match(/WHERE\s+(.+?)(?:ORDER|LIMIT|$)/is);
-    let where = "";
-    let whereParams: any[] = [];
-
-    if (whereMatch) {
-      where = whereMatch[1].trim();
-      const whereCount = (where.match(/\?/g) || []).length;
-      if (type === "UPDATE" || type === "DELETE") {
-        whereParams = params.slice(params.length - whereCount);
-      } else {
-        whereParams = params.slice(0, whereCount);
-      }
-    }
-
-    const orderMatch = this.sql.match(/ORDER\s+BY\s+(.+?)(?:LIMIT|$)/i);
-    const orderBy = orderMatch ? orderMatch[1].trim() : null;
-
-    const limitMatch = this.sql.match(/LIMIT\s+(\d+)/i);
-    const limit = limitMatch ? parseInt(limitMatch[1]) : null;
-
-    const selectMatch = this.sql.match(/SELECT\s+(.+?)\s+FROM/i);
-    const select = selectMatch ? selectMatch[1].trim() : null;
-
-    return { type, where, whereParams, orderBy, limit, select, params };
-  }
-
-  private filterRows(rows: Row[], where: string, whereParams: any[]): Row[] {
-    if (!where) return rows;
-
-    return rows.filter((row) => {
-      return this.evaluateWhere(row, where, whereParams);
-    });
-  }
-
-  private evaluateWhere(row: Row, where: string, params: any[]): boolean {
-    let paramIndex = 0;
-
-    function evaluate(segment: string): boolean {
-      const orParts = segment.split(/\s+OR\s+/i);
-      if (orParts.length > 1) {
-        return orParts.some((p) => evaluate(p.trim()));
-      }
-
-      const andParts = segment.split(/\s+AND\s+/i);
-      if (andParts.length > 1) {
-        return andParts.every((p) => evaluate(p.trim()));
-      }
-
-      let s = segment.trim();
-
-      const isNegated = s.toUpperCase().startsWith("NOT ");
-      if (isNegated) s = s.slice(4).trim();
-
-      const isNotEqual = s.includes("!=");
-      if (isNotEqual) {
-        const neqMatch = s.match(/(\w+)\s*!=\s*(\?|'[^']*'|[\d.]+)/i);
-        if (neqMatch) {
-          const field = neqMatch[1];
-          let val = neqMatch[2];
-          if (val === "?") {
-            val = params[paramIndex++];
-          } else {
-            val = val.replace(/['"]/g, "");
-          }
-          return String(row[field]) !== String(val);
-        }
-      }
-
-      let result = false;
-
-      if (s.toUpperCase().startsWith("(") && s.toUpperCase().endsWith(")")) {
-        result = evaluate(s.slice(1, -1).trim());
-      } else if (s.toUpperCase().includes(" IN ")) {
-        const inMatch = s.match(/(\w+)\s+IN\s+\((.+)\)/i);
-        if (inMatch) {
-          const field = inMatch[1];
-          const values = inMatch[2].split(",").map((v) => {
-            v = v.trim();
-            if (v === "?") {
-              return params[paramIndex++];
-            }
-            return v.replace(/['"]/g, "");
-          });
-          result = values.includes(String(row[field]));
-        }
-      } else if (s.includes(" LIKE ")) {
-        const likeMatch = s.match(/(\w+)\s+LIKE\s+\?/i);
-        if (likeMatch) {
-          const field = likeMatch[1];
-          const pattern = params[paramIndex++];
-          const regex = new RegExp("^" + pattern.replace(/%/g, ".*").replace(/_/g, ".") + "$", "i");
-          result = regex.test(String(row[field] || ""));
-        }
-      } else {
-        const eqMatch = s.match(/(\w+)\s*=\s*(?:MAX\((\w+)\s*-\s*\?\s*,\s*(\d+)\)|COALESCE\(\?\s*,\s*(\w+)\)|\?)/i);
-        if (eqMatch) {
-          const field = eqMatch[1];
-          const val = params[paramIndex++];
-          result = String(row[field]) === String(val);
-        } else {
-          const simpleMatch = s.match(/(\w+)\s*=\s*(\?|'[^']*'|[\d.]+)/i);
-          if (simpleMatch) {
-            const field = simpleMatch[1];
-            let val = simpleMatch[2];
-            if (val === "?") {
-              val = params[paramIndex++];
-            } else {
-              val = val.replace(/['"]/g, "");
-            }
-            result = String(row[field]) === String(val);
-          }
-        }
-      }
-
-      return isNegated ? !result : result;
-    }
-
-    return evaluate(where);
-  }
-
-  private runInsert(parsed: any): { changes: number; lastInsertRowid: number } {
-    const tableMatch = this.sql.match(/INTO\s+(\w+)/i);
-    if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
-    const tableName = tableMatch[1] as keyof Database;
-    const table = (this.db as any)[tableName] as TableData;
-
-    const colsMatch = this.sql.match(/\(([^)]+)\)\s+VALUES/i);
-    if (!colsMatch) return { changes: 0, lastInsertRowid: 0 };
-    const columns = colsMatch[1].split(",").map((c: string) => c.trim());
-
-    let valParams = parsed.params;
-    if (parsed.where) {
-      valParams = parsed.params;
-    }
-
-    const insertParams = this.sql.match(/VALUES\s*\(([^)]+)\)/i);
-    let values: any[] = [];
-    if (insertParams) {
-      const parts = insertParams[1].split(",").map((s: string) => s.trim());
-      let paramIdx = 0;
-      for (const part of parts) {
-        if (part === "?") {
-          values.push(parsed.params[paramIdx++]);
-        } else {
-          values.push(part.replace(/^['"]|['"]$/g, ""));
-        }
-      }
-    } else {
-      values = parsed.params;
-    }
-
-    const row: Row = {};
-    columns.forEach((col: string, i: number) => {
-      row[col] = values[i] !== undefined ? values[i] : null;
-    });
-
-    row.id = table.autoIncrement;
-    table.autoIncrement++;
-    table.rows.push(row);
-    saveDb(this.db);
-
-    return { changes: 1, lastInsertRowid: row.id! };
-  }
-
-  private runUpdate(parsed: any): { changes: number; lastInsertRowid: number } {
-    const tableMatch = this.sql.match(/UPDATE\s+(\w+)/i);
-    if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
-    const tableName = tableMatch[1] as keyof Database;
-    const table = (this.db as any)[tableName] as TableData;
-
-    const setMatch = this.sql.match(/SET\s+(.+?)(?:\s+WHERE|$)/is);
-    if (!setMatch) return { changes: 0, lastInsertRowid: 0 };
-    const setClauses = setMatch[1].split(",").map((s: string) => s.trim());
-
-    let paramOffset = 0;
-    const setValues: { field: string; value: any; op: string }[] = [];
-
-    for (const clause of setClauses) {
-      if (clause.toUpperCase().includes("COALESCE")) {
-        const coalesceMatch = clause.match(/(\w+)\s*=\s*COALESCE\(\?\s*,\s*(\w+)\)/i);
-        if (coalesceMatch) {
-          setValues.push({ field: coalesceMatch[1], value: parsed.params[paramOffset++], op: "coalesce" });
-        }
-      } else if (clause.toUpperCase().includes("MAX(")) {
-        const maxMatch = clause.match(/(\w+)\s*=\s*MAX\((\w+)\s*-\s*\?\s*,\s*(\d+)\)/i);
-        if (maxMatch) {
-          setValues.push({ field: maxMatch[1], value: { subtract: parsed.params[paramOffset++], min: parseInt(maxMatch[3]) }, op: "max" });
-        }
-      } else {
-        const simpleMatch = clause.match(/(\w+)\s*=\s*(?:\?|(\w+)\s*\+\s*\?|(\w+)\s*-\s*\?)/i);
-        if (simpleMatch) {
-          if (clause.includes("+")) {
-            setValues.push({ field: simpleMatch[1], value: parsed.params[paramOffset++], op: "add" });
-          } else if (clause.includes("-")) {
-            setValues.push({ field: simpleMatch[1], value: parsed.params[paramOffset++], op: "subtract" });
-          } else {
-            setValues.push({ field: simpleMatch[1], value: parsed.params[paramOffset++], op: "set" });
-          }
-        } else {
-          const strLitMatch = clause.match(/(\w+)\s*=\s*'([^']*)'/i);
-          if (strLitMatch) {
-            setValues.push({ field: strLitMatch[1], value: strLitMatch[2], op: "set" });
-          } else {
-            const numLitMatch = clause.match(/(\w+)\s*=\s*(\d+\.?\d*)/i);
-            if (numLitMatch) {
-              setValues.push({ field: numLitMatch[1], value: Number(numLitMatch[2]), op: "set" });
-            }
-          }
-        }
-      }
-    }
-
-    const rows = this.filterRows(table.rows, parsed.where, parsed.whereParams);
-
-    for (const row of rows) {
-      for (const sv of setValues) {
-        if (sv.op === "set") {
-          row[sv.field] = sv.value;
-        } else if (sv.op === "coalesce") {
-          if (row[sv.field] === undefined || row[sv.field] === null) {
-            row[sv.field] = sv.value;
-          }
-        } else if (sv.op === "add") {
-          row[sv.field] = (row[sv.field] || 0) + sv.value;
-        } else if (sv.op === "subtract") {
-          row[sv.field] = (row[sv.field] || 0) - sv.value;
-        } else if (sv.op === "max") {
-          row[sv.field] = Math.max(sv.value.min, (row[sv.field] || 0) - sv.value.subtract);
-        }
-      }
-    }
-
-    saveDb(this.db);
-    return { changes: rows.length, lastInsertRowid: 0 };
-  }
-
-  private runDelete(parsed: any): { changes: number; lastInsertRowid: number } {
-    const tableMatch = this.sql.match(/DELETE\s+FROM\s+(\w+)/i);
-    if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
-    const tableName = tableMatch[1] as keyof Database;
-    const table = (this.db as any)[tableName] as TableData;
-
-    const before = table.rows.length;
-    table.rows = table.rows.filter((row) => !this.evaluateWhere(row, parsed.where, parsed.whereParams));
-    const deleted = before - table.rows.length;
-
-    saveDb(this.db);
-    return { changes: deleted, lastInsertRowid: 0 };
-  }
+  return method === "get" ? undefined : [];
 }
 
-function initializeDatabase(db: Database) {
-  db.users = db.users || { rows: [], autoIncrement: 1 };
-  db.companies = db.companies || { rows: [], autoIncrement: 1 };
-  db.holdings = db.holdings || { rows: [], autoIncrement: 1 };
-  db.transactions = db.transactions || { rows: [], autoIncrement: 1 };
-  db.currency_purchases = db.currency_purchases || { rows: [], autoIncrement: 1 };
-  db.price_history = db.price_history || { rows: [], autoIncrement: 1 };
-  db.bank_fund = db.bank_fund || { rows: [], autoIncrement: 1 };
-  db.settings = db.settings || { rows: [], autoIncrement: 1 };
-  db.orders = db.orders || { rows: [], autoIncrement: 1 };
+async function seedIfEmpty() {
+  const sb = getSupabase();
+  const { data: existing } = await sb.from("companies").select("id").limit(1);
+  if (existing && existing.length > 0) return;
 
-  if (db.bank_fund.rows.length === 0) {
-    db.bank_fund.rows.push({ id: 1, balance: 0 });
-  }
-
-  if (db.settings.rows.length === 0) {
-    db.settings.rows.push({ id: 1, trading_enabled: 1, trading_open_hour: 0, trading_close_hour: 24 });
-  }
-
-  if (db.companies.rows.length === 0) {
-    seedCompanies(db);
-  }
-}
-
-function seedCompanies(db: Database) {
   const companies = [
-    { name: "NovaTech Industries", ticker: "NVTK", description: "Leading tech innovator in AI and cloud computing", share_price: 15000, total_shares: 5000 },
-    { name: "Global Energy Corp", ticker: "GEC", description: "Renewable energy solutions worldwide", share_price: 8500, total_shares: 8000 },
-    { name: "MediVita Pharmaceuticals", ticker: "MDVT", description: "Biotech and pharmaceutical research", share_price: 22000, total_shares: 3000 },
-    { name: "SkyLine Aerospace", ticker: "SKLA", description: "Space technology and aviation", share_price: 35000, total_shares: 2000 },
-    { name: "FreshHarvest Foods", ticker: "FRHV", description: "Organic food production and distribution", share_price: 4500, total_shares: 12000 },
-    { name: "CryptoVault Digital", ticker: "CVDC", description: "Cryptocurrency exchange and blockchain services", share_price: 12000, total_shares: 6000 },
-    { name: "UrbanBuild Construction", ticker: "UBLD", description: "Smart city infrastructure and construction", share_price: 6800, total_shares: 7000 },
-    { name: "AquaPure Systems", ticker: "AQPS", description: "Water purification and environmental tech", share_price: 9200, total_shares: 5500 },
-    { name: "NeuralLink Gaming", ticker: "NRLG", description: "VR/AR gaming and immersive experiences", share_price: 18500, total_shares: 4000 },
-    { name: "Titan Steel Works", ticker: "TSTL", description: "Advanced materials and metallurgy", share_price: 5500, total_shares: 10000 },
+    { name: "NovaTech Industries", ticker: "NVTK", description: "Leading tech innovator in AI and cloud computing", share_price: 15000, total_shares: 5000, initial_price: 15000, initial_shares: 5000 },
+    { name: "Global Energy Corp", ticker: "GEC", description: "Renewable energy solutions worldwide", share_price: 8500, total_shares: 8000, initial_price: 8500, initial_shares: 8000 },
+    { name: "MediVita Pharmaceuticals", ticker: "MDVT", description: "Biotech and pharmaceutical research", share_price: 22000, total_shares: 3000, initial_price: 22000, initial_shares: 3000 },
+    { name: "SkyLine Aerospace", ticker: "SKLA", description: "Space technology and aviation", share_price: 35000, total_shares: 2000, initial_price: 35000, initial_shares: 2000 },
+    { name: "FreshHarvest Foods", ticker: "FRHV", description: "Organic food production and distribution", share_price: 4500, total_shares: 12000, initial_price: 4500, initial_shares: 12000 },
+    { name: "CryptoVault Digital", ticker: "CVDC", description: "Cryptocurrency exchange and blockchain services", share_price: 12000, total_shares: 6000, initial_price: 12000, initial_shares: 6000 },
+    { name: "UrbanBuild Construction", ticker: "UBLD", description: "Smart city infrastructure and construction", share_price: 6800, total_shares: 7000, initial_price: 6800, initial_shares: 7000 },
+    { name: "AquaPure Systems", ticker: "AQPS", description: "Water purification and environmental tech", share_price: 9200, total_shares: 5500, initial_price: 9200, initial_shares: 5500 },
+    { name: "NeuralLink Gaming", ticker: "NRLG", description: "VR/AR gaming and immersive experiences", share_price: 18500, total_shares: 4000, initial_price: 18500, initial_shares: 4000 },
+    { name: "Titan Steel Works", ticker: "TSTL", description: "Advanced materials and metallurgy", share_price: 5500, total_shares: 10000, initial_price: 5500, initial_shares: 10000 },
   ];
 
-  const now = Date.now();
-
   for (const c of companies) {
-    const id = db.companies.autoIncrement++;
-    db.companies.rows.push({ id, ...c, initial_price: c.share_price, initial_shares: c.total_shares });
-
-    const dayAgo = now - 24 * 60 * 60 * 1000;
-    for (let i = 0; i < 24; i++) {
-      const time = dayAgo + i * 60 * 60 * 1000;
-      const fluctuation = 1 + (Math.random() - 0.5) * 0.06;
-      db.price_history.rows.push({
-        id: db.price_history.autoIncrement++,
-        company_id: id,
-        price: Math.round(c.share_price * fluctuation),
-        timestamp: time,
-      });
+    const { data } = await sb.from("companies").insert(c).select("id");
+    const companyId = data?.[0]?.id;
+    if (companyId) {
+      const now = Date.now();
+      const dayAgo = now - 24 * 60 * 60 * 1000;
+      const priceRows = Array.from({ length: 24 }, (_, i) => ({
+        company_id: companyId,
+        price: Math.round(c.share_price * (1 + (Math.random() - 0.5) * 0.06)),
+        timestamp: dayAgo + i * 60 * 60 * 1000,
+      }));
+      await sb.from("price_history").insert(priceRows);
     }
   }
 }
 
-function prepareQuery(db: Database, sql: string, params: any[] = []): Statement {
-  return new Statement(db, sql, params);
-}
+let initialized = false;
 
 function getDbProxy() {
-  const db = getDb();
+  if (!initialized) {
+    initialized = true;
+    seedIfEmpty().catch(console.error);
+  }
+
   return {
     prepare: (sql: string) => ({
-      get: (...params: any[]) => {
-        const s = new Statement(db, sql, params);
-        const result = s.get(...params);
-        flushDb();
-        return result;
-      },
-      all: (...params: any[]) => {
-        const s = new Statement(db, sql, params);
-        const result = s.all(...params);
-        flushDb();
-        return result;
-      },
-      run: (...params: any[]) => {
-        const s = new Statement(db, sql, params);
-        const result = s.run(...params);
-        flushDb();
-        return result;
-      },
+      get: (...args: any[]) => executeQuery(sql, args, "get"),
+      all: (...args: any[]) => executeQuery(sql, args, "all"),
+      run: (...args: any[]) => executeQuery(sql, args, "run"),
     }),
-    transaction: <T>(fn: () => T): T => {
-      const result = fn();
-      flushDb();
-      return result;
-    },
-    exec: (_sql: string) => {
-      flushDb();
-    },
-    pragma: (_pragma: string) => {},
+    transaction: async <T>(fn: () => T | Promise<T>): Promise<T> => fn(),
+    exec: async (_sql: string) => {},
+    pragma: async (_pragma: string) => {},
   };
 }
 

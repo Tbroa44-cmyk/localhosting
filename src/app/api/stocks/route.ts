@@ -4,14 +4,14 @@ import getDb from "@/lib/db";
 export async function GET() {
   try {
     const db = getDb();
-    const companies = db.prepare("SELECT * FROM companies ORDER BY ticker").all() as any[];
+    const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all() as any[];
 
-    const enriched = companies.map((company) => {
+    const enriched = await Promise.all(companies.map(async (company) => {
       const now = Date.now();
       const oneDayAgo = now - 24 * 60 * 60 * 1000;
       const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-      const allHistory = db.prepare(
+      const allHistory = await db.prepare(
         "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
       ).all(company.id) as any[];
 
@@ -28,17 +28,17 @@ export async function GET() {
       const monthChange = currentPrice - monthStart;
       const monthChangePercent = monthStart > 0 ? ((monthChange / monthStart) * 100) : 0;
 
-      const buyCount = db.prepare(
+      const buyCount = (await db.prepare(
         "SELECT COUNT(*) as count FROM transactions WHERE company_id = ? AND type = 'buy'"
-      ).all(company.id)[0] as { count: number };
+      ).all(company.id))[0] as { count: number };
 
-      const sellCount = db.prepare(
+      const sellCount = (await db.prepare(
         "SELECT COUNT(*) as count FROM transactions WHERE company_id = ? AND type = 'sell'"
-      ).all(company.id)[0] as { count: number };
+      ).all(company.id))[0] as { count: number };
 
-      const holderCount = db.prepare(
+      const holderCount = (await db.prepare(
         "SELECT COUNT(*) as count FROM holdings WHERE company_id = ? AND shares_owned > 0"
-      ).all(company.id)[0] as { count: number };
+      ).all(company.id))[0] as { count: number };
 
       const recentPrices = allHistory.slice(-20).map((h: any) => h.price);
 
@@ -51,7 +51,7 @@ export async function GET() {
         holderCount: holderCount?.count || 0,
         recentPrices,
       };
-    });
+    }));
 
     return NextResponse.json(enriched);
   } catch (error) {
