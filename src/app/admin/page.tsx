@@ -74,11 +74,13 @@ export default function AdminPage() {
     fetchAdminData();
     fetchTradingSettings();
     const interval = setInterval(fetchAdminData, 10000);
-    return () => clearInterval(interval);
+    const onVisible = () => { if (document.visibilityState === "visible") fetchAdminData(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   function fetchAdminData() {
-    fetch("/api/admin/companies")
+    fetch(`/api/admin/companies?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((res) => res.json())
       .then((data) => {
         if (data.error) {
@@ -93,7 +95,7 @@ export default function AdminPage() {
   }
 
   function fetchTradingSettings() {
-    fetch("/api/admin/settings")
+    fetch(`/api/admin/settings?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((r) => r.json())
       .then((data) => {
         if (data.trading_enabled !== undefined) {

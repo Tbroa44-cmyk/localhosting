@@ -60,7 +60,7 @@ export async function GET() {
     } catch (e: any) { log(`RESTORE ERROR: ${e.message}`); }
   }
 
-  // Test DELETE on a temp row
+  // Test DELETE via raw REST
   try {
     const insRes = await fetch(`${url}/rest/v1/price_history`, {
       method: "POST",
@@ -68,32 +68,31 @@ export async function GET() {
         apikey: key!, Authorization: `Bearer ${key!}`,
         "Content-Type": "application/json", Prefer: "return=representation",
       },
-      body: JSON.stringify({ company_id: 99999, price: 1, timestamp: Date.now() }),
+      body: JSON.stringify({ company_id: 67, price: 1, timestamp: Date.now() }),
     });
     const insBody = await insRes.json();
     const insId = insBody?.[0]?.id;
-    log(`\nINSERT temp price_history: status=${insRes.status} id=${insId}`);
+    log(`\nINSERT temp price_history (company_id=67): status=${insRes.status} id=${insId}`);
 
     if (insId) {
       const delRes = await fetch(`${url}/rest/v1/price_history?id=eq.${insId}`, {
         method: "DELETE",
         headers: { apikey: key!, Authorization: `Bearer ${key!}`, Prefer: "return=minimal" },
       });
-      log(`DELETE temp price_history id=${insId}: status=${delRes.status}`);
+      log(`DELETE raw REST price_history id=${insId}: status=${delRes.status}`);
     }
-  } catch (e: any) { log(`DELETE TEST ERROR: ${e.message}`); }
+  } catch (e: any) { log(`DELETE RAW REST ERROR: ${e.message}`); }
 
   // Test DELETE via db.prepare
   try {
     const db = (await import("@/lib/db")).default;
     const testDb = db();
-    await testDb.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(99999, 1, Date.now());
-    const row = await testDb.prepare("SELECT id FROM price_history WHERE company_id = 99999").get() as any;
-    log(`\nDB INSERT temp row: id=${row?.id}`);
-    if (row?.id) {
-      await testDb.prepare("DELETE FROM price_history WHERE id = ?").run(row.id);
-      const check = await testDb.prepare("SELECT id FROM price_history WHERE id = ?").get(row.id);
-      log(`DB DELETE test: deleted=${!check ? "YES" : "NO"}`);
+    const insResult = await testDb.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(67, 1, Date.now());
+    log(`\nDB INSERT price_history: changes=${insResult.changes} lastInsertRowid=${insResult.lastInsertRowid}`);
+    if (insResult.lastInsertRowid) {
+      await testDb.prepare("DELETE FROM price_history WHERE id = ?").run(insResult.lastInsertRowid);
+      const check = await testDb.prepare("SELECT id FROM price_history WHERE id = ?").get(insResult.lastInsertRowid);
+      log(`DB DELETE price_history id=${insResult.lastInsertRowid}: deleted=${check === undefined ? "YES" : "NO (still exists)"}`);
     }
   } catch (e: any) { log(`DB DELETE TEST ERROR: ${e.message}`); }
 

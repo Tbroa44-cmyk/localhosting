@@ -13,6 +13,14 @@ const nextConfig = {
           { key: "Vercel-CDN-Cache-Control", value: "no-store" },
         ],
       },
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Surrogate-Control", value: "no-store" },
+        ],
+      },
     ];
   },
 };
