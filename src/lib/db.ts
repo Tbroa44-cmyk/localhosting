@@ -1,17 +1,3 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-
-let client: SupabaseClient | null = null;
-
-function getSupabase(): SupabaseClient {
-  if (!client) {
-    client = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }
-  return client;
-}
-
 interface WhereCondition {
   column: string;
   op: "=" | "!=" | "<" | ">";
@@ -73,135 +59,43 @@ function parseSingleCondition(s: string, params: any[], paramIdx: number): { con
   return { condition: { column: s, op: "=", value: null, isParam: false }, nextIdx: paramIdx };
 }
 
-function applyFilters(query: any, conditions: WhereCondition[], isOr: boolean): any {
-  if (conditions.length === 0) return query;
-
+function buildFilterParams(conditions: WhereCondition[], isOr: boolean): { filterStr: string; validConditions: WhereCondition[] } {
   const validConditions = conditions.filter((c) => c.value !== null && c.value !== undefined);
-  if (validConditions.length === 0) return query;
+  if (validConditions.length === 0) return { filterStr: "", validConditions: [] };
 
   if (isOr) {
-    const filterParts = validConditions.map((c) => {
+    const parts = validConditions.map((c) => {
       const val = typeof c.value === "string" ? c.value : String(c.value);
       if (c.op === "=") return `${c.column}.eq.${val}`;
       if (c.op === "!=") return `${c.column}.neq.${val}`;
       if (c.op === "<") return `${c.column}.lt.${val}`;
+      if (c.op === ">") return `${c.column}.gt.${val}`;
       return `${c.column}.eq.${val}`;
     });
-    return query.or(filterParts.join(","));
+    return { filterStr: `or=(${parts.join(",")})`, validConditions };
   }
 
-  for (const c of validConditions) {
-    if (c.op === "=") query = query.eq(c.column, c.value);
-    else if (c.op === "!=") query = query.neq(c.column, c.value);
-    else if (c.op === "<") query = query.lt(c.column, c.value);
-    else if (c.op === ">") query = query.gt(c.column, c.value);
-  }
-  return query;
+  const parts = validConditions.map((c) => {
+    const val = typeof c.value === "string" ? encodeURIComponent(c.value) : String(c.value);
+    if (c.op === "=") return `${c.column}=eq.${val}`;
+    if (c.op === "!=") return `${c.column}=neq.${val}`;
+    if (c.op === "<") return `${c.column}=lt.${val}`;
+    if (c.op === ">") return `${c.column}=gt.${val}`;
+    return `${c.column}=eq.${val}`;
+  });
+  return { filterStr: parts.join("&"), validConditions };
 }
 
-function applyOrderBy(query: any, orderByStr: string): any {
-  if (!orderByStr) return query;
-  const entries = orderByStr.split(",").map((e) => e.trim());
-  for (const entry of entries) {
-    const desc = entry.toUpperCase().includes(" DESC");
-    const col = entry.replace(/\s+(ASC|DESC)$/i, "").trim();
-    if (col.toUpperCase() === "RANDOM()") continue;
-    query = query.order(col, { ascending: !desc });
-  }
-  return query;
+function restHeaders(): Record<string, string> {
+  return {
+    apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
+    "Content-Type": "application/json",
+  };
 }
 
-async function executeSelect(sql: string, params: any[], method: "get" | "all"): Promise<any> {
-  const sb = getSupabase();
-
-  const upper = sql.toUpperCase();
-  const tableMatch = sql.match(/FROM\s+(\w+)/i);
-  if (!tableMatch) return method === "get" ? undefined : [];
-  const table = tableMatch[1];
-
-  const isCount = /COUNT\(\*\)/i.test(sql);
-  const sumMatch = sql.match(/SUM\((\w+)\)\s+as\s+(\w+)/i);
-  const joinMatch = sql.match(/JOIN\s+(\w+)\s+\w+\s+ON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/i);
-
-  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)/is);
-  const orderMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
-  const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
-
-  const isRandomOrder = orderMatch && /RANDOM\(\)/i.test(orderMatch[1]);
-  let whereParams = params;
-  let extraParams: any[] = [];
-  if (whereMatch) {
-    const whereClause = whereMatch[1];
-    const qCount = (whereClause.match(/\?/g) || []).length;
-    whereParams = params.slice(0, qCount);
-    extraParams = params.slice(qCount);
-  }
-
-  if (joinMatch) {
-    return executeJoinQuery(sb, sql, table, joinMatch, whereParams, orderMatch, limitMatch, isCount, sumMatch, method);
-  }
-
-  let query;
-  if (isCount) {
-    query = sb.from(table).select("*", { count: "exact", head: true });
-  } else if (sumMatch) {
-    query = sb.from(table).select(sumMatch[1]);
-  } else {
-    const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
-    const colsStr = selectMatch ? selectMatch[1].trim() : "*";
-    if (colsStr !== "*") {
-      const cols = colsStr.split(",").map((c) => {
-        const m = c.trim().match(/(?:\w+\.)?(\w+)/);
-        return m ? m[1] : c.trim();
-      });
-      query = sb.from(table).select(cols.join(","));
-    } else {
-      query = sb.from(table).select("*");
-    }
-  }
-
-  if (whereMatch) {
-    const { conditions, isOr } = parseWhere(whereMatch[1], whereParams);
-    query = applyFilters(query, conditions, isOr);
-  }
-
-  if (orderMatch && !isRandomOrder) {
-    query = applyOrderBy(query, orderMatch[1]);
-  }
-
-  if (isRandomOrder) {
-    const { data } = await query;
-    if (!data || data.length === 0) return method === "get" ? undefined : [];
-    const shuffled = [...data].sort(() => Math.random() - 0.5);
-    if (limitMatch) return method === "get" ? shuffled[0] : shuffled.slice(0, Number(limitMatch[1]));
-    return method === "get" ? shuffled[0] : shuffled;
-  }
-
-  if (limitMatch && !isCount) {
-    query = query.limit(Number(limitMatch[1]));
-  }
-
-  const { data, error, count } = await query;
-
-  if (error) {
-    console.error("Supabase query error:", JSON.stringify(error), "table:", table);
-    if (isCount) return [{ count: 0 }];
-    return method === "get" ? undefined : [];
-  }
-
-  if (isCount) {
-    return [{ count: count || 0 }];
-  }
-
-  if (sumMatch) {
-    const alias = sumMatch[2];
-    const col = sumMatch[1];
-    const total = (data || []).reduce((sum: number, r: any) => sum + (Number(r[col]) || 0), 0);
-    return [{ [alias]: total }];
-  }
-
-  const results = (data || []).map((row: any) => flattenRow(row));
-  return method === "get" ? results[0] : results;
+function restUrl(): string {
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1`;
 }
 
 const TEXT_FIELDS = new Set(["ticker", "name", "description", "type", "status", "email", "username", "password", "paypal_order_id"]);
@@ -212,151 +106,130 @@ function coerceValue(v: any, fieldName?: string): any {
   return v;
 }
 
-function flattenRow(row: any): any {
+function coerceRow(row: Record<string, any>): Record<string, any> {
   if (!row) return row;
-  const flat: any = {};
+  const flat: Record<string, any> = {};
   for (const [key, value] of Object.entries(row)) {
-    if (key === "id") flat.id = row.id;
-    else if (value !== null && typeof value === "object" && !Array.isArray(value) && (value as any).id !== undefined && key.endsWith("s")) {
-      for (const [fk, fv] of Object.entries(value as Record<string, any>)) {
-        flat[fk] = coerceValue(fv, fk);
-      }
-    } else {
-      flat[key] = coerceValue(value, key);
-    }
+    flat[key] = coerceValue(value, key);
   }
   return flat;
 }
 
-async function executeJoinQuery(
-  sb: SupabaseClient,
-  sql: string,
-  table: string,
-  joinMatch: RegExpMatchArray,
-  params: any[],
-  orderMatch: RegExpMatchArray | null,
-  limitMatch: RegExpMatchArray | null,
-  isCount: boolean,
-  sumMatch: RegExpMatchArray | null,
-  method: "get" | "all"
-): Promise<any> {
-  const joinTable = joinMatch[1];
-  const localCol = joinMatch[2];
+async function restFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const url = `${restUrl()}${path}`;
+  const res = await fetch(url, { ...options, headers: { ...restHeaders(), ...options.headers } });
 
-  const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
-  const colsStr = selectMatch ? selectMatch[1] : "*";
-
-  const needsCompanyFields = /c\.(?:name|ticker|share_price|total_shares|description)/i.test(colsStr) || /c\.name\s+as\s+company_name/i.test(colsStr);
-
-  let selectCols = "*";
-  if (needsCompanyFields) {
-    const localCols: string[] = [];
-    const companyCols: string[] = [];
-
-    const colParts = colsStr.split(",").map((c) => c.trim());
-    let mainTableSelectAll = false;
-    for (const col of colParts) {
-      const trimmedCol = col.trim();
-
-      if (/^\w+\.\*$/.test(trimmedCol)) {
-        const tbl = trimmedCol.split(".")[0].toLowerCase();
-        if (tbl === table.toLowerCase() || tbl === localCol.toLowerCase()) {
-          mainTableSelectAll = true;
-        }
-        continue;
-      }
-
-      const aliasMatch = trimmedCol.match(/(?:\w+\.)?(\w+)(?:\s+as\s+(\w+))?/i);
-      if (!aliasMatch) continue;
-      const colName = aliasMatch[1];
-      const alias = aliasMatch[2];
-
-      const isCompanyRef = /^(c\.|company)/i.test(trimmedCol) || /^(c\.|company)/i.test(col);
-      const isKnownCompanyCol = ["company_name", "ticker", "share_price", "total_shares", "current_price", "description"].includes(colName) || ["ticker", "name", "share_price", "total_shares", "description"].includes(alias || "");
-
-      if (isCompanyRef || isKnownCompanyCol) {
-        companyCols.push(colName);
-      } else {
-        localCols.push(colName === "*" ? "*" : (alias || colName));
-      }
-    }
-
-    if (mainTableSelectAll || localCols.length === 0) localCols.unshift("*");
-    if (companyCols.length > 0) {
-      const localPart = localCols.includes("*") ? "*" : localCols.join(", ");
-      selectCols = `${localPart}, ${joinTable}(${[...new Set(companyCols)].join(", ")})`;
-    } else {
-      selectCols = localCols.includes("*") ? "*" : localCols.join(", ");
-    }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[restFetch] FAILED", { url, status: res.status, body: text.substring(0, 300) });
+    throw new Error(`REST API error ${res.status}: ${text.substring(0, 200)}`);
   }
 
-  let query = sb.from(table).select(selectCols);
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json();
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function executeSelect(sql: string, params: any[], method: "get" | "all"): Promise<any> {
+  const tableMatch = sql.match(/FROM\s+(\w+)/i);
+  if (!tableMatch) return method === "get" ? undefined : [];
+  const table = tableMatch[1];
+
+  const isCount = /COUNT\(\*\)/i.test(sql);
+  const sumMatch = sql.match(/SUM\((\w+)\)\s+as\s+(\w+)/i);
 
   const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)/is);
+  const orderMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
+  const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
+
+  const isRandomOrder = orderMatch && /RANDOM\(\)/i.test(orderMatch[1]);
+  let whereParams = params;
   if (whereMatch) {
-    const { conditions, isOr } = parseWhere(whereMatch[1], params);
-    query = applyFilters(query, conditions, isOr);
+    const whereClause = whereMatch[1];
+    const qCount = (whereClause.match(/\?/g) || []).length;
+    whereParams = params.slice(0, qCount);
   }
 
-  if (orderMatch) {
+  let selectCols = "*";
+  if (!isCount && !sumMatch) {
+    const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
+    const colsStr = selectMatch ? selectMatch[1].trim() : "*";
+    if (colsStr !== "*") {
+      selectCols = colsStr
+        .split(",")
+        .map((c) => {
+          const m = c.trim().match(/(?:\w+\.)?(\w+)(?:\s+as\s+(\w+))?/i);
+          if (!m) return c.trim();
+          return m[2] ? `${m[1]}:${m[2]}` : m[1];
+        })
+        .join(",");
+    }
+  } else if (sumMatch) {
+    selectCols = sumMatch[1];
+  }
+
+  const queryParts: string[] = [`select=${selectCols}`];
+
+  if (whereMatch) {
+    const { conditions, isOr } = parseWhere(whereMatch[1], whereParams);
+    const { filterStr } = buildFilterParams(conditions, isOr);
+    if (filterStr) queryParts.push(filterStr);
+  }
+
+  if (orderMatch && !isRandomOrder) {
     const entries = orderMatch[1].split(",").map((e) => e.trim());
     for (const entry of entries) {
-      const desc = entry.toUpperCase().includes(" DESC");
-      let col = entry.replace(/\s+(ASC|DESC)$/i, "").trim();
-      col = col.replace(/^\w+\./, "");
+      const desc = entry.toUpperCase().includes("DESC");
+      let col = entry.replace(/\s+(ASC|DESC)$/i, "").trim().replace(/^\w+\./, "");
       if (col.toUpperCase() === "RANDOM()") continue;
-      const prefix = col.startsWith(joinTable + ".") ? "" : "";
-      const orderCol = prefix ? col : col;
-      if (tableColumns(col) || isCompanyColumn(col)) {
-        query = query.order(col, { ascending: !desc });
-      }
+      queryParts.push(`order=${col}.${desc ? "desc" : "asc"}`);
     }
   }
 
-  if (limitMatch) query = query.limit(Number(limitMatch[1]));
+  if (limitMatch && !isCount) {
+    queryParts.push(`limit=${limitMatch[1]}`);
+  }
 
-  const { data, error, count } = await query;
+  if (isCount) {
+    try {
+      const data = await restFetch(`/${table}?${queryParts.join("&")}`, {
+        headers: { Prefer: "count=exact", Range: "0-0" },
+      });
+      return [{ count: Array.isArray(data) ? data.length : 0 }];
+    } catch {
+      return [{ count: 0 }];
+    }
+  }
 
-  if (error) {
-    console.error("Supabase JOIN query error:", JSON.stringify(error), "table:", table, "selectCols:", selectCols);
+  try {
+    let data = await restFetch(`/${table}?${queryParts.join("&")}`);
+    if (!Array.isArray(data)) data = data ? [data] : [];
+
+    if (sumMatch) {
+      const alias = sumMatch[2];
+      const col = sumMatch[1];
+      const total = data.reduce((sum: number, r: any) => sum + (Number(r[col]) || 0), 0);
+      return [{ [alias]: total }];
+    }
+
+    if (isRandomOrder) {
+      data = [...data].sort(() => Math.random() - 0.5);
+      if (limitMatch) data = data.slice(0, Number(limitMatch[1]));
+    }
+
+    const results = data.map((row: any) => coerceRow(row));
+    return method === "get" ? results[0] : results;
+  } catch (e: any) {
+    console.error("[executeSelect] error:", e?.message, "table:", table);
     if (isCount) return [{ count: 0 }];
     return method === "get" ? undefined : [];
   }
-
-  if (isCount) return [{ count: count || 0 }];
-  if (sumMatch) {
-    const total = (data || []).reduce((s: number, r: any) => s + (Number(r[sumMatch[1]]) || 0), 0);
-    return [{ [sumMatch[2]]: total }];
-  }
-
-  const results = (data || []).map((row: any) => {
-    const flat: any = {};
-    for (const [key, value] of Object.entries(row)) {
-      if (key === joinTable && value && typeof value === "object" && !Array.isArray(value)) {
-        for (const [fk, fv] of Object.entries(value)) {
-          if (fk === "name" && colsStr.includes("as company_name")) flat["company_name"] = coerceValue(fv, "name");
-          else if (fk === "share_price" && colsStr.includes("as current_price")) flat["current_price"] = coerceValue(fv, "share_price");
-          else flat[fk] = coerceValue(fv, fk);
-        }
-      } else {
-        flat[key] = coerceValue(value, key);
-      }
-    }
-    return flat;
-  });
-
-  return method === "get" ? results[0] : results;
-}
-
-function tableColumns(col: string): boolean {
-  return true;
-}
-function isCompanyColumn(col: string): boolean {
-  return ["name", "ticker", "share_price", "total_shares", "description", "id"].includes(col);
 }
 
 async function executeInsert(sql: string, params: any[]): Promise<{ changes: number; lastInsertRowid: number }> {
-  const sb = getSupabase();
   const tableMatch = sql.match(/INTO\s+(\w+)/i);
   if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
   const table = tableMatch[1];
@@ -388,16 +261,21 @@ async function executeInsert(sql: string, params: any[]): Promise<{ changes: num
     row[col] = values[i] !== undefined ? values[i] : null;
   });
 
-  const { data, error } = await sb.from(table).insert(row).select("id");
-  if (error) {
-    console.error("Insert error:", JSON.stringify(error), "table:", table, "row:", JSON.stringify(row));
-    throw new Error(`Insert failed for ${table}: ${error.message || JSON.stringify(error)}`);
+  try {
+    const data = await restFetch(`/${table}`, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(row),
+    });
+    const id = Array.isArray(data) ? data[0]?.id : data?.id;
+    return { changes: 1, lastInsertRowid: id ?? 0 };
+  } catch (e: any) {
+    console.error("[executeInsert] error:", e?.message, "table:", table, "row:", JSON.stringify(row));
+    throw new Error(`Insert failed for ${table}: ${e.message}`);
   }
-  return { changes: 1, lastInsertRowid: data?.[0]?.id ?? 0 };
 }
 
 async function executeUpdate(sql: string, params: any[]): Promise<{ changes: number; lastInsertRowid: number }> {
-  const sb = getSupabase();
   const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
   if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
   const table = tableMatch[1];
@@ -436,8 +314,13 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
 
   let currentRow: Record<string, any> = {};
   if (fetchCol && fetchWhereCol) {
-    const { data } = await sb.from(table).select(`${fetchCol}, ${fetchWhereCol}`).eq(fetchWhereCol, fetchWhereVal).single();
-    currentRow = data || {};
+    try {
+      const data = await restFetch(`/${table}?select=${fetchCol},${fetchWhereCol}&${fetchWhereCol}=eq.${encodeURIComponent(fetchWhereVal)}`);
+      const rows = Array.isArray(data) ? data : data ? [data] : [];
+      currentRow = rows[0] || {};
+    } catch {
+      currentRow = {};
+    }
   }
 
   const setValues: { column: string; value: any }[] = [];
@@ -529,18 +412,26 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
     return { changes: 0, lastInsertRowid: 0 };
   }
 
-  let query = sb.from(table).update(updateObj);
+  let filterStr = "";
   if (whereMatch) {
     const { conditions, isOr } = parseWhere(whereMatch[1], whereParams);
-    query = applyFilters(query, conditions, isOr);
+    const result = buildFilterParams(conditions, isOr);
+    filterStr = result.filterStr;
   }
 
-  const { data, error } = await query.select("id");
-  if (error) {
-    console.error("Update error:", JSON.stringify(error), "table:", table);
-    throw new Error(`Update failed for ${table}: ${error.message || JSON.stringify(error)}`);
+  try {
+    const path = filterStr ? `/${table}?${filterStr}` : `/${table}`;
+    const data = await restFetch(path, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(updateObj),
+    });
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    return { changes: rows.length, lastInsertRowid: 0 };
+  } catch (e: any) {
+    console.error("[executeUpdate] error:", e?.message, "table:", table, "data:", JSON.stringify(updateObj));
+    throw new Error(`Update failed for ${table}: ${e.message}`);
   }
-  return { changes: data?.length ?? 0, lastInsertRowid: 0 };
 }
 
 function extractFirstWhereCol(whereStr: string): string | null {
@@ -549,25 +440,29 @@ function extractFirstWhereCol(whereStr: string): string | null {
 }
 
 async function executeDelete(sql: string, params: any[]): Promise<{ changes: number; lastInsertRowid: number }> {
-  const sb = getSupabase();
   const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
   if (!tableMatch) return { changes: 0, lastInsertRowid: 0 };
   const table = tableMatch[1];
 
-  let query = sb.from(table).delete();
-
   const whereMatch = sql.match(/WHERE\s+(.+?)$/is);
+  let filterStr = "";
   if (whereMatch) {
     const { conditions, isOr } = parseWhere(whereMatch[1], params);
-    query = applyFilters(query, conditions, isOr);
+    const result = buildFilterParams(conditions, isOr);
+    filterStr = result.filterStr;
   }
 
-  const { data, error } = await query.select("id");
-  if (error) {
-    console.error("Delete error:", JSON.stringify(error), "table:", table);
-    throw new Error(`Delete failed for ${table}: ${error.message || JSON.stringify(error)}`);
+  try {
+    const path = filterStr ? `/${table}?${filterStr}` : `/${table}`;
+    await restFetch(path, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    return { changes: 1, lastInsertRowid: 0 };
+  } catch (e: any) {
+    console.error("[executeDelete] error:", e?.message, "table:", table);
+    throw new Error(`Delete failed for ${table}: ${e.message}`);
   }
-  return { changes: data?.length ?? 0, lastInsertRowid: 0 };
 }
 
 async function executeQuery(sql: string, params: any[], method: "get" | "all" | "run"): Promise<any> {
@@ -592,40 +487,6 @@ async function executeQuery(sql: string, params: any[], method: "get" | "all" | 
   return method === "get" ? undefined : [];
 }
 
-async function seedIfEmpty() {
-  const sb = getSupabase();
-  const { data: existing } = await sb.from("companies").select("id").limit(1);
-  if (existing && existing.length > 0) return;
-
-  const companies = [
-    { name: "NovaTech Industries", ticker: "NVTK", description: "Leading tech innovator in AI and cloud computing", share_price: 15000, total_shares: 5000, initial_price: 15000, initial_shares: 5000 },
-    { name: "Global Energy Corp", ticker: "GEC", description: "Renewable energy solutions worldwide", share_price: 8500, total_shares: 8000, initial_price: 8500, initial_shares: 8000 },
-    { name: "MediVita Pharmaceuticals", ticker: "MDVT", description: "Biotech and pharmaceutical research", share_price: 22000, total_shares: 3000, initial_price: 22000, initial_shares: 3000 },
-    { name: "SkyLine Aerospace", ticker: "SKLA", description: "Space technology and aviation", share_price: 35000, total_shares: 2000, initial_price: 35000, initial_shares: 2000 },
-    { name: "FreshHarvest Foods", ticker: "FRHV", description: "Organic food production and distribution", share_price: 4500, total_shares: 12000, initial_price: 4500, initial_shares: 12000 },
-    { name: "CryptoVault Digital", ticker: "CVDC", description: "Cryptocurrency exchange and blockchain services", share_price: 12000, total_shares: 6000, initial_price: 12000, initial_shares: 6000 },
-    { name: "UrbanBuild Construction", ticker: "UBLD", description: "Smart city infrastructure and construction", share_price: 6800, total_shares: 7000, initial_price: 6800, initial_shares: 7000 },
-    { name: "AquaPure Systems", ticker: "AQPS", description: "Water purification and environmental tech", share_price: 9200, total_shares: 5500, initial_price: 9200, initial_shares: 5500 },
-    { name: "NeuralLink Gaming", ticker: "NRLG", description: "VR/AR gaming and immersive experiences", share_price: 18500, total_shares: 4000, initial_price: 18500, initial_shares: 4000 },
-    { name: "Titan Steel Works", ticker: "TSTL", description: "Advanced materials and metallurgy", share_price: 5500, total_shares: 10000, initial_price: 5500, initial_shares: 10000 },
-  ];
-
-  for (const c of companies) {
-    const { data } = await sb.from("companies").insert(c).select("id");
-    const companyId = data?.[0]?.id;
-    if (companyId) {
-      const now = Date.now();
-      const dayAgo = now - 24 * 60 * 60 * 1000;
-      const priceRows = Array.from({ length: 24 }, (_, i) => ({
-        company_id: companyId,
-        price: Math.round(c.share_price * (1 + (Math.random() - 0.5) * 0.06)),
-        timestamp: dayAgo + i * 60 * 60 * 1000,
-      }));
-      await sb.from("price_history").insert(priceRows);
-    }
-  }
-}
-
 let initialized = false;
 
 function getDbProxy() {
@@ -647,62 +508,16 @@ function getDbProxy() {
 
 export default getDbProxy;
 
-async function rawSupabaseUpdate(table: string, matchCol: string, matchVal: number, data: Record<string, any>): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing Supabase env vars");
-
-  const endpoint = `${url}/rest/v1/${table}?${matchCol}=eq.${matchVal}`;
-  console.log(`[rawUpdate] ${table} url=${endpoint} data=${JSON.stringify(data)}`);
-  const res = await fetch(endpoint, {
-    method: "PATCH",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify(data),
-  });
-
-  const text = await res.text().catch(() => "");
-  console.log(`[rawUpdate] ${table} result status=${res.status} ok=${res.ok} body=${text.substring(0, 200)}`);
-
-  if (!res.ok) {
-    console.error(`[rawUpdate] FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, matchCol, matchVal, data });
-    throw new Error(`Supabase update failed for ${table}: ${res.status} ${text}`);
-  }
-}
-
-async function rawSupabaseInsert(table: string, data: Record<string, any>): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing Supabase env vars");
-
-  const endpoint = `${url}/rest/v1/${table}`;
-  console.log(`[rawInsert] ${table} url=${endpoint} data=${JSON.stringify(data)}`);
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify(data),
-  });
-
-  const text = await res.text().catch(() => "");
-  console.log(`[rawInsert] ${table} result status=${res.status} ok=${res.ok} body=${text.substring(0, 200)}`);
-
-  if (!res.ok) {
-    console.error(`[rawInsert] FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, data });
-    throw new Error(`Supabase insert failed for ${table}: ${res.status} ${text}`);
-  }
-}
-
 export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
-  await rawSupabaseInsert("price_history", { company_id: companyId, price, timestamp });
+  try {
+    await restFetch(`/price_history`, {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ company_id: companyId, price, timestamp }),
+    });
+  } catch (e: any) {
+    console.error("[insertPriceHistory] FAILED:", e?.message);
+  }
 }
 
 export async function updateCompanyPrice(companyId: number, price: number): Promise<void> {
@@ -710,43 +525,55 @@ export async function updateCompanyPrice(companyId: number, price: number): Prom
     console.error("updateCompanyPrice: invalid params", { companyId, price });
     return;
   }
-  await rawSupabaseUpdate("companies", "id", companyId, { share_price: price });
+  console.log(`[updateCompanyPrice] companyId=${companyId} price=${price}`);
+  await restFetch(`/companies?id=eq.${companyId}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ share_price: price }),
+  });
 }
 
 export async function getCompanyPrice(companyId: number): Promise<number> {
-  const db = getDbProxy();
-  const row = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
-  return row ? (Number(row.share_price) || 0) : 0;
+  try {
+    const data = await restFetch(`/companies?id=eq.${companyId}&select=share_price`);
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    return rows[0] ? (Number(rows[0].share_price) || 0) : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function getLowestPendingSell(companyId: number, excludeOrderId?: number): Promise<number | null> {
   if (!companyId) return null;
-  const db = getDbProxy();
-  let sql = "SELECT price_per_share FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'";
-  const params: any[] = [companyId];
-  if (excludeOrderId !== undefined && excludeOrderId !== null) {
-    sql += " AND id != ?";
-    params.push(excludeOrderId);
+  try {
+    let path = `/orders?company_id=eq.${companyId}&type=eq.sell&status=eq.pending&order=price_per_share.asc&limit=1&select=price_per_share`;
+    if (excludeOrderId !== undefined && excludeOrderId !== null) {
+      path += `&id=neq.${excludeOrderId}`;
+    }
+    const data = await restFetch(path);
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    if (rows.length === 0) return null;
+    const price = Number(rows[0].price_per_share);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch {
+    return null;
   }
-  sql += " ORDER BY price_per_share ASC LIMIT 1";
-  const row = await db.prepare(sql).get(...params) as { price_per_share: number } | undefined;
-  if (!row) return null;
-  const price = Number(row.price_per_share);
-  return Number.isFinite(price) && price > 0 ? price : null;
 }
 
 export async function getLowestPendingSellsBulk(): Promise<Map<number, number>> {
-  const db = getDbProxy();
-  const rows = await db.prepare(
-    "SELECT company_id, price_per_share FROM orders WHERE type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC"
-  ).all() as { company_id: number; price_per_share: number }[];
-  const map = new Map<number, number>();
-  for (const row of rows) {
-    const cid = Number(row.company_id);
-    const price = Number(row.price_per_share);
-    if (cid > 0 && Number.isFinite(price) && price > 0 && !map.has(cid)) {
-      map.set(cid, price);
+  try {
+    const data = await restFetch(`/orders?type=eq.sell&status=eq.pending&order=price_per_share.asc&select=company_id,price_per_share`);
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    const map = new Map<number, number>();
+    for (const row of rows) {
+      const cid = Number(row.company_id);
+      const price = Number(row.price_per_share);
+      if (cid > 0 && Number.isFinite(price) && price > 0 && !map.has(cid)) {
+        map.set(cid, price);
+      }
     }
+    return map;
+  } catch {
+    return new Map();
   }
-  return map;
 }
