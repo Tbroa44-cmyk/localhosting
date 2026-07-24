@@ -180,6 +180,12 @@ async function executeSelect(sql: string, params: any[], method: "get" | "all"):
 
   const { data, error, count } = await query;
 
+  if (error) {
+    console.error("Supabase query error:", JSON.stringify(error), "table:", table);
+    if (isCount) return [{ count: 0 }];
+    return method === "get" ? undefined : [];
+  }
+
   if (isCount) {
     return [{ count: count || 0 }];
   }
@@ -304,6 +310,12 @@ async function executeJoinQuery(
   if (limitMatch) query = query.limit(Number(limitMatch[1]));
 
   const { data, error, count } = await query;
+
+  if (error) {
+    console.error("Supabase JOIN query error:", JSON.stringify(error), "table:", table, "selectCols:", selectCols);
+    if (isCount) return [{ count: 0 }];
+    return method === "get" ? undefined : [];
+  }
 
   if (isCount) return [{ count: count || 0 }];
   if (sumMatch) {
@@ -539,7 +551,10 @@ async function executeDelete(sql: string, params: any[]): Promise<{ changes: num
   }
 
   const { data, error } = await query.select("id");
-  if (error) console.error("Delete error:", error);
+  if (error) {
+    console.error("Delete error:", JSON.stringify(error), "table:", table);
+    throw new Error(`Delete failed for ${table}: ${error.message || JSON.stringify(error)}`);
+  }
   return { changes: data?.length ?? 0, lastInsertRowid: 0 };
 }
 

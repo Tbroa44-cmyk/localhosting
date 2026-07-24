@@ -31,6 +31,12 @@ export default function DashboardPage() {
         setCompanies(data);
         setLoading(false);
       });
+    const interval = setInterval(() => {
+      fetch("/api/stocks")
+        .then((r) => r.json())
+        .then((data) => setCompanies(data));
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const filtered = useMemo(() => {

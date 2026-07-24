@@ -22,10 +22,14 @@ export async function GET() {
       ORDER BY c.ticker
     `).all(userId);
 
+    console.log("[Portfolio] userId:", userId, "holdings count:", (holdings as any[]).length, "holdings:", JSON.stringify(holdings));
+
     const totalValue = (holdings as any[]).reduce(
       (sum: number, h: any) => sum + Number(h.share_price) * Number(h.shares_owned),
       0
     );
+
+    console.log("[Portfolio] totalValue:", totalValue);
 
     const transactions = await db.prepare(`
       SELECT t.*, c.name as company_name, c.ticker

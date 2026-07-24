@@ -139,19 +139,24 @@ export default function AdminPage() {
 
   async function handleCreateCompany(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch("/api/admin/companies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newCompany),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error);
-      return;
+    try {
+      const res = await fetch("/api/admin/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newCompany),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error);
+        return;
+      }
+      setShowNewForm(false);
+      setNewCompany({ name: "", ticker: "", description: "", share_price: 10000, total_shares: 1000 });
+      fetchAdminData();
+    } catch {
+      alert("Error creating company");
+      fetchAdminData();
     }
-    setShowNewForm(false);
-    setNewCompany({ name: "", ticker: "", description: "", share_price: 10000, total_shares: 1000 });
-    fetchAdminData();
   }
 
   async function handleUpdateCompany(e: React.FormEvent) {
@@ -175,8 +180,17 @@ export default function AdminPage() {
 
   async function handleDeleteCompany(id: number) {
     if (!confirm("Delete this company? This cannot be undone.")) return;
-    const res = await fetch(`/api/admin/companies/${id}`, { method: "DELETE" });
-    if (res.ok) fetchAdminData();
+    try {
+      const res = await fetch(`/api/admin/companies/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to delete company");
+      }
+      fetchAdminData();
+    } catch {
+      alert("Error deleting company");
+      fetchAdminData();
+    }
   }
 
   async function handleResetMarket() {

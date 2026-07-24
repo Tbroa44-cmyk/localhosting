@@ -89,7 +89,10 @@ export default function PortfolioPage() {
 
   function fetchPortfolio() {
     fetch("/api/portfolio")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         setHoldings(data.holdings || []);
         setTransactions(data.transactions || []);
@@ -100,7 +103,10 @@ export default function PortfolioPage() {
       .catch(console.error);
 
     fetch("/api/orders")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => setOrders(data))
       .catch(() => {});
   }
