@@ -429,10 +429,8 @@ export async function resetMarket() {
     await db.prepare("UPDATE orders SET status = 'cancelled' WHERE status = 'pending'").run();
 
     for (const company of companies) {
-      const initialPrice = company.initial_price || company.share_price;
-      const initialShares = company.initial_shares || company.total_shares;
-      await db.prepare("UPDATE companies SET share_price = ?, total_shares = ? WHERE id = ?").run(initialPrice, initialShares, company.id);
-      await insertPriceHistory(company.id, initialPrice, Date.now());
+      await db.prepare("UPDATE companies SET share_price = 0, total_shares = 0 WHERE id = ?").run(company.id);
+      await insertPriceHistory(company.id, 0, Date.now());
     }
 
     return { message: "Market reset successfully" };
