@@ -74,6 +74,7 @@ export default function PortfolioPage() {
   const [totalValue, setTotalValue] = useState(0);
   const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [priceHistories, setPriceHistories] = useState<Record<number, { price: number; timestamp: number }[]>>({});
+  const [apiBalance, setApiBalance] = useState<number | null>(null);
   const [earningsFilter, setEarningsFilter] = useState<TimeFilter>("7d");
 
   useEffect(() => {
@@ -94,6 +95,7 @@ export default function PortfolioPage() {
         setTransactions(data.transactions || []);
         setTotalValue(data.totalValue || 0);
         setPriceHistories(data.priceHistories || {});
+        if (data.user?.balance != null) setApiBalance(Number(data.user.balance));
       })
       .catch(console.error);
 
@@ -112,7 +114,7 @@ export default function PortfolioPage() {
     }
   }
 
-  const userBalance = (session?.user as any)?.balance || 0;
+  const userBalance = apiBalance ?? ((session?.user as any)?.balance || 0);
   const totalPortfolio = userBalance + totalValue;
   const pendingOrders = orders.filter((o) => o.status === "pending");
 
