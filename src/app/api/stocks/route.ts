@@ -6,7 +6,7 @@ export async function GET() {
     const db = getDb();
     const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all() as any[];
 
-    const enriched = await Promise.all(companies.map(async (company) => {
+    const results = await Promise.allSettled(companies.map(async (company) => {
       const now = Date.now();
       const oneDayAgo = now - 24 * 60 * 60 * 1000;
       const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
@@ -52,6 +52,10 @@ export async function GET() {
         recentPrices,
       };
     }));
+
+    const enriched = results
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+      .map((r) => r.value);
 
     return NextResponse.json(enriched);
   } catch (error) {

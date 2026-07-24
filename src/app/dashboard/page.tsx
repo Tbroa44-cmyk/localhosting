@@ -26,7 +26,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     function loadStocks() {
-      fetch("/api/stocks")
+      fetch("/api/stocks", { cache: "no-store" })
         .then((r) => r.json())
         .then((data) => {
           setCompanies(Array.isArray(data) ? data : []);
@@ -35,8 +35,10 @@ export default function DashboardPage() {
         .catch(() => { setCompanies([]); setLoading(false); });
     }
     loadStocks();
-    const interval = setInterval(loadStocks, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadStocks, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") loadStocks(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   const filtered = useMemo(() => {

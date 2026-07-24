@@ -49,20 +49,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
         "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25"
       ).all(id, userId);
 
-      const filledOrders = await db.prepare(
-        "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'filled' ORDER BY created_at DESC LIMIT 50"
-      ).all(id, userId);
-
       for (const tx of transactions as any[]) {
         myTrades.push({ ...tx, status: "confirmed" });
-      }
-      for (const fo of filledOrders as any[]) {
-        const alreadyCounted = myTrades.some(
-          (t) => t.type === fo.type && t.shares === fo.shares && t.price_per_share === fo.price_per_share && t.created_at === fo.created_at
-        );
-        if (!alreadyCounted) {
-          myTrades.push({ ...fo, status: "confirmed" });
-        }
       }
 
       const myPendingOrders = await db.prepare(

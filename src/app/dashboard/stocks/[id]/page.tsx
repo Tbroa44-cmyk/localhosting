@@ -60,7 +60,7 @@ export default function StockDetailPage() {
   }, [session]);
 
   const fetchData = () => {
-    fetch(`/api/stocks/${companyId}`)
+    fetch(`/api/stocks/${companyId}`, { cache: "no-store" })
       .then((res) => res.json())
       .then(setCompany)
       .catch(console.error);
