@@ -647,13 +647,56 @@ function getDbProxy() {
 
 export default getDbProxy;
 
-export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
-  const sb = getSupabase();
-  const { error } = await sb.from("price_history").insert({ company_id: companyId, price, timestamp }).select("id");
-  if (error) {
-    console.error("Direct price_history insert error:", JSON.stringify(error));
-    throw new Error(`price_history insert failed: ${error.message || JSON.stringify(error)}`);
+async function rawSupabaseUpdate(table: string, matchCol: string, matchVal: number, data: Record<string, any>): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error("Missing Supabase env vars");
+
+  const endpoint = `${url}/rest/v1/${table}?${matchCol}=eq.${matchVal}`;
+  const res = await fetch(endpoint, {
+    method: "PATCH",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "no body");
+    console.error(`rawSupabaseUpdate FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, matchCol, matchVal, data });
+    throw new Error(`Supabase update failed for ${table}: ${res.status} ${text}`);
   }
+}
+
+async function rawSupabaseInsert(table: string, data: Record<string, any>): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error("Missing Supabase env vars");
+
+  const endpoint = `${url}/rest/v1/${table}`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "no body");
+    console.error(`rawSupabaseInsert FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, data });
+    throw new Error(`Supabase insert failed for ${table}: ${res.status} ${text}`);
+  }
+}
+
+export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
+  await rawSupabaseInsert("price_history", { company_id: companyId, price, timestamp });
 }
 
 export async function updateCompanyPrice(companyId: number, price: number): Promise<void> {
@@ -661,55 +704,38 @@ export async function updateCompanyPrice(companyId: number, price: number): Prom
     console.error("updateCompanyPrice: invalid params", { companyId, price });
     return;
   }
-  const sb = getSupabase();
-  const { data, error } = await sb.from("companies").update({ share_price: price }).eq("id", companyId).select("id");
-  if (error) {
-    console.error("Direct updateCompanyPrice error:", JSON.stringify(error));
-    throw new Error(`updateCompanyPrice failed: ${error.message || JSON.stringify(error)}`);
-  }
-  if (!data || data.length === 0) {
-    console.error("updateCompanyPrice: no rows updated for companyId:", companyId);
-  }
+  await rawSupabaseUpdate("companies", "id", companyId, { share_price: price });
 }
 
 export async function getCompanyPrice(companyId: number): Promise<number> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from("companies").select("share_price").eq("id", companyId).single();
-  if (error || !data) {
-    console.error("Direct getCompanyPrice error:", JSON.stringify(error));
-    return 0;
-  }
-  return Number(data.share_price) || 0;
+  const db = getDbProxy();
+  const row = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+  return row ? (Number(row.share_price) || 0) : 0;
 }
 
 export async function getLowestPendingSell(companyId: number, excludeOrderId?: number): Promise<number | null> {
   if (!companyId) return null;
-  const sb = getSupabase();
-  let query = sb.from("orders").select("price_per_share")
-    .eq("company_id", companyId)
-    .eq("type", "sell")
-    .eq("status", "pending")
-    .order("price_per_share", { ascending: true })
-    .limit(1);
+  const db = getDbProxy();
+  let sql = "SELECT price_per_share FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'";
+  const params: any[] = [companyId];
   if (excludeOrderId !== undefined && excludeOrderId !== null) {
-    query = query.neq("id", excludeOrderId);
+    sql += " AND id != ?";
+    params.push(excludeOrderId);
   }
-  const { data, error } = await query;
-  if (error || !data || data.length === 0) return null;
-  const price = Number(data[0].price_per_share);
+  sql += " ORDER BY price_per_share ASC LIMIT 1";
+  const row = await db.prepare(sql).get(...params) as { price_per_share: number } | undefined;
+  if (!row) return null;
+  const price = Number(row.price_per_share);
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
 export async function getLowestPendingSellsBulk(): Promise<Map<number, number>> {
-  const sb = getSupabase();
-  const { data, error } = await sb.from("orders")
-    .select("company_id, price_per_share")
-    .eq("type", "sell")
-    .eq("status", "pending")
-    .order("price_per_share", { ascending: true });
-  if (error || !data) return new Map();
+  const db = getDbProxy();
+  const rows = await db.prepare(
+    "SELECT company_id, price_per_share FROM orders WHERE type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC"
+  ).all() as { company_id: number; price_per_share: number }[];
   const map = new Map<number, number>();
-  for (const row of data) {
+  for (const row of rows) {
     const cid = Number(row.company_id);
     const price = Number(row.price_per_share);
     if (cid > 0 && Number.isFinite(price) && price > 0 && !map.has(cid)) {
