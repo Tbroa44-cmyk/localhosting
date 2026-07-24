@@ -76,9 +76,12 @@ function parseSingleCondition(s: string, params: any[], paramIdx: number): { con
 function applyFilters(query: any, conditions: WhereCondition[], isOr: boolean): any {
   if (conditions.length === 0) return query;
 
+  const validConditions = conditions.filter((c) => c.value !== null && c.value !== undefined);
+  if (validConditions.length === 0) return query;
+
   if (isOr) {
-    const filterParts = conditions.map((c) => {
-      const val = typeof c.value === "string" ? c.value : c.value;
+    const filterParts = validConditions.map((c) => {
+      const val = typeof c.value === "string" ? c.value : String(c.value);
       if (c.op === "=") return `${c.column}.eq.${val}`;
       if (c.op === "!=") return `${c.column}.neq.${val}`;
       if (c.op === "<") return `${c.column}.lt.${val}`;
@@ -87,7 +90,7 @@ function applyFilters(query: any, conditions: WhereCondition[], isOr: boolean): 
     return query.or(filterParts.join(","));
   }
 
-  for (const c of conditions) {
+  for (const c of validConditions) {
     if (c.op === "=") query = query.eq(c.column, c.value);
     else if (c.op === "!=") query = query.neq(c.column, c.value);
     else if (c.op === "<") query = query.lt(c.column, c.value);
@@ -517,7 +520,13 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
 
   const updateObj: Record<string, any> = {};
   for (const sv of setValues) {
-    updateObj[sv.column] = sv.value;
+    if (sv.value !== null && sv.value !== undefined) {
+      updateObj[sv.column] = sv.value;
+    }
+  }
+
+  if (Object.keys(updateObj).length === 0) {
+    return { changes: 0, lastInsertRowid: 0 };
   }
 
   let query = sb.from(table).update(updateObj);
@@ -648,6 +657,10 @@ export async function insertPriceHistory(companyId: number, price: number, times
 }
 
 export async function updateCompanyPrice(companyId: number, price: number): Promise<void> {
+  if (!companyId || !Number.isFinite(price)) {
+    console.error("updateCompanyPrice: invalid params", { companyId, price });
+    return;
+  }
   const sb = getSupabase();
   const { error } = await sb.from("companies").update({ share_price: price }).eq("id", companyId);
   if (error) {
@@ -667,6 +680,7 @@ export async function getCompanyPrice(companyId: number): Promise<number> {
 }
 
 export async function getLowestPendingSell(companyId: number, excludeOrderId?: number): Promise<number | null> {
+  if (!companyId) return null;
   const sb = getSupabase();
   let query = sb.from("orders").select("price_per_share")
     .eq("company_id", companyId)
@@ -674,12 +688,13 @@ export async function getLowestPendingSell(companyId: number, excludeOrderId?: n
     .eq("status", "pending")
     .order("price_per_share", { ascending: true })
     .limit(1);
-  if (excludeOrderId !== undefined) {
+  if (excludeOrderId !== undefined && excludeOrderId !== null) {
     query = query.neq("id", excludeOrderId);
   }
   const { data, error } = await query;
   if (error || !data || data.length === 0) return null;
-  return Number(data[0].price_per_share) || null;
+  const price = Number(data[0].price_per_share);
+  return Number.isFinite(price) && price > 0 ? price : null;
 }
 
 export async function getLowestPendingSellsBulk(): Promise<Map<number, number>> {
@@ -693,8 +708,9 @@ export async function getLowestPendingSellsBulk(): Promise<Map<number, number>> 
   const map = new Map<number, number>();
   for (const row of data) {
     const cid = Number(row.company_id);
-    if (!map.has(cid)) {
-      map.set(cid, Number(row.price_per_share));
+    const price = Number(row.price_per_share);
+    if (cid > 0 && Number.isFinite(price) && price > 0 && !map.has(cid)) {
+      map.set(cid, price);
     }
   }
   return map;
