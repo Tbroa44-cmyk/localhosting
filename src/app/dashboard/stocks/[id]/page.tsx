@@ -39,7 +39,7 @@ export default function StockDetailPage() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState("");
-  const [tradeAnimType, setTradeAnimType] = useState<"buy" | "sell" | null>(null);
+  const [tradeAnimType, setTradeAnimType] = useState<"buy" | "sell" | "cancel" | null>(null);
 
   const companyId = Number(params.id);
 
@@ -126,6 +126,7 @@ export default function StockDetailPage() {
 
   async function handleCancelOrder(orderId: number) {
     try {
+      setTradeAnimType("cancel");
       const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

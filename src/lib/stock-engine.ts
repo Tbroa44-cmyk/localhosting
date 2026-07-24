@@ -136,7 +136,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       remaining -= fillQty;
     }
 
-    await recalculateCompanyPrice(db, companyId);
+    const afterFillPrice = await recalculateCompanyPrice(db, companyId);
+    company.share_price = afterFillPrice;
 
     if (remaining > 0) {
       const totalSharesAllHoldings = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?").all(companyId) as { total: number }[];
@@ -172,7 +173,9 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       }
     }
 
-    await recalculateCompanyPrice(db, companyId);
+    const finalPrice = await recalculateCompanyPrice(db, companyId);
+    await recordPriceHistory(db, companyId, finalPrice);
+    company.share_price = finalPrice;
 
     let pendingShares = 0;
     if (remaining > 0) {
@@ -333,8 +336,17 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     if (type === "sell") {
       const companyNow = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
       const currentPrice = companyNow ? Number(companyNow.share_price) : 0;
-      if (currentPrice === 0 || priceCents < currentPrice) {
+
+      if (currentPrice === 0 || priceCents <= currentPrice) {
         await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(priceCents, companyId);
+      } else {
+        const backingSell = await db.prepare(
+          "SELECT price_per_share FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND price_per_share <= ? ORDER BY price_per_share ASC LIMIT 1"
+        ).get(companyId, currentPrice) as { price_per_share: number } | undefined;
+
+        if (!backingSell) {
+          await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(priceCents, companyId);
+        }
       }
     }
 
