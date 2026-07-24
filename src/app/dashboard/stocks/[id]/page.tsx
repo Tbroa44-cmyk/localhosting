@@ -7,6 +7,7 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import PriceChart from "@/components/PriceChart";
 import TradeAnimation from "@/components/TradeAnimation";
+import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
 
 interface Company {
@@ -130,7 +131,7 @@ export default function StockDetailPage() {
       if (!res.ok) throw new Error(data.error);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      showToast(err.message || "Failed to cancel order", "error");
     }
   }
 
@@ -165,7 +166,7 @@ export default function StockDetailPage() {
     <div className="min-h-screen">
       <Navbar />
       <TradeAnimation type={tradeAnimType} onComplete={() => setTradeAnimType(null)} />
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8 animate-stock-zoom">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-white mb-6 inline-block">
           &larr; Back to Markets
         </button>

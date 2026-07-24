@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { formatCoins } from "@/lib/format";
 import Navbar from "@/components/Navbar";
+import ConfirmModal from "@/components/ConfirmModal";
+import { showToast } from "@/components/Toast";
 
 interface User {
   id: number;
@@ -58,6 +60,12 @@ export default function AdminPage() {
   const [giveCoinsAmount, setGiveCoinsAmount] = useState("");
   const [givingCoins, setGivingCoins] = useState(false);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const [confirmMsg, setConfirmMsg] = useState("");
+  const [confirmDanger, setConfirmDanger] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
@@ -95,6 +103,14 @@ export default function AdminPage() {
       .catch(console.error);
   }
 
+  function openConfirm(title: string, msg: string, danger: boolean, action: () => void) {
+    setConfirmTitle(title);
+    setConfirmMsg(msg);
+    setConfirmDanger(danger);
+    setConfirmAction(() => action);
+    setConfirmOpen(true);
+  }
+
   async function handleSaveTrading() {
     setSavingTrading(true);
     try {
@@ -103,9 +119,9 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tradingSettings),
       });
-      alert("Trading settings saved!");
+      showToast("Trading settings saved!", "success");
     } catch {
-      alert("Failed to save settings");
+      showToast("Failed to save settings", "error");
     } finally {
       setSavingTrading(false);
     }
@@ -123,15 +139,15 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Gave ${amount}c to user`);
+        showToast(`Gave ${amount}c to user`, "success");
         setGiveCoinsUserId(null);
         setGiveCoinsAmount("");
         fetchAdminData();
       } else {
-        alert(data.error || "Failed");
+        showToast(data.error || "Failed", "error");
       }
     } catch {
-      alert("Error giving coins");
+      showToast("Error giving coins", "error");
     } finally {
       setGivingCoins(false);
     }
@@ -147,14 +163,14 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error);
+        showToast(data.error || "Failed to create company", "error");
         return;
       }
       setShowNewForm(false);
       setNewCompany({ name: "", ticker: "", description: "", share_price: 10000, total_shares: 1000 });
       fetchAdminData();
     } catch {
-      alert("Error creating company");
+      showToast("Error creating company", "error");
       fetchAdminData();
     }
   }
@@ -175,50 +191,50 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Failed to update company");
+        showToast(data.error || "Failed to update company", "error");
         return;
       }
       setEditingCompany(null);
       fetchAdminData();
     } catch {
-      alert("Error updating company");
+      showToast("Error updating company", "error");
     }
   }
 
   async function handleDeleteCompany(id: number) {
-    if (!confirm("Delete this company? This cannot be undone.")) return;
-    try {
-      const res = await fetch(`/api/admin/companies/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Failed to delete company");
-        return;
+    openConfirm("Delete Company", "Delete this company? This cannot be undone.", true, async () => {
+      try {
+        const res = await fetch(`/api/admin/companies/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || "Failed to delete company", "error");
+          return;
+        }
+        fetchAdminData();
+      } catch {
+        showToast("Error deleting company", "error");
       }
-      fetchAdminData();
-    } catch {
-      alert("Error deleting company");
-    }
+    });
   }
 
   async function handleResetMarket() {
-    if (!confirm("This will DELETE all user holdings and reset all company prices to their initial values. Are you sure?")) return;
-    if (!confirm("FINAL WARNING: This cannot be undone. All players lose their shares. Continue?")) return;
-
-    setResetting(true);
-    try {
-      const res = await fetch("/api/admin/reset", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        alert("Market has been reset! All holdings cleared and prices restored.");
-        fetchAdminData();
-      } else {
-        alert(data.error || "Reset failed");
+    openConfirm("Reset Market", "This will DELETE all user holdings and reset all company prices. This cannot be undone. Continue?", true, async () => {
+      setResetting(true);
+      try {
+        const res = await fetch("/api/admin/reset", { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+          showToast("Market has been reset!", "success");
+          fetchAdminData();
+        } else {
+          showToast(data.error || "Reset failed", "error");
+        }
+      } catch {
+        showToast("Error resetting market", "error");
+      } finally {
+        setResetting(false);
       }
-    } catch {
-      alert("Error resetting market");
-    } finally {
-      setResetting(false);
-    }
+    });
   }
 
   if (status === "loading") {
@@ -240,6 +256,15 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen">
       <Navbar />
+      <ConfirmModal
+        open={confirmOpen}
+        title={confirmTitle}
+        message={confirmMsg}
+        danger={confirmDanger}
+        confirmText={confirmDanger ? "Delete" : "Confirm"}
+        onConfirm={() => { setConfirmOpen(false); confirmAction(); }}
+        onCancel={() => setConfirmOpen(false)}
+      />
       <div className="max-w-6xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-white mb-2">Admin Panel</h1>
         <p className="text-gray-400 mb-8">Manage companies, users, and the market</p>

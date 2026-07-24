@@ -51,7 +51,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="glass-card max-w-md w-full">
+      <div className="glass-card max-w-md w-full animate-login-reveal">
         <h1 className="text-3xl font-bold text-center mb-2 gradient-text">Welcome Back</h1>
         <p className="text-gray-400 text-center mb-8">Sign in to trade</p>
 

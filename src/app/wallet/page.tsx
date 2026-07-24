@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import Navbar from "@/components/Navbar";
+import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
 
 const PACKAGES = [
@@ -63,10 +64,10 @@ export default function WalletPage() {
           setCardName("");
         }, 3000);
       } else {
-        alert(data.error || "Payment failed");
+        showToast(data.error || "Payment failed", "error");
       }
     } catch {
-      alert("Error processing payment");
+      showToast("Error processing payment", "error");
     } finally {
       setProcessing(false);
     }

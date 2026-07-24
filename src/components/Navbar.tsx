@@ -8,12 +8,24 @@ import { formatCoins } from "@/lib/format";
 export default function Navbar() {
   const { data: session, status } = useSession();
   const [isGuest, setIsGuest] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     setIsGuest(localStorage.getItem("guest") === "true");
   }, []);
 
   const isLoggedIn = isGuest || !!session;
+
+  function handleLogout() {
+    setLoggingOut(true);
+    document.body.classList.add("animate-logout-slide");
+    setTimeout(() => {
+      localStorage.removeItem("guest");
+      signOut({ redirect: false }).then(() => {
+        window.location.href = "/login";
+      });
+    }, 350);
+  }
 
   return (
     <nav className="glass sticky top-0 z-50 px-6 py-3">
@@ -60,13 +72,9 @@ export default function Navbar() {
                     {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
                   </span>
                   <button
-                    onClick={() => {
-                      localStorage.removeItem("guest");
-                      signOut({ redirect: false }).then(() => {
-                        window.location.href = "/login";
-                      });
-                    }}
-                    className="text-gray-400 hover:text-red-400 transition-colors text-sm"
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="text-gray-400 hover:text-red-400 transition-colors text-sm disabled:opacity-50"
                   >
                     Logout
                   </button>

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
+import PageTransition from "@/components/PageTransition";
+import ToastContainer from "@/components/Toast";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
@@ -14,7 +16,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className="min-h-screen">
-        <AuthProvider session={session}>{children}</AuthProvider>
+        <AuthProvider session={session}>
+          <PageTransition>{children}</PageTransition>
+          <ToastContainer />
+        </AuthProvider>
       </body>
     </html>
   );

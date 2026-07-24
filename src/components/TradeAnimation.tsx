@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface TradeAnimationProps {
   type: "buy" | "sell" | null;
@@ -10,43 +10,45 @@ interface TradeAnimationProps {
 export default function TradeAnimation({ type, onComplete }: TradeAnimationProps) {
   const [visible, setVisible] = useState(false);
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
+  const [animType, setAnimType] = useState<"buy" | "sell">("buy");
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     if (!type) return;
+    setAnimType(type);
     setVisible(true);
     setPhase("enter");
 
-    const showTimer = setTimeout(() => setPhase("show"), 100);
-    const exitTimer = setTimeout(() => setPhase("exit"), 1800);
-    const doneTimer = setTimeout(() => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+
+    timers.current.push(setTimeout(() => setPhase("show"), 50));
+    timers.current.push(setTimeout(() => setPhase("exit"), 1600));
+    timers.current.push(setTimeout(() => {
       setVisible(false);
       onComplete();
-    }, 2400);
+    }, 2100));
 
-    return () => {
-      clearTimeout(showTimer);
-      clearTimeout(exitTimer);
-      clearTimeout(doneTimer);
-    };
-  }, [type, onComplete]);
+    return () => { timers.current.forEach(clearTimeout); };
+  }, [type]);
 
   if (!visible || !type) return null;
 
-  const isBuy = type === "buy";
+  const isBuy = animType === "buy";
 
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
-      style={{ perspective: "800px" }}
     >
       <div
-        className={`flex flex-col items-center gap-4 transition-all duration-500 ${
+        className={`flex flex-col items-center gap-4 ${
           phase === "enter"
-            ? "opacity-0 scale-50"
-            : phase === "show"
-            ? "opacity-100 scale-100"
-            : "opacity-0 scale-110"
+            ? "opacity-0 scale-75"
+            : phase === "exit"
+            ? "opacity-0 scale-110"
+            : "opacity-100 scale-100"
         }`}
+        style={{ transition: phase === "enter" ? "all 0.3s cubic-bezier(0.22,1,0.36,1)" : "all 0.4s cubic-bezier(0.22,1,0.36,1)" }}
       >
         <div className="relative">
           <div
@@ -60,13 +62,13 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
             height="120"
             viewBox="0 0 24 24"
             fill="none"
-            className={`relative drop-shadow-2xl ${
+            className={`relative ${
               isBuy
-                ? "text-green-400 [filter:drop-shadow(0_0_20px_rgba(34,197,94,0.6))]"
-                : "text-red-400 [filter:drop-shadow(0_0_20px_rgba(239,68,68,0.6))]"
+                ? "text-green-400 drop-shadow-[0_0_20px_rgba(34,197,94,0.6)]"
+                : "text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]"
             }`}
             style={{
-              animation: phase === "show" ? (isBuy ? "lockBounce 0.6s ease-out" : "unlockSwing 0.8s ease-out") : "none",
+              animation: phase === "show" ? (isBuy ? "lockBounce 0.6s ease-out forwards" : "unlockSwing 0.8s ease-out forwards") : "none",
             }}
           >
             {isBuy ? (
@@ -76,7 +78,6 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
-                  className="lock-shackle"
                   style={{
                     animation: phase === "show" ? "shackleLift 0.6s ease-out 0.2s both" : "none",
                     transformOrigin: "12px 11px",
@@ -93,7 +94,6 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
                   strokeWidth="2"
                   strokeLinecap="round"
                   fill="none"
-                  className="lock-shackle"
                   style={{
                     animation: phase === "show" ? "shackleSwing 0.8s ease-out 0.1s both" : "none",
                     transformOrigin: "12px 11px",
@@ -114,7 +114,7 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
             textShadow: isBuy
               ? "0 0 20px rgba(34,197,94,0.5)"
               : "0 0 20px rgba(239,68,68,0.5)",
-            animation: phase === "show" ? "textPulse 0.5s ease-out" : "none",
+            animation: phase === "show" ? "textPulse 0.5s ease-out 0.1s both" : "none",
           }}
         >
           {isBuy ? "ORDER LOCKED" : "SELL ORDER PLACED"}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import StockCard from "@/components/StockCard";
 import Navbar from "@/components/Navbar";
@@ -14,6 +14,8 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [isGuest, setIsGuest] = useState(false);
+  const [scrollScale, setScrollScale] = useState(1);
+  const mainRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const guest = localStorage.getItem("guest") === "true";
@@ -23,6 +25,18 @@ export default function DashboardPage() {
       setIsGuest(true);
     }
   }, [status]);
+
+  useEffect(() => {
+    function onScroll() {
+      const scrollY = window.scrollY;
+      const maxScroll = 800;
+      const progress = Math.min(scrollY / maxScroll, 1);
+      const scale = 1 + progress * 0.03;
+      setScrollScale(scale);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     function loadStocks() {
@@ -114,7 +128,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8" ref={mainRef} style={{ transform: `scale(${scrollScale})`, transformOrigin: "top center" }}>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>
