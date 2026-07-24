@@ -103,6 +103,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
       available_shares: availableShares,
       my_trades: myTrades,
       recent_transactions: recentTransactions,
+    }, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch (error) {
     console.error("Error fetching stock:", error);

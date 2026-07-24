@@ -57,7 +57,9 @@ export async function GET() {
       .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    return NextResponse.json(enriched);
+    return NextResponse.json(enriched, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   } catch (error) {
     console.error("Error fetching stocks:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
