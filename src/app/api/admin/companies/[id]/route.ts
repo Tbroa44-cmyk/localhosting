@@ -19,7 +19,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     const db = getDb();
     await db.prepare("UPDATE companies SET name = COALESCE(?, name), description = COALESCE(?, description), share_price = COALESCE(?, share_price), total_shares = COALESCE(?, total_shares) WHERE id = ?").run(
-      name || null, description || null, share_price || null, total_shares || null, id
+      name ?? null, description ?? null, share_price ?? null, total_shares ?? null, id
     );
 
     return NextResponse.json({ message: "Company updated" });
@@ -43,6 +43,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
     const db = getDb();
 
+    await db.prepare("DELETE FROM orders WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM price_history WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM holdings WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM transactions WHERE company_id = ?").run(id);

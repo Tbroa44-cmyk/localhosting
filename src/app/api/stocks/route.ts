@@ -15,16 +15,16 @@ export async function GET() {
         "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
       ).all(company.id) as any[];
 
-      const todayHistory = allHistory.filter((h: any) => h.timestamp >= oneDayAgo);
-      const monthHistory = allHistory.filter((h: any) => h.timestamp >= oneMonthAgo);
+      const todayHistory = allHistory.filter((h: any) => Number(h.timestamp) >= oneDayAgo);
+      const monthHistory = allHistory.filter((h: any) => Number(h.timestamp) >= oneMonthAgo);
 
-      const currentPrice = company.share_price;
+      const currentPrice = Number(company.share_price) || 0;
 
-      const dayStart = todayHistory.length > 0 ? todayHistory[0].price : currentPrice;
+      const dayStart = todayHistory.length > 0 ? Number(todayHistory[0].price) : currentPrice;
       const dayChange = currentPrice - dayStart;
       const dayChangePercent = dayStart > 0 ? ((dayChange / dayStart) * 100) : 0;
 
-      const monthStart = monthHistory.length > 0 ? monthHistory[0].price : currentPrice;
+      const monthStart = monthHistory.length > 0 ? Number(monthHistory[0].price) : currentPrice;
       const monthChange = currentPrice - monthStart;
       const monthChangePercent = monthStart > 0 ? ((monthChange / monthStart) * 100) : 0;
 
@@ -40,7 +40,7 @@ export async function GET() {
         "SELECT COUNT(*) as count FROM holdings WHERE company_id = ? AND shares_owned > 0"
       ).all(company.id))[0] as { count: number };
 
-      const recentPrices = allHistory.slice(-20).map((h: any) => h.price);
+      const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);
 
       return {
         ...company,

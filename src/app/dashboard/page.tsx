@@ -25,17 +25,17 @@ export default function DashboardPage() {
   }, [status]);
 
   useEffect(() => {
-    fetch("/api/stocks")
-      .then((r) => r.json())
-      .then((data) => {
-        setCompanies(data);
-        setLoading(false);
-      });
-    const interval = setInterval(() => {
+    function loadStocks() {
       fetch("/api/stocks")
         .then((r) => r.json())
-        .then((data) => setCompanies(data));
-    }, 30000);
+        .then((data) => {
+          setCompanies(Array.isArray(data) ? data : []);
+          setLoading(false);
+        })
+        .catch(() => { setCompanies([]); setLoading(false); });
+    }
+    loadStocks();
+    const interval = setInterval(loadStocks, 30000);
     return () => clearInterval(interval);
   }, []);
 

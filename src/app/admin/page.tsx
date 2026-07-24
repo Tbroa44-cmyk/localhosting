@@ -162,19 +162,26 @@ export default function AdminPage() {
   async function handleUpdateCompany(e: React.FormEvent) {
     e.preventDefault();
     if (!editingCompany) return;
-    const res = await fetch(`/api/admin/companies/${editingCompany.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: editingCompany.name,
-        description: editingCompany.description,
-        share_price: editingCompany.share_price,
-        total_shares: editingCompany.total_shares,
-      }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/admin/companies/${editingCompany.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingCompany.name,
+          description: editingCompany.description,
+          share_price: editingCompany.share_price,
+          total_shares: editingCompany.total_shares,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to update company");
+        return;
+      }
       setEditingCompany(null);
       fetchAdminData();
+    } catch {
+      alert("Error updating company");
     }
   }
 
@@ -185,11 +192,11 @@ export default function AdminPage() {
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || "Failed to delete company");
+        return;
       }
       fetchAdminData();
     } catch {
       alert("Error deleting company");
-      fetchAdminData();
     }
   }
 

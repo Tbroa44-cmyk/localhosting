@@ -201,7 +201,10 @@ async function executeSelect(sql: string, params: any[], method: "get" | "all"):
   return method === "get" ? results[0] : results;
 }
 
-function coerceValue(v: any): any {
+const TEXT_FIELDS = new Set(["ticker", "name", "description", "type", "status", "email", "username", "password", "paypal_order_id"]);
+
+function coerceValue(v: any, fieldName?: string): any {
+  if (fieldName && TEXT_FIELDS.has(fieldName)) return v;
   if (typeof v === "string" && v !== "" && !isNaN(Number(v))) return Number(v);
   return v;
 }
@@ -213,10 +216,10 @@ function flattenRow(row: any): any {
     if (key === "id") flat.id = row.id;
     else if (value !== null && typeof value === "object" && !Array.isArray(value) && (value as any).id !== undefined && key.endsWith("s")) {
       for (const [fk, fv] of Object.entries(value as Record<string, any>)) {
-        flat[fk] = coerceValue(fv);
+        flat[fk] = coerceValue(fv, fk);
       }
     } else {
-      flat[key] = coerceValue(value);
+      flat[key] = coerceValue(value, key);
     }
   }
   return flat;
@@ -328,12 +331,12 @@ async function executeJoinQuery(
     for (const [key, value] of Object.entries(row)) {
       if (key === joinTable && value && typeof value === "object" && !Array.isArray(value)) {
         for (const [fk, fv] of Object.entries(value)) {
-          if (fk === "name" && colsStr.includes("as company_name")) flat["company_name"] = coerceValue(fv);
-          else if (fk === "share_price" && colsStr.includes("as current_price")) flat["current_price"] = coerceValue(fv);
-          else flat[fk] = coerceValue(fv);
+          if (fk === "name" && colsStr.includes("as company_name")) flat["company_name"] = coerceValue(fv, "name");
+          else if (fk === "share_price" && colsStr.includes("as current_price")) flat["current_price"] = coerceValue(fv, "share_price");
+          else flat[fk] = coerceValue(fv, fk);
         }
       } else {
-        flat[key] = coerceValue(value);
+        flat[key] = coerceValue(value, key);
       }
     }
     return flat;
