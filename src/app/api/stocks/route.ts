@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
-import getDb from "@/lib/db";
+import getDb, { getLowestPendingSellsBulk, updateCompanyPrice } from "@/lib/db";
 
 export async function GET() {
   try {
     const db = getDb();
     const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all() as any[];
+
+    const lowestSells = await getLowestPendingSellsBulk();
+
+    for (const company of companies) {
+      const effectivePrice = lowestSells.get(company.id);
+      if (effectivePrice !== undefined && effectivePrice !== Number(company.share_price)) {
+        await updateCompanyPrice(company.id, effectivePrice);
+        company.share_price = effectivePrice;
+      }
+    }
 
     const results = await Promise.allSettled(companies.map(async (company) => {
       const now = Date.now();

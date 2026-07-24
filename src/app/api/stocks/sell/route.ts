@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { placeLimitOrder } from "@/lib/stock-engine";
-import getDb from "@/lib/db";
+import getDb, { getLowestPendingSell, getCompanyPrice } from "@/lib/db";
 
 async function isTradingOpen(): Promise<{ open: boolean; message: string }> {
   try {
@@ -43,7 +43,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const result = await placeLimitOrder(userId, companyId, "sell", shares, Number(company.share_price));
+    const effectivePrice = await getLowestPendingSell(companyId) ?? await getCompanyPrice(companyId);
+    const result = await placeLimitOrder(userId, companyId, "sell", shares, effectivePrice);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Sell error:", error);

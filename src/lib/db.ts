@@ -646,3 +646,56 @@ export async function insertPriceHistory(companyId: number, price: number, times
     throw new Error(`price_history insert failed: ${error.message || JSON.stringify(error)}`);
   }
 }
+
+export async function updateCompanyPrice(companyId: number, price: number): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from("companies").update({ share_price: price }).eq("id", companyId);
+  if (error) {
+    console.error("Direct updateCompanyPrice error:", JSON.stringify(error));
+    throw new Error(`updateCompanyPrice failed: ${error.message || JSON.stringify(error)}`);
+  }
+}
+
+export async function getCompanyPrice(companyId: number): Promise<number> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from("companies").select("share_price").eq("id", companyId).single();
+  if (error || !data) {
+    console.error("Direct getCompanyPrice error:", JSON.stringify(error));
+    return 0;
+  }
+  return Number(data.share_price) || 0;
+}
+
+export async function getLowestPendingSell(companyId: number, excludeOrderId?: number): Promise<number | null> {
+  const sb = getSupabase();
+  let query = sb.from("orders").select("price_per_share")
+    .eq("company_id", companyId)
+    .eq("type", "sell")
+    .eq("status", "pending")
+    .order("price_per_share", { ascending: true })
+    .limit(1);
+  if (excludeOrderId !== undefined) {
+    query = query.neq("id", excludeOrderId);
+  }
+  const { data, error } = await query;
+  if (error || !data || data.length === 0) return null;
+  return Number(data[0].price_per_share) || null;
+}
+
+export async function getLowestPendingSellsBulk(): Promise<Map<number, number>> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from("orders")
+    .select("company_id, price_per_share")
+    .eq("type", "sell")
+    .eq("status", "pending")
+    .order("price_per_share", { ascending: true });
+  if (error || !data) return new Map();
+  const map = new Map<number, number>();
+  for (const row of data) {
+    const cid = Number(row.company_id);
+    if (!map.has(cid)) {
+      map.set(cid, Number(row.price_per_share));
+    }
+  }
+  return map;
+}
