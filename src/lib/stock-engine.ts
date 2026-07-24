@@ -124,14 +124,16 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         totalCost += autoFillCost;
         remaining -= autoFillQty;
 
-        await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(company.share_price, companyId);
+        const newAutoPrice = calculateBuyPrice(company.share_price, autoFillQty);
+        await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(newAutoPrice, companyId);
         await db.prepare(
           "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
         ).run(userId, companyId, autoFillQty, company.share_price, autoFillCost);
         await db.prepare(
           "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)"
         ).run(userId, companyId, autoFillQty, company.share_price, new Date().toISOString());
-        await recordPriceHistory(db, companyId, company.share_price);
+        await recordPriceHistory(db, companyId, newAutoPrice);
+        company.share_price = newAutoPrice;
       }
     }
 

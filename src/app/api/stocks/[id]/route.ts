@@ -21,23 +21,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
       "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
     ).all(id);
 
-    const pendingBuys = await db.prepare(
-      "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending' ORDER BY price_per_share DESC, created_at ASC LIMIT 20"
-    ).all(id);
-
-    const pendingSells = await db.prepare(
-      "SELECT id, user_id, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC, created_at ASC LIMIT 20"
-    ).all(id);
-
     const totalOwned = await db.prepare(
       "SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?"
     ).all(id) as { total: number }[];
 
     const ownedShares = totalOwned[0]?.total || 0;
     const companyData = company as any;
-    let sellOrderShares = 0;
-    for (const s of pendingSells as any[]) sellOrderShares += s.shares;
-    const availableShares = Math.max(0, companyData.total_shares - ownedShares) + sellOrderShares;
+    const availableShares = Math.max(0, companyData.total_shares - ownedShares);
 
     let myTrades: any[] = [];
     let recentTransactions: any[] = [];
@@ -98,8 +88,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return NextResponse.json({
       ...company,
       price_history: priceHistory,
-      pending_buys: pendingBuys,
-      pending_sells: pendingSells,
       available_shares: availableShares,
       my_trades: myTrades,
       recent_transactions: recentTransactions,

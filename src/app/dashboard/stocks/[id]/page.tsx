@@ -8,14 +8,6 @@ import Navbar from "@/components/Navbar";
 import PriceChart from "@/components/PriceChart";
 import { formatCoins } from "@/lib/format";
 
-interface PendingOrder {
-  id: number;
-  user_id: number;
-  shares: number;
-  price_per_share: number;
-  created_at: string;
-}
-
 interface Company {
   id: number;
   name: string;
@@ -25,8 +17,6 @@ interface Company {
   total_shares: number;
   price_history: any[];
   recent_transactions: any[];
-  pending_buys: PendingOrder[];
-  pending_sells: PendingOrder[];
   available_shares: number;
 }
 
@@ -368,43 +358,8 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="lg:col-span-2">
-            <PriceChart priceHistory={priceHistory} />
-          </div>
-          <div className="glass-card">
-            <h3 className="text-lg font-semibold text-white mb-4">Order Book</h3>
-            <div className="mb-4">
-              <h4 className="text-sm font-medium text-green-400 mb-2">Buy Orders</h4>
-              {company.pending_buys?.length === 0 ? (
-                <p className="text-xs text-gray-500">No pending buy orders</p>
-              ) : (
-                <div className="space-y-1">
-                  {company.pending_buys?.slice(0, 8).map((o) => (
-                    <div key={o.id} className="flex justify-between text-xs py-1 border-b border-gray-800">
-                      <span className="text-white">{o.shares} shares</span>
-                      <span className="text-green-400">{formatCoins(o.price_per_share)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-red-400 mb-2">Sell Orders</h4>
-              {company.pending_sells?.length === 0 ? (
-                <p className="text-xs text-gray-500">No pending sell orders</p>
-              ) : (
-                <div className="space-y-1">
-                  {company.pending_sells?.slice(0, 8).map((o) => (
-                    <div key={o.id} className="flex justify-between text-xs py-1 border-b border-gray-800">
-                      <span className="text-white">{o.shares} shares</span>
-                      <span className="text-red-400">{formatCoins(o.price_per_share)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="mb-6">
+          <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
