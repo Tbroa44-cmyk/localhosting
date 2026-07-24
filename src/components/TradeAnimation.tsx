@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface TradeAnimationProps {
   type: "buy" | "sell" | null;
@@ -22,12 +23,12 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
     timers.current.forEach(clearTimeout);
     timers.current = [];
 
-    timers.current.push(setTimeout(() => setPhase("show"), 50));
-    timers.current.push(setTimeout(() => setPhase("exit"), 1600));
+    timers.current.push(setTimeout(() => setPhase("show"), 60));
+    timers.current.push(setTimeout(() => setPhase("exit"), 1800));
     timers.current.push(setTimeout(() => {
       setVisible(false);
       onComplete();
-    }, 2100));
+    }, 2300));
 
     return () => { timers.current.forEach(clearTimeout); };
   }, [type]);
@@ -36,9 +37,10 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
 
   const isBuy = animType === "buy";
 
-  return (
+  const content = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
+      className="fixed inset-0 flex items-center justify-center pointer-events-none"
+      style={{ zIndex: 2147483647 }}
     >
       <div
         className={`flex flex-col items-center gap-4 ${
@@ -48,7 +50,7 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
             ? "opacity-0 scale-110"
             : "opacity-100 scale-100"
         }`}
-        style={{ transition: phase === "enter" ? "all 0.3s cubic-bezier(0.22,1,0.36,1)" : "all 0.4s cubic-bezier(0.22,1,0.36,1)" }}
+        style={{ transition: phase === "enter" ? "all 0.35s cubic-bezier(0.22,1,0.36,1)" : "all 0.4s cubic-bezier(0.22,1,0.36,1)" }}
       >
         <div className="relative">
           <div
@@ -67,9 +69,6 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
                 ? "text-green-400 drop-shadow-[0_0_20px_rgba(34,197,94,0.6)]"
                 : "text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]"
             }`}
-            style={{
-              animation: phase === "show" ? (isBuy ? "lockBounce 0.6s ease-out forwards" : "unlockSwing 0.8s ease-out forwards") : "none",
-            }}
           >
             {isBuy ? (
               <g>
@@ -78,12 +77,17 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
+                  fill="none"
                   style={{
-                    animation: phase === "show" ? "shackleLift 0.6s ease-out 0.2s both" : "none",
+                    animation: phase === "show" ? "shackleLock 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards" : "none",
                     transformOrigin: "12px 11px",
                   }}
                 />
-                <rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" opacity="0.9" />
+                <rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" opacity="0.9"
+                  style={{
+                    animation: phase === "show" ? "bodyAppear 0.3s ease-out forwards" : "none",
+                  }}
+                />
                 <circle cx="12" cy="16" r="1.5" fill="rgba(0,0,0,0.6)" />
               </g>
             ) : (
@@ -95,11 +99,15 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
                   strokeLinecap="round"
                   fill="none"
                   style={{
-                    animation: phase === "show" ? "shackleSwing 0.8s ease-out 0.1s both" : "none",
-                    transformOrigin: "12px 11px",
+                    animation: phase === "show" ? "shackleUnlock 0.6s cubic-bezier(0.22,1,0.36,1) 0.15s forwards" : "none",
+                    transformOrigin: "7px 11px",
                   }}
                 />
-                <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.6" />
+                <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.6"
+                  style={{
+                    animation: phase === "show" ? "bodyAppear 0.3s ease-out forwards" : "none",
+                  }}
+                />
                 <circle cx="12" cy="16" r="1.5" fill="currentColor" opacity="0.8" />
               </g>
             )}
@@ -122,4 +130,7 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(content, document.body);
 }

@@ -129,32 +129,21 @@ body {
   animation: fadeSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes lockBounce {
-  0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
-  50% { transform: scale(1.15) rotate(3deg); }
-  70% { transform: scale(0.95) rotate(-1deg); }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+@keyframes shackleLock {
+  0% { transform: translateY(-14px); opacity: 0.2; }
+  50% { transform: translateY(2px); opacity: 1; }
+  70% { transform: translateY(-1px); }
+  100% { transform: translateY(0); opacity: 1; }
 }
 
-@keyframes unlockSwing {
-  0% { transform: scale(0.3) rotate(10deg); opacity: 0; }
-  30% { transform: scale(1.1) rotate(-3deg); }
-  60% { transform: scale(0.95) rotate(2deg); }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+@keyframes shackleUnlock {
+  0% { transform: rotate(0deg) translateY(0); }
+  100% { transform: rotate(-35deg) translateY(-4px); }
 }
 
-@keyframes shackleLift {
-  0% { transform: translateY(0) rotate(0deg); }
-  40% { transform: translateY(-6px) rotate(-8deg); }
-  100% { transform: translateY(-4px) rotate(-5deg); }
-}
-
-@keyframes shackleSwing {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(-25deg); }
-  50% { transform: rotate(-20deg); }
-  75% { transform: rotate(-22deg); }
-  100% { transform: rotate(-22deg); }
+@keyframes bodyAppear {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 0.9; transform: scale(1); }
 }
 
 @keyframes textPulse {
