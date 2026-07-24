@@ -653,6 +653,7 @@ async function rawSupabaseUpdate(table: string, matchCol: string, matchVal: numb
   if (!url || !key) throw new Error("Missing Supabase env vars");
 
   const endpoint = `${url}/rest/v1/${table}?${matchCol}=eq.${matchVal}`;
+  console.log(`[rawUpdate] ${table} url=${endpoint} data=${JSON.stringify(data)}`);
   const res = await fetch(endpoint, {
     method: "PATCH",
     headers: {
@@ -664,9 +665,11 @@ async function rawSupabaseUpdate(table: string, matchCol: string, matchVal: numb
     body: JSON.stringify(data),
   });
 
+  const text = await res.text().catch(() => "");
+  console.log(`[rawUpdate] ${table} result status=${res.status} ok=${res.ok} body=${text.substring(0, 200)}`);
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "no body");
-    console.error(`rawSupabaseUpdate FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, matchCol, matchVal, data });
+    console.error(`[rawUpdate] FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, matchCol, matchVal, data });
     throw new Error(`Supabase update failed for ${table}: ${res.status} ${text}`);
   }
 }
@@ -677,6 +680,7 @@ async function rawSupabaseInsert(table: string, data: Record<string, any>): Prom
   if (!url || !key) throw new Error("Missing Supabase env vars");
 
   const endpoint = `${url}/rest/v1/${table}`;
+  console.log(`[rawInsert] ${table} url=${endpoint} data=${JSON.stringify(data)}`);
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -688,9 +692,11 @@ async function rawSupabaseInsert(table: string, data: Record<string, any>): Prom
     body: JSON.stringify(data),
   });
 
+  const text = await res.text().catch(() => "");
+  console.log(`[rawInsert] ${table} result status=${res.status} ok=${res.ok} body=${text.substring(0, 200)}`);
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "no body");
-    console.error(`rawSupabaseInsert FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, data });
+    console.error(`[rawInsert] FAILED [${table}]`, { status: res.status, statusText: res.statusText, body: text, data });
     throw new Error(`Supabase insert failed for ${table}: ${res.status} ${text}`);
   }
 }

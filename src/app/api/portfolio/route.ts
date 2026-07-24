@@ -13,41 +13,62 @@ export async function GET() {
     const userId = (session.user as any).id;
     const db = getDb();
 
-    const holdings = await db.prepare(`
-      SELECT h.id, h.shares_owned, h.company_id,
-             c.name as company_name, c.ticker, c.share_price, c.total_shares
-      FROM holdings h
-      JOIN companies c ON h.company_id = c.id
-      WHERE h.user_id = ?
-      ORDER BY c.ticker
-    `).all(userId);
+    const rawHoldings = await db.prepare(
+      "SELECT id, shares_owned, company_id FROM holdings WHERE user_id = ?"
+    ).all(userId) as any[];
 
-    console.log("[Portfolio] userId:", userId, "holdings count:", (holdings as any[]).length, "holdings:", JSON.stringify(holdings));
+    console.log("[Portfolio] userId:", userId, "holdings count:", rawHoldings.length, "raw:", JSON.stringify(rawHoldings));
 
-    const totalValue = (holdings as any[]).reduce(
-      (sum: number, h: any) => sum + Number(h.share_price) * Number(h.shares_owned),
-      0
-    );
-
-    console.log("[Portfolio] totalValue:", totalValue);
-
-    const transactions = await db.prepare(`
-      SELECT t.*, c.name as company_name, c.ticker
-      FROM transactions t
-      JOIN companies c ON t.company_id = c.id
-      WHERE t.user_id = ?
-      ORDER BY t.id DESC
-      LIMIT 25
-    `).all(userId);
-
-    const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-
+    const holdings: any[] = [];
     const priceHistories: Record<number, { price: number; timestamp: number }[]> = {};
-    for (const h of holdings as any[]) {
+
+    for (const h of rawHoldings) {
+      const company = await db.prepare(
+        "SELECT name as company_name, ticker, share_price, total_shares FROM companies WHERE id = ?"
+      ).get(h.company_id) as any;
+
+      const share_price = company ? Number(company.share_price) || 0 : 0;
+      const shares_owned = Number(h.shares_owned) || 0;
+
+      holdings.push({
+        id: h.id,
+        shares_owned,
+        company_id: h.company_id,
+        company_name: company?.company_name || "Unknown",
+        ticker: company?.ticker || "???",
+        share_price,
+        total_shares: company?.total_shares || 0,
+      });
+
       priceHistories[h.company_id] = await db.prepare(
         "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
       ).all(h.company_id) as { price: number; timestamp: number }[];
     }
+
+    const totalValue = holdings.reduce(
+      (sum: number, h: any) => sum + Number(h.share_price) * Number(h.shares_owned),
+      0
+    );
+
+    console.log("[Portfolio] holdings:", JSON.stringify(holdings), "totalValue:", totalValue);
+
+    const rawTransactions = await db.prepare(
+      "SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 25"
+    ).all(userId) as any[];
+
+    const transactions = [];
+    for (const t of rawTransactions) {
+      const company = await db.prepare(
+        "SELECT name as company_name, ticker FROM companies WHERE id = ?"
+      ).get(t.company_id) as any;
+      transactions.push({
+        ...t,
+        company_name: company?.company_name || "Unknown",
+        ticker: company?.ticker || "???",
+      });
+    }
+
+    const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
     return NextResponse.json({ holdings, totalValue, transactions, user, priceHistories });
   } catch (error) {

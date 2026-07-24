@@ -32,15 +32,18 @@ export async function POST(request: Request) {
 
     const { companyId, shares } = await request.json();
     const userId = (session.user as any).id;
+    console.log("[Buy] userId:", userId, "companyId:", companyId, "shares:", shares, "companyId type:", typeof companyId);
 
     if (!companyId || !shares || shares <= 0 || !Number.isInteger(shares)) {
+      console.log("[Buy] Invalid params rejected");
       return NextResponse.json({ error: "Invalid parameters. Shares must be a positive whole number." }, { status: 400 });
     }
 
     const result = await executeBuy(userId, companyId, shares);
+    console.log("[Buy] success:", JSON.stringify(result));
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error("Buy error:", error);
+    console.error("[Buy] error:", error.message, error.stack?.substring(0, 300));
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 400 });
   }
 }

@@ -28,9 +28,22 @@ export async function GET() {
     const userId = (session.user as any).id;
     const db = getDb();
 
-    const orders = await db.prepare(
-      "SELECT o.*, c.ticker, c.name, c.share_price as current_price FROM orders o JOIN companies c ON o.company_id = c.id WHERE o.user_id = ? ORDER BY o.created_at DESC"
-    ).all(userId);
+    const rawOrders = await db.prepare(
+      "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC"
+    ).all(userId) as any[];
+
+    const orders = [];
+    for (const o of rawOrders) {
+      const company = await db.prepare(
+        "SELECT ticker, name, share_price as current_price FROM companies WHERE id = ?"
+      ).get(o.company_id) as any;
+      orders.push({
+        ...o,
+        ticker: company?.ticker || "???",
+        name: company?.name || "Unknown",
+        current_price: company?.current_price || 0,
+      });
+    }
 
     return NextResponse.json(orders);
   } catch (error) {

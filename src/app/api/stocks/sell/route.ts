@@ -32,8 +32,10 @@ export async function POST(request: Request) {
 
     const { companyId, shares } = await request.json();
     const userId = (session.user as any).id;
+    console.log("[Sell] userId:", userId, "companyId:", companyId, "shares:", shares, "companyId type:", typeof companyId);
 
     if (!companyId || !shares || shares <= 0 || !Number.isInteger(shares)) {
+      console.log("[Sell] Invalid params rejected");
       return NextResponse.json({ error: "Invalid parameters. Shares must be a positive whole number." }, { status: 400 });
     }
 
@@ -44,10 +46,12 @@ export async function POST(request: Request) {
     }
 
     const sellPrice = Math.max(5, Number(company.share_price) || 5);
+    console.log("[Sell] company.share_price:", company.share_price, "sellPrice:", sellPrice);
     const result = await placeLimitOrder(userId, companyId, "sell", shares, sellPrice);
+    console.log("[Sell] success:", JSON.stringify(result));
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error("Sell error:", error);
+    console.error("[Sell] error:", error.message, error.stack?.substring(0, 300));
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 400 });
   }
 }
