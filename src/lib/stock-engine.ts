@@ -41,6 +41,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     } | undefined;
 
     if (!company) throw new Error("Company not found");
+    company.share_price = Number(company.share_price);
+    company.total_shares = Number(company.total_shares);
     if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
@@ -186,6 +188,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
     } | undefined;
 
     if (!company) throw new Error("Company not found");
+    company.share_price = Number(company.share_price);
     if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
 
     const holding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, companyId) as
@@ -337,7 +340,7 @@ export async function matchOrders(db: any, companyId: number) {
     ).all(companyId) as any[];
 
     const matchingBuy = allPendingBuys.find(
-      (b: any) => b.price_per_share >= bestSell.price_per_share && b.user_id !== bestSell.user_id
+      (b: any) => Number(b.price_per_share) >= Number(bestSell.price_per_share) && b.user_id !== bestSell.user_id
     );
 
     if (!matchingBuy) break;
@@ -347,8 +350,8 @@ export async function matchOrders(db: any, companyId: number) {
 }
 
 async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
-  const fillQty = Math.min(buyOrder.shares, sellOrder.shares);
-  const fillPrice = sellOrder.price_per_share;
+  const fillQty = Math.min(Number(buyOrder.shares), Number(sellOrder.shares));
+  const fillPrice = Number(sellOrder.price_per_share);
 
   const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(buyOrder.company_id) as {
     id: number; share_price: number; total_shares: number;
@@ -405,7 +408,7 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
     await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
   }
 
-  const newPrice = calculateBuyPrice(company.share_price, fillQty);
+  const newPrice = calculateBuyPrice(Number(company.share_price), fillQty);
   await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(newPrice, buyOrder.company_id);
   await recordPriceHistory(db, buyOrder.company_id, newPrice);
 }

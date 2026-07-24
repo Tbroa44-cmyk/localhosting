@@ -195,6 +195,11 @@ async function executeSelect(sql: string, params: any[], method: "get" | "all"):
   return method === "get" ? results[0] : results;
 }
 
+function coerceValue(v: any): any {
+  if (typeof v === "string" && v !== "" && !isNaN(Number(v))) return Number(v);
+  return v;
+}
+
 function flattenRow(row: any): any {
   if (!row) return row;
   const flat: any = {};
@@ -202,10 +207,10 @@ function flattenRow(row: any): any {
     if (key === "id") flat.id = row.id;
     else if (value !== null && typeof value === "object" && !Array.isArray(value) && (value as any).id !== undefined && key.endsWith("s")) {
       for (const [fk, fv] of Object.entries(value as Record<string, any>)) {
-        flat[fk] = fv;
+        flat[fk] = coerceValue(fv);
       }
     } else {
-      flat[key] = value;
+      flat[key] = coerceValue(value);
     }
   }
   return flat;
@@ -311,12 +316,12 @@ async function executeJoinQuery(
     for (const [key, value] of Object.entries(row)) {
       if (key === joinTable && value && typeof value === "object" && !Array.isArray(value)) {
         for (const [fk, fv] of Object.entries(value)) {
-          if (fk === "name" && colsStr.includes("as company_name")) flat["company_name"] = fv;
-          else if (fk === "share_price" && colsStr.includes("as current_price")) flat["current_price"] = fv;
-          else flat[fk] = fv;
+          if (fk === "name" && colsStr.includes("as company_name")) flat["company_name"] = coerceValue(fv);
+          else if (fk === "share_price" && colsStr.includes("as current_price")) flat["current_price"] = coerceValue(fv);
+          else flat[fk] = coerceValue(fv);
         }
       } else {
-        flat[key] = value;
+        flat[key] = coerceValue(value);
       }
     }
     return flat;
@@ -507,7 +512,10 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
   }
 
   const { data, error } = await query.select("id");
-  if (error) console.error("Update error:", error);
+  if (error) {
+    console.error("Update error:", JSON.stringify(error), "table:", table);
+    throw new Error(`Update failed for ${table}: ${error.message || JSON.stringify(error)}`);
+  }
   return { changes: data?.length ?? 0, lastInsertRowid: 0 };
 }
 

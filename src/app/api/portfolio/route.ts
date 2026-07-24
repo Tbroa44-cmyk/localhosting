@@ -23,7 +23,7 @@ export async function GET() {
     `).all(userId);
 
     const totalValue = (holdings as any[]).reduce(
-      (sum: number, h: any) => sum + h.share_price * h.shares_owned,
+      (sum: number, h: any) => sum + Number(h.share_price) * Number(h.shares_owned),
       0
     );
 
