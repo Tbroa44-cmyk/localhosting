@@ -328,12 +328,8 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
 
     if (type === "sell") {
       const lowerSell = await getLowestPendingSell(companyId);
-
-      if (lowerSell !== null && lowerSell < priceCents) {
-        await updateCompanyPrice(companyId, lowerSell);
-      } else {
-        await updateCompanyPrice(companyId, priceCents);
-      }
+      const effectivePrice = lowerSell !== null ? Math.min(lowerSell, priceCents) : priceCents;
+      await updateCompanyPrice(companyId, effectivePrice);
     }
 
     await matchOrders(db, companyId);

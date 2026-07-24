@@ -649,7 +649,7 @@ export default getDbProxy;
 
 export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
   const sb = getSupabase();
-  const { error } = await sb.from("price_history").insert({ company_id: companyId, price, timestamp });
+  const { error } = await sb.from("price_history").insert({ company_id: companyId, price, timestamp }).select("id");
   if (error) {
     console.error("Direct price_history insert error:", JSON.stringify(error));
     throw new Error(`price_history insert failed: ${error.message || JSON.stringify(error)}`);
@@ -662,10 +662,13 @@ export async function updateCompanyPrice(companyId: number, price: number): Prom
     return;
   }
   const sb = getSupabase();
-  const { error } = await sb.from("companies").update({ share_price: price }).eq("id", companyId);
+  const { data, error } = await sb.from("companies").update({ share_price: price }).eq("id", companyId).select("id");
   if (error) {
     console.error("Direct updateCompanyPrice error:", JSON.stringify(error));
     throw new Error(`updateCompanyPrice failed: ${error.message || JSON.stringify(error)}`);
+  }
+  if (!data || data.length === 0) {
+    console.error("updateCompanyPrice: no rows updated for companyId:", companyId);
   }
 }
 

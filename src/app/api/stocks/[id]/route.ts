@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import getDb, { getLowestPendingSell, updateCompanyPrice } from "@/lib/db";
+import getDb, { getLowestPendingSell } from "@/lib/db";
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -17,11 +17,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const effectivePrice = await getLowestPendingSell(id);
-    if (effectivePrice !== null && effectivePrice !== Number((company as any).share_price)) {
-      await updateCompanyPrice(id, effectivePrice);
-      (company as any).share_price = effectivePrice;
-    }
+    const basePrice = Number((company as any).share_price) || 0;
+    const effectiveSellPrice = await getLowestPendingSell(id);
+    const effectivePrice = (effectiveSellPrice !== null && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
+    (company as any).share_price = effectivePrice;
 
     const priceHistory = await db.prepare(
       "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"

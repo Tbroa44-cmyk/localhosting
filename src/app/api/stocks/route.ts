@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import getDb, { getLowestPendingSellsBulk, updateCompanyPrice } from "@/lib/db";
+import getDb, { getLowestPendingSellsBulk } from "@/lib/db";
 
 export async function GET() {
   try {
@@ -7,14 +7,6 @@ export async function GET() {
     const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all() as any[];
 
     const lowestSells = await getLowestPendingSellsBulk();
-
-    for (const company of companies) {
-      const effectivePrice = lowestSells.get(company.id);
-      if (effectivePrice !== undefined && effectivePrice !== Number(company.share_price)) {
-        await updateCompanyPrice(company.id, effectivePrice);
-        company.share_price = effectivePrice;
-      }
-    }
 
     const results = await Promise.allSettled(companies.map(async (company) => {
       const now = Date.now();
@@ -28,7 +20,9 @@ export async function GET() {
       const todayHistory = allHistory.filter((h: any) => Number(h.timestamp) >= oneDayAgo);
       const monthHistory = allHistory.filter((h: any) => Number(h.timestamp) >= oneMonthAgo);
 
-      const currentPrice = Number(company.share_price) || 0;
+      const basePrice = Number(company.share_price) || 0;
+      const effectiveSellPrice = lowestSells.get(company.id);
+      const currentPrice = (effectiveSellPrice !== undefined && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
 
       const dayStart = todayHistory.length > 0 ? Number(todayHistory[0].price) : currentPrice;
       const dayChange = currentPrice - dayStart;
@@ -54,6 +48,7 @@ export async function GET() {
 
       return {
         ...company,
+        share_price: currentPrice,
         dayChangePercent: Math.round(dayChangePercent * 100) / 100,
         monthChangePercent: Math.round(monthChangePercent * 100) / 100,
         buyCount: buyCount?.count || 0,
