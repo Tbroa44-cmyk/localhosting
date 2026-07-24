@@ -6,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import PriceChart from "@/components/PriceChart";
+import TradeAnimation from "@/components/TradeAnimation";
 import { formatCoins } from "@/lib/format";
 
 interface Company {
@@ -37,6 +38,7 @@ export default function StockDetailPage() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState("");
+  const [tradeAnimType, setTradeAnimType] = useState<"buy" | "sell" | null>(null);
 
   const companyId = Number(params.id);
 
@@ -98,6 +100,7 @@ export default function StockDetailPage() {
         setOrderSuccess(orderType === "buy"
           ? `Market buy executed! ${orderShares} share${orderShares > 1 ? "s" : ""} purchased.`
           : `Sell order placed! ${orderShares} share${orderShares > 1 ? "s" : ""} listed at ${formatCoins(currentPrice)}.`);
+        setTradeAnimType(orderType);
       } else {
         const priceCents = Math.round(parseFloat(orderPrice) * 100);
         if (isNaN(priceCents) || priceCents <= 0) throw new Error("Enter a valid price");
@@ -110,6 +113,7 @@ export default function StockDetailPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         setOrderSuccess(data.message || "Limit order placed!");
+        setTradeAnimType(orderType);
       }
       fetchData();
     } catch (err: any) {
@@ -160,6 +164,7 @@ export default function StockDetailPage() {
   return (
     <div className="min-h-screen">
       <Navbar />
+      <TradeAnimation type={tradeAnimType} onComplete={() => setTradeAnimType(null)} />
       <div className="max-w-6xl mx-auto px-4 py-8">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-white mb-6 inline-block">
           &larr; Back to Markets

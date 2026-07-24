@@ -50,3 +50,37 @@ body {
     @apply w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
   }
 }
+
+@keyframes lockBounce {
+  0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
+  50% { transform: scale(1.15) rotate(3deg); }
+  70% { transform: scale(0.95) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes unlockSwing {
+  0% { transform: scale(0.3) rotate(10deg); opacity: 0; }
+  30% { transform: scale(1.1) rotate(-3deg); }
+  60% { transform: scale(0.95) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes shackleLift {
+  0% { transform: translateY(0) rotate(0deg); }
+  40% { transform: translateY(-6px) rotate(-8deg); }
+  100% { transform: translateY(-4px) rotate(-5deg); }
+}
+
+@keyframes shackleSwing {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-25deg); }
+  50% { transform: rotate(-20deg); }
+  75% { transform: rotate(-22deg); }
+  100% { transform: rotate(-22deg); }
+}
+
+@keyframes textPulse {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}

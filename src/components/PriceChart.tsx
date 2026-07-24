@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Line } from "react-chartjs-2";
 import { formatCoins } from "@/lib/format";
 import {
@@ -72,6 +72,12 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
 
 export default function PriceChart({ priceHistory, currentPrice }: { priceHistory: PricePoint[]; currentPrice: number }) {
   const [filter, setFilter] = useState<TimeFilter>("7d");
+  const hasAnimated = useRef(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { hasAnimated.current = true; }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filteredData = useMemo(() => {
     const now = Date.now();
@@ -141,6 +147,7 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
     () => ({
       responsive: true,
       maintainAspectRatio: false,
+      animation: hasAnimated.current ? false : { duration: 800, easing: "easeOutQuart" } as any,
       plugins: {
         tooltip: {
           backgroundColor: "rgba(0,0,0,0.8)",
@@ -186,7 +193,7 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
   const change = displayPrice - startPrice;
   const changePercent = startPrice > 0 ? ((change / startPrice) * 100).toFixed(2) : "0.00";
 
-  const chartKey = filteredData.length > 0 ? `${filteredData.length}-${filteredData[filteredData.length - 1].timestamp}` : "empty";
+  const chartKey = filter;
 
   return (
     <div className="glass-card">
