@@ -88,7 +88,7 @@ export default function PortfolioPage() {
   }, []);
 
   function fetchPortfolio() {
-    fetch("/api/portfolio")
+    fetch(`/api/portfolio?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -102,7 +102,7 @@ export default function PortfolioPage() {
       })
       .catch(console.error);
 
-    fetch("/api/orders")
+    fetch(`/api/orders?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

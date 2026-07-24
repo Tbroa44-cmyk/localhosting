@@ -53,13 +53,13 @@ export default function StockDetailPage() {
   }, [session]);
 
   const fetchData = () => {
-    fetch(`/api/stocks/${companyId}`, { cache: "no-store" })
+    fetch(`/api/stocks/${companyId}?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((res) => res.json())
       .then(setCompany)
       .catch(console.error);
 
     if (session && !isGuest) {
-      fetch("/api/portfolio")
+      fetch(`/api/portfolio?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
         .then((res) => res.json())
         .then((data) => {
           if (data.user) setUserBalance(data.user.balance || 0);
@@ -68,7 +68,7 @@ export default function StockDetailPage() {
         })
         .catch(() => {});
 
-      fetch("/api/orders")
+      fetch(`/api/orders?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
         .then((res) => res.json())
         .then((orders) => {
           setMyOrders(orders.filter((o: any) => o.company_id === companyId && o.status === "pending"));

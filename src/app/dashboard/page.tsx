@@ -40,7 +40,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     function loadStocks() {
-      fetch("/api/stocks", { cache: "no-store" })
+      fetch(`/api/stocks?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
         .then((r) => r.json())
         .then((data) => {
           setCompanies(Array.isArray(data) ? data : []);
@@ -49,7 +49,7 @@ export default function DashboardPage() {
         .catch(() => { setCompanies([]); setLoading(false); });
     }
     loadStocks();
-    const interval = setInterval(loadStocks, 15000);
+    const interval = setInterval(loadStocks, 5000);
     const onVisible = () => { if (document.visibilityState === "visible") loadStocks(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
