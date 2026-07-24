@@ -619,7 +619,6 @@ let initialized = false;
 function getDbProxy() {
   if (!initialized) {
     initialized = true;
-    seedIfEmpty().catch(console.error);
   }
 
   return {
