@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { companyId, type, shares, priceCents } = await request.json();
+    const { companyId, type, shares, priceCents, requestId } = await request.json();
 
     if (!companyId || !type || !shares || !priceCents) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -73,7 +73,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Type must be 'buy' or 'sell'" }, { status: 400 });
     }
 
-    const result = await placeLimitOrder(userId, companyId, type, shares, priceCents);
+    if (requestId && typeof requestId !== "string") {
+      return NextResponse.json({ error: "Invalid request ID" }, { status: 400 });
+    }
+
+    const result = await placeLimitOrder(userId, companyId, type, shares, priceCents, requestId);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Place order error:", error);

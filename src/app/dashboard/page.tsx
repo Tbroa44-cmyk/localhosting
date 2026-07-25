@@ -85,32 +85,32 @@ export default function DashboardPage() {
   }, [companies, search, sortBy]);
 
   const topGainers = useMemo(() =>
-    [...companies].sort((a, b) => (b.dayChangePercent || 0) - (a.dayChangePercent || 0)).slice(0, 5),
+    [...companies].sort((a, b) => (b.dayChangePercent || 0) - (a.dayChangePercent || 0)).slice(0, 6),
     [companies]
   );
 
   const topLosers = useMemo(() =>
-    [...companies].sort((a, b) => (a.dayChangePercent || 0) - (b.dayChangePercent || 0)).slice(0, 5),
+    [...companies].sort((a, b) => (a.dayChangePercent || 0) - (b.dayChangePercent || 0)).slice(0, 6),
     [companies]
   );
 
   const mostHeld = useMemo(() =>
-    [...companies].sort((a, b) => (b.holderCount || 0) - (a.holderCount || 0)).slice(0, 5),
+    [...companies].sort((a, b) => (b.holderCount || 0) - (a.holderCount || 0)).slice(0, 6),
     [companies]
   );
 
   const mostTradedBuy = useMemo(() =>
-    [...companies].sort((a, b) => (b.buyCount || 0) - (a.buyCount || 0)).slice(0, 5),
+    [...companies].sort((a, b) => (b.buyCount || 0) - (a.buyCount || 0)).slice(0, 6),
     [companies]
   );
 
   const mostTradedSell = useMemo(() =>
-    [...companies].sort((a, b) => (b.sellCount || 0) - (a.sellCount || 0)).slice(0, 5),
+    [...companies].sort((a, b) => (b.sellCount || 0) - (a.sellCount || 0)).slice(0, 6),
     [companies]
   );
 
   const priciest = useMemo(() =>
-    [...companies].sort((a, b) => b.share_price - a.share_price).slice(0, 5),
+    [...companies].sort((a, b) => b.share_price - a.share_price).slice(0, 6),
     [companies]
   );
 

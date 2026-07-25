@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { companyId, shares } = await request.json();
+    const { companyId, shares, requestId } = await request.json();
     console.log("[Buy] userId:", userId, "companyId:", companyId, "shares:", shares, "companyId type:", typeof companyId);
 
     if (!companyId || !shares || shares <= 0 || !Number.isInteger(shares)) {
@@ -35,7 +35,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid parameters. Shares must be a positive whole number." }, { status: 400 });
     }
 
-    const result = await executeBuy(userId, companyId, shares);
+    if (requestId && typeof requestId !== "string") {
+      return NextResponse.json({ error: "Invalid request ID" }, { status: 400 });
+    }
+
+    const result = await executeBuy(userId, companyId, shares, requestId);
     console.log("[Buy] success:", JSON.stringify(result));
     return NextResponse.json(result);
   } catch (error: any) {

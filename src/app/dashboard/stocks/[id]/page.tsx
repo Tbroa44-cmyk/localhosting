@@ -87,7 +87,7 @@ export default function StockDetailPage() {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companyId, shares: orderShares }),
+          body: JSON.stringify({ companyId, shares: orderShares, requestId: crypto.randomUUID() }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -102,7 +102,7 @@ export default function StockDetailPage() {
         const res = await fetch("/api/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companyId, type: orderType, shares: orderShares, priceCents }),
+          body: JSON.stringify({ companyId, type: orderType, shares: orderShares, priceCents, requestId: crypto.randomUUID() }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);

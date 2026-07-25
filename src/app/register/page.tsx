@@ -62,7 +62,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="glass-card max-w-md w-full">
         <h1 className="text-3xl font-bold text-center mb-2 gradient-text">Create Account</h1>
-        <p className="text-gray-400 text-center mb-8">Start trading with 0c balance</p>
+        <p className="text-gray-400 text-center mb-8">Start trading with a free 1.00c balance</p>
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-red-400 text-sm">

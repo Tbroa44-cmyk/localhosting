@@ -56,10 +56,19 @@ async function addToBankFund(db: any, amount: number) {
   await db.prepare("UPDATE bank_fund SET balance = ? WHERE id = 1").run(current + amount);
 }
 
-export async function executeBuy(userId: number, companyId: number, shares: number) {
+export async function executeBuy(userId: number, companyId: number, shares: number, requestId?: string) {
   const db = getDb();
 
   const buyTransaction = await db.transaction(async () => {
+    if (requestId) {
+      const existing = await db.prepare(
+        "SELECT id, status FROM orders WHERE request_id = ? AND user_id = ? AND company_id = ? AND type = 'buy'"
+      ).get(requestId, userId, companyId) as any;
+      if (existing) {
+        return { newBalance: -1, newPrice: 0, totalCost: 0, duplicate: true, message: `Duplicate order ignored (${existing.status})` };
+      }
+    }
+
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
       id: number; name: string; ticker: string; share_price: number; total_shares: number;
     } | undefined;
@@ -191,8 +200,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       totalCost += pendingCost;
 
       await db.prepare(
-        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?)"
-      ).run(userId, companyId, remaining, remaining, company.share_price, new Date().toISOString());
+        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, ?)"
+      ).run(userId, companyId, remaining, remaining, company.share_price, requestId || null, new Date().toISOString());
       pendingShares = remaining;
     }
 
@@ -282,10 +291,19 @@ export async function executeSell(userId: number, companyId: number, shares: num
   return result;
 }
 
-export async function placeLimitOrder(userId: number, companyId: number, type: "buy" | "sell", shares: number, priceCents: number) {
+export async function placeLimitOrder(userId: number, companyId: number, type: "buy" | "sell", shares: number, priceCents: number, requestId?: string) {
   const db = getDb();
 
   return await db.transaction(async () => {
+    if (requestId) {
+      const existing = await db.prepare(
+        "SELECT id, status FROM orders WHERE request_id = ? AND user_id = ? AND company_id = ? AND type = ?"
+      ).get(requestId, userId, companyId, type) as any;
+      if (existing) {
+        return { orderId: existing.id, message: `Duplicate order ignored (${existing.status})`, duplicate: true };
+      }
+    }
+
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
       id: number; share_price: number; total_shares: number;
     } | undefined;
@@ -335,8 +353,8 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     }
 
     const result = await db.prepare(
-      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)"
-    ).run(userId, companyId, type, shares, shares, priceCents, new Date().toISOString());
+      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
+    ).run(userId, companyId, type, shares, shares, priceCents, requestId || null, new Date().toISOString());
 
     if (type === "sell") {
       const lowerSell = await getLowestPendingSell(companyId);

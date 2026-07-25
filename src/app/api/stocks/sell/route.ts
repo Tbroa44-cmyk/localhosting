@@ -27,12 +27,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { companyId, shares } = await request.json();
+    const { companyId, shares, requestId } = await request.json();
     console.log("[Sell] userId:", userId, "companyId:", companyId, "shares:", shares, "companyId type:", typeof companyId);
 
     if (!companyId || !shares || shares <= 0 || !Number.isInteger(shares)) {
       console.log("[Sell] Invalid params rejected");
       return NextResponse.json({ error: "Invalid parameters. Shares must be a positive whole number." }, { status: 400 });
+    }
+
+    if (requestId && typeof requestId !== "string") {
+      return NextResponse.json({ error: "Invalid request ID" }, { status: 400 });
     }
 
     const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as any;
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const sellPrice = Math.max(5, Number(company.share_price) || 5);
     console.log("[Sell] company.share_price:", company.share_price, "sellPrice:", sellPrice);
-    const result = await placeLimitOrder(userId, companyId, "sell", shares, sellPrice);
+    const result = await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId);
     console.log("[Sell] success:", JSON.stringify(result));
     return NextResponse.json(result);
   } catch (error: any) {

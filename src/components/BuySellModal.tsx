@@ -15,7 +15,7 @@ interface BuySellModalProps {
   userBalance: number;
   sharesOwned: number;
   isAdmin?: boolean;
-  onExecute: (companyId: number, shares: number) => Promise<void>;
+  onExecute: (companyId: number, shares: number) => Promise<any>;
   onClose: () => void;
 }
 
@@ -23,6 +23,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
   const [shares, setShares] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const totalCost = company.share_price * shares;
   const totalInC = formatCoins(totalCost);
@@ -37,9 +38,19 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
   async function handleSubmit() {
     setLoading(true);
     setError("");
+    setSuccess("");
     try {
-      await onExecute(company.id, shares);
-      onClose();
+      const result = await onExecute(company.id, shares);
+      if (result?.pendingShares > 0) {
+        setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);
+      } else if (result?.message) {
+        setSuccess(result.message);
+      } else if (mode === "buy") {
+        setSuccess(`Bought ${shares} share${shares > 1 ? "s" : ""} successfully!`);
+      } else {
+        setSuccess(`Listed ${shares} share${shares > 1 ? "s" : ""} for sale!`);
+      }
+      setTimeout(() => onClose(), 2000);
     } catch (err: any) {
       setError(err.message || "Transaction failed");
     } finally {
@@ -124,6 +135,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
       </div>
 
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {success && <p className="text-green-400 text-sm mb-4">{success}</p>}
 
       <button
         onClick={handleSubmit}

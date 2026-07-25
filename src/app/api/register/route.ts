@@ -29,8 +29,8 @@ export async function POST(request: Request) {
     const result = await db.prepare("INSERT INTO users (username, email, password, balance) VALUES (?, ?, ?, 0)").run(username, email, hashedPassword);
     const userId = result.lastInsertRowid;
 
-    await db.prepare("UPDATE users SET balance = balance + 1 WHERE id = ?").run(userId);
-    const welcomeBonus = " Welcome bonus: 1c added to your balance!";
+    await db.prepare("UPDATE users SET balance = balance + 100 WHERE id = ?").run(userId);
+    const welcomeBonus = " Welcome bonus: 1.00c added to your balance!";
 
     return NextResponse.json({
       message: `Account created successfully!${welcomeBonus}`,

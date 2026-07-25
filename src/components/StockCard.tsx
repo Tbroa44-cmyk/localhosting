@@ -39,10 +39,11 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ companyId, shares }),
+      body: JSON.stringify({ companyId, shares, requestId: crypto.randomUUID() }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Transaction failed");
+    return data;
   }
 
   const price = formatCoins(company.share_price);

@@ -74,10 +74,12 @@ CREATE TABLE IF NOT EXISTS orders (
   original_shares INTEGER,
   price_per_share NUMERIC,
   status TEXT DEFAULT 'pending',
+  request_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_shares INTEGER;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS request_id TEXT;
 
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE companies DISABLE ROW LEVEL SECURITY;
