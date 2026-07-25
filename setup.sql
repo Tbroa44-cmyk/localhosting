@@ -91,10 +91,23 @@ CREATE TABLE IF NOT EXISTS comments (
 
 CREATE TABLE IF NOT EXISTS comment_likes (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-  comment_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+  user_id INTEGER,
+  comment_id INTEGER,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, comment_id)
+);
+
+CREATE TABLE IF NOT EXISTS kofi_payments (
+  id SERIAL PRIMARY KEY,
+  kofi_url TEXT,
+  email TEXT,
+  from_name TEXT,
+  amount_cents INTEGER,
+  coins INTEGER,
+  user_id INTEGER,
+  status TEXT DEFAULT 'pending',
+  raw_data JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_shares INTEGER;
@@ -113,6 +126,7 @@ ALTER TABLE settings DISABLE ROW LEVEL SECURITY;
 ALTER TABLE orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE comments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE comment_likes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE kofi_payments DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO bank_fund (id, balance) VALUES (1, 0) ON CONFLICT DO NOTHING;
 INSERT INTO settings (id, trading_enabled, trading_open_hour, trading_close_hour) VALUES (1, 1, 0, 24) ON CONFLICT DO NOTHING;
