@@ -16,9 +16,19 @@ export async function GET(request: NextRequest) {
     }
     const db = getDb();
 
-    const rawHoldings = await db.prepare(
-      "SELECT company_id, SUM(shares_owned) as shares_owned FROM holdings WHERE user_id = ? GROUP BY company_id"
+    const allUserHoldings = await db.prepare(
+      "SELECT company_id, shares_owned FROM holdings WHERE user_id = ?"
     ).all(userId) as any[];
+
+    const rawHoldingsMap: Record<number, number> = {};
+    for (const h of allUserHoldings) {
+      const cid = Number(h.company_id);
+      rawHoldingsMap[cid] = (rawHoldingsMap[cid] || 0) + Number(h.shares_owned || 0);
+    }
+    const rawHoldings = Object.entries(rawHoldingsMap).map(([company_id, shares_owned]) => ({
+      company_id: Number(company_id),
+      shares_owned,
+    }));
 
     const holdings: any[] = [];
     const priceHistories: Record<number, { price: number; timestamp: number }[]> = {};

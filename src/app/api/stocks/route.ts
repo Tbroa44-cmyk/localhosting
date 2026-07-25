@@ -48,9 +48,9 @@ export async function GET(request: NextRequest) {
       ).all(company.id))[0] as { count: number };
 
       const sharesHeld = (await db.prepare(
-        "SELECT COALESCE(SUM(shares_owned), 0) as total FROM holdings WHERE company_id = ?"
-      ).all(company.id))[0] as { total: number };
-      const shares_available = Math.max(0, Number(company.total_shares) - Number(sharesHeld.total));
+        "SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?"
+      ).all(company.id))[0] as any;
+      const shares_available = Math.max(0, Number(company.total_shares) - (sharesHeld ? Number(sharesHeld.total) || 0 : 0));
 
       const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);
 
