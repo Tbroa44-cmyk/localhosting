@@ -38,7 +38,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const availableShares = Math.max(0, companyData.total_shares - ownedShares);
 
     let myTrades: any[] = [];
-    let recentTransactions: any[] = [];
     const session = await getServerSession(authOptions);
     if (session?.user) {
       const userId = (session.user as any).id;
@@ -87,11 +86,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         const bTime = b.created_at || "";
         return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
       });
-    } else {
-      recentTransactions = await db.prepare(
-        "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 25"
-      ).all(id);
     }
+
+    const recentTransactions = await db.prepare(
+      "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 50"
+    ).all(id);
 
     return NextResponse.json({
       ...company,

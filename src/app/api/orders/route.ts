@@ -39,13 +39,13 @@ export async function GET(request: NextRequest) {
     const orders = [];
     for (const o of rawOrders) {
       const company = await db.prepare(
-        "SELECT ticker, name, share_price as current_price FROM companies WHERE id = ?"
+        "SELECT ticker, name, share_price FROM companies WHERE id = ?"
       ).get(o.company_id) as any;
       orders.push({
         ...o,
         ticker: company?.ticker || "???",
         name: company?.name || "Unknown",
-        current_price: company?.current_price || 0,
+        current_price: company?.share_price || 0,
       });
     }
 

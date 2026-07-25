@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       seenCompanies.add(h.company_id);
 
       const company = await db.prepare(
-        "SELECT name as company_name, ticker, share_price, total_shares FROM companies WHERE id = ?"
+        "SELECT name, ticker, share_price, total_shares FROM companies WHERE id = ?"
       ).get(h.company_id) as any;
 
       const share_price = company ? Number(company.share_price) || 0 : 0;
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       holdings.push({
         shares_owned,
         company_id: h.company_id,
-        company_name: company?.company_name || "Unknown",
+        company_name: company?.name || "Unknown",
         ticker: company?.ticker || "???",
         share_price,
         total_shares: company?.total_shares || 0,
@@ -73,11 +73,11 @@ export async function GET(request: NextRequest) {
     const transactions = [];
     for (const t of rawTransactions) {
       const company = await db.prepare(
-        "SELECT name as company_name, ticker FROM companies WHERE id = ?"
+        "SELECT name, ticker FROM companies WHERE id = ?"
       ).get(t.company_id) as any;
       transactions.push({
         ...t,
-        company_name: company?.company_name || "Unknown",
+        company_name: company?.name || "Unknown",
         ticker: company?.ticker || "???",
       });
     }
