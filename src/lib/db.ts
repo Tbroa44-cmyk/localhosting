@@ -90,7 +90,6 @@ function restHeaders(): Record<string, string> {
   return {
     apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
-    "Content-Type": "application/json",
   };
 }
 
@@ -117,7 +116,11 @@ function coerceRow(row: Record<string, any>): Record<string, any> {
 
 async function restFetch(path: string, options: RequestInit = {}): Promise<any> {
   const url = `${restUrl()}${path}`;
-  const res = await fetch(url, { ...options, headers: { ...restHeaders(), ...options.headers } });
+  const headers: Record<string, string> = { ...restHeaders(), ...(options.headers as Record<string, string> || {}) };
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  const res = await fetch(url, { ...options, headers });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
