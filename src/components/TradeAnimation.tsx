@@ -79,7 +79,7 @@ export default function TradeAnimation({ type, onComplete }: TradeAnimationProps
             height="120"
             viewBox="0 0 24 24"
             fill="none"
-            className={`relative ${
+            className={`relative overflow-visible ${
               isCancel
                 ? "text-yellow-400 drop-shadow-[0_0_20px_rgba(234,179,8,0.6)]"
                 : isBuy

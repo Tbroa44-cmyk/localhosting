@@ -281,7 +281,7 @@ export default function PortfolioPage() {
           </div>
           <div className="glass-card text-center">
             <div className="text-sm text-gray-400">Total Net Worth</div>
-            <div className="text-2xl font-bold gradient-text">{formatCoins(totalValue)}</div>
+            <div className="text-2xl font-bold gradient-text">{formatCoins(userBalance + totalValue)}</div>
           </div>
         </div>
 
@@ -290,10 +290,10 @@ export default function PortfolioPage() {
             <div className="glass-card">
               <h2 className="text-lg font-semibold text-white mb-4">Holdings Breakdown</h2>
               <div className="flex flex-col items-center">
-                <svg width="200" height="200" viewBox="0 0 200 200">
+                <svg width="300" height="300" viewBox="0 0 300 300">
                   {(() => {
-                    const r = 75;
-                    const cx = 100, cy = 100;
+                    const r = 120;
+                    const cx = 150, cy = 150;
                     let startAngle = -90;
                     const segments: JSX.Element[] = [];
                     const totalHoldingValue = holdings.reduce((s, h) => s + h.share_price * h.shares_owned, 0);
@@ -317,11 +317,11 @@ export default function PortfolioPage() {
                     }
                     return segments;
                   })()}
-                  <circle cx={100} cy={100} r={40} fill="#111827" />
-                  <text x="100" y="96" textAnchor="middle" className="fill-white text-sm font-bold">
+                  <circle cx={150} cy={150} r={55} fill="#111827" />
+                  <text x="150" y="144" textAnchor="middle" className="fill-white text-lg font-bold">
                     {formatCoins(totalValue)}
                   </text>
-                  <text x="100" y="110" textAnchor="middle" className="fill-gray-400 text-xs">
+                  <text x="150" y="164" textAnchor="middle" className="fill-gray-400 text-sm">
                     Portfolio
                   </text>
                 </svg>
