@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [scrollScale, setScrollScale] = useState(1);
   const [isBanned, setIsBanned] = useState(false);
+  const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
   const mainRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,7 +48,10 @@ export default function DashboardPage() {
     document.addEventListener("visibilitychange", onVisible);
 
     fetch("/api/auth/check-ban").then(r => r.json()).then(d => {
-      if (d.banned) setIsBanned(true);
+      if (d.banned) {
+        setBanInfo({ banned: true, bannedUntil: d.bannedUntil || null });
+        setIsBanned(true);
+      }
       const params = new URLSearchParams(window.location.search);
       if (params.get("banned") === "1") setIsBanned(true);
     }).catch(() => {});
@@ -135,7 +139,11 @@ export default function DashboardPage() {
               <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-red-400 text-sm">
-              Your account has been <strong>banned</strong>. You can browse the market but cannot place orders, view your portfolio, or add funds.
+              {banInfo.bannedUntil
+                ? <>Your account is banned until <strong>{new Date(banInfo.bannedUntil).toLocaleDateString()}</strong>.</>
+                : <>Your account has been <strong>banned until further notice</strong>.</>
+              }{" "}
+              You can browse the market but cannot trade, view your portfolio, or add funds.
             </p>
           </div>
         </div>

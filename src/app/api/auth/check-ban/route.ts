@@ -16,12 +16,16 @@ export async function GET() {
     const db = getDb();
 
     try {
-      const user = await db.prepare("SELECT allowed FROM users WHERE id = ?").get(userId) as any;
+      const user = await db.prepare("SELECT allowed, banned_until FROM users WHERE id = ?").get(userId) as any;
       if (user && Number(user.allowed) === 1) {
-        return NextResponse.json({ banned: true });
+        if (user.banned_until && new Date(user.banned_until) < new Date()) {
+          await db.prepare("UPDATE users SET allowed = 0, banned_until = NULL WHERE id = ?").run(userId);
+          return NextResponse.json({ banned: false });
+        }
+        return NextResponse.json({ banned: true, bannedUntil: user.banned_until || null });
       }
     } catch {
-      // column might not exist
+      // columns might not exist
     }
 
     return NextResponse.json({ banned: false });

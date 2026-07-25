@@ -7,20 +7,6 @@ import { authOptions, getUserIdFromRequest } from "@/lib/auth";
 import { placeLimitOrder } from "@/lib/stock-engine";
 import getDb from "@/lib/db";
 
-async function isTradingOpen(): Promise<{ open: boolean; message: string }> {
-  try {
-    const db = getDb();
-    const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
-    if (!settings || (settings.trading_enabled === 1 && settings.trading_open_hour === 0 && settings.trading_close_hour === 24)) {
-      return { open: true, message: "" };
-    }
-    if (settings.trading_enabled === 0) return { open: false, message: "Markets closed by admin" };
-    const hour = (new Date().getUTCHours() + 10) % 24;
-    if (hour >= settings.trading_open_hour && hour < settings.trading_close_hour) return { open: true, message: "" };
-    return { open: false, message: `Markets closed. Opens at ${settings.trading_open_hour}:00` };
-  } catch { return { open: true, message: "" }; }
-}
-
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -75,11 +61,6 @@ export async function POST(request: NextRequest) {
       if ((session?.user as any)?.allowed === 1) {
         return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
       }
-    }
-
-    const trading = await isTradingOpen();
-    if (!trading.open) {
-      return NextResponse.json({ error: trading.message }, { status: 403 });
     }
 
     const { companyId, type, shares, priceCents } = await request.json();

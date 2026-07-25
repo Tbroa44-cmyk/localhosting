@@ -21,12 +21,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const db = getDb();
 
     if (body.unban) {
-      await db.prepare("UPDATE users SET allowed = 0 WHERE id = ?").run(userId);
+      try {
+        await db.prepare("UPDATE users SET allowed = 0, banned_until = NULL WHERE id = ?").run(userId);
+      } catch {
+        await db.prepare("UPDATE users SET allowed = 0 WHERE id = ?").run(userId);
+      }
       return NextResponse.json({ success: true, banned: false, message: "User has been unbanned" });
     }
 
-    await db.prepare("UPDATE users SET allowed = 1 WHERE id = ?").run(userId);
-    return NextResponse.json({ success: true, banned: true, message: "User has been banned" });
+    const days = typeof body.days === "number" ? body.days : 0;
+    let bannedUntil: string | null = null;
+    if (days > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      bannedUntil = d.toISOString();
+    }
+
+    try {
+      await db.prepare("UPDATE users SET allowed = 1, banned_until = ?, ban_count = COALESCE(ban_count, 0) + 1 WHERE id = ?").run(bannedUntil, userId);
+    } catch {
+      try {
+        await db.prepare("UPDATE users SET allowed = 1 WHERE id = ?").run(userId);
+      } catch {}
+    }
+
+    const msg = bannedUntil
+      ? `User banned for ${days} day${days > 1 ? "s" : ""} (until ${new Date(bannedUntil).toLocaleDateString()})`
+      : "User has been banned indefinitely";
+
+    return NextResponse.json({ success: true, banned: true, message: msg });
   } catch (error: any) {
     console.error("Ban error:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });

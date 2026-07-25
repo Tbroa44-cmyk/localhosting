@@ -76,6 +76,17 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     if (!user) throw new Error("User not found");
     const isAdmin = !!user.is_admin;
 
+    try {
+      const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
+      if (settings && (settings.trading_enabled === 0 || settings.trading_open_hour !== 0 || settings.trading_close_hour !== 24)) {
+        const hour = (new Date().getUTCHours() + 10) % 24;
+        const isOpen = settings.trading_enabled === 1 && hour >= settings.trading_open_hour && hour < settings.trading_close_hour;
+        if (!isOpen) {
+          return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price);
+        }
+      }
+    } catch {}
+
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND user_id != ? ORDER BY price_per_share ASC, created_at ASC"
     ).all(companyId, userId) as any[];

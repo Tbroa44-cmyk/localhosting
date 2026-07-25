@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="text-center max-w-2xl">
-        <h1 className="text-6xl font-bold mb-6 gradient-text">StockSim</h1>
+        <h1 className="text-6xl font-bold mb-6 gradient-text">stockgame.uk</h1>
         <p className="text-xl text-gray-400 mb-8">
           Buy and sell virtual company shares. Watch prices move with every trade.
           Build your portfolio and become the top trader.

@@ -16,6 +16,8 @@ interface User {
   balance: number;
   is_admin: number;
   allowed: number;
+  ban_count: number;
+  banned_until: string | null;
   created_at: string;
 }
 
@@ -76,6 +78,7 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState("");
   const [userBanFilter, setUserBanFilter] = useState<"all" | "banned" | "active">("all");
   const [banModalUserId, setBanModalUserId] = useState<number | null>(null);
+  const [banDuration, setBanDuration] = useState<number>(0);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -160,16 +163,17 @@ export default function AdminPage() {
   }
 
   async function handleBanUser(userId: number) {
-    openConfirm("Ban User", "Are you sure you want to ban this user? They will not be able to trade.", true, async () => {
+    openConfirm("Ban User", banDuration === 0 ? "Ban this user indefinitely?" : `Ban this user for ${banDuration} day${banDuration > 1 ? "s" : ""}?`, true, async () => {
       try {
         const res = await fetch(`/api/admin/users/${userId}/ban`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ days: banDuration }),
         });
         const data = await res.json();
         if (res.ok) {
           showToast(data.message || "User banned", "success");
+          setBanDuration(0);
           fetchAdminData();
         } else {
           showToast(data.error || "Failed", "error");
@@ -557,6 +561,23 @@ export default function AdminPage() {
 
         {activeTab === "users" && (
           <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 mb-3">
+              <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
+                <span className="text-xs text-gray-400">Ban duration:</span>
+                <select
+                  value={banDuration}
+                  onChange={(e) => setBanDuration(Number(e.target.value))}
+                  className="bg-transparent text-white text-sm outline-none"
+                >
+                  <option value={0}>Indefinite</option>
+                  <option value={1}>1 day</option>
+                  <option value={3}>3 days</option>
+                  <option value={7}>7 days</option>
+                  <option value={14}>14 days</option>
+                  <option value={30}>30 days</option>
+                </select>
+              </div>
+            </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1 relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -592,6 +613,7 @@ export default function AdminPage() {
                       <th className="text-right py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Balance</th>
                       <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Role</th>
                       <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Status</th>
+                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Bans</th>
                       <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Actions</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden md:table-cell">Joined</th>
                     </tr>
@@ -620,10 +642,20 @@ export default function AdminPage() {
                         </td>
                         <td className="py-3 px-4 text-center">
                           {u.is_admin ? null : u.allowed === 1 ? (
-                            <span className="text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-xs font-medium">Banned</span>
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-xs font-medium">Banned</span>
+                              {u.banned_until ? (
+                                <span className="text-[10px] text-gray-500">until {new Date(u.banned_until).toLocaleDateString()}</span>
+                              ) : (
+                                <span className="text-[10px] text-gray-500">indefinite</span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-green-400 bg-green-400/10 px-2 py-0.5 rounded text-xs font-medium">Active</span>
                           )}
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-400 text-sm">
+                          {u.is_admin ? null : (u.ban_count || 0)}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {!u.is_admin && (

@@ -7,7 +7,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "StockSim - Virtual Stock Market",
+  title: "stockgame.uk - Virtual Stock Market",
   description: "Buy and sell virtual company shares in real-time",
 };
 

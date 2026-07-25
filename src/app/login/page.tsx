@@ -101,6 +101,22 @@ export default function LoginPage() {
           </button>
         </form>
 
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-700" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-transparent px-3 text-gray-500">or</span>
+          </div>
+        </div>
+
+        <Link
+          href="/dashboard"
+          className="block w-full py-3 text-center bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg text-gray-300 font-medium transition-colors"
+        >
+          Browse as Guest
+        </Link>
+
         <p className="text-center text-gray-400 text-sm mt-6">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="text-blue-400 hover:text-blue-300">
