@@ -191,8 +191,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       totalCost += pendingCost;
 
       await db.prepare(
-        "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'pending', ?)"
-      ).run(userId, companyId, remaining, company.share_price, new Date().toISOString());
+        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?)"
+      ).run(userId, companyId, remaining, remaining, company.share_price, new Date().toISOString());
       pendingShares = remaining;
     }
 
@@ -335,8 +335,8 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     }
 
     const result = await db.prepare(
-      "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)"
-    ).run(userId, companyId, type, shares, priceCents, new Date().toISOString());
+      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)"
+    ).run(userId, companyId, type, shares, shares, priceCents, new Date().toISOString());
 
     if (type === "sell") {
       const lowerSell = await getLowestPendingSell(companyId);

@@ -342,24 +342,42 @@ export default function StockDetailPage() {
           <div className="glass-card mb-6 border-yellow-500/30">
             <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders ({myOrders.length})</h3>
             <div className="space-y-2">
-              {myOrders.map((order) => (
-                <div
-                  key={order.id}
-                  onClick={() => handleCancelOrder(order.id)}
-                  className="flex items-center justify-between py-2 px-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-red-500/10 transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs font-bold px-2 py-1 rounded ${order.type === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                      {order.type.toUpperCase()}
-                    </span>
-                    <span className="text-white group-hover:text-red-400 transition-colors">{order.shares} shares @ {formatCoins(order.price_per_share)}</span>
+              {myOrders.map((order) => {
+                const original = order.original_shares || order.shares;
+                const filled = original - order.shares;
+                const fillPercent = original > 0 ? Math.round((filled / original) * 100) : 0;
+                const isPartial = fillPercent > 0;
+                return (
+                  <div
+                    key={order.id}
+                    onClick={() => handleCancelOrder(order.id)}
+                    className="flex items-center justify-between py-2 px-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-red-500/10 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${order.type === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                        {order.type.toUpperCase()}
+                      </span>
+                      <span className="text-white group-hover:text-red-400 transition-colors">
+                        {order.shares} shares @ {formatCoins(order.price_per_share)}
+                      </span>
+                      {isPartial && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium">
+                          {fillPercent}% filled ({filled}/{original})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {isPartial && (
+                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${fillPercent}%` }} />
+                        </div>
+                      )}
+                      <span className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</span>
+                      <span className="text-red-400 hover:text-red-300 text-xs font-medium">Cancel</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</span>
-                    <span className="text-red-400 hover:text-red-300 text-xs font-medium">Cancel</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

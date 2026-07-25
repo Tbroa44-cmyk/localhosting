@@ -71,10 +71,13 @@ CREATE TABLE IF NOT EXISTS orders (
   company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
   type TEXT,
   shares INTEGER,
+  original_shares INTEGER,
   price_per_share NUMERIC,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_shares INTEGER;
 
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE companies DISABLE ROW LEVEL SECURITY;
