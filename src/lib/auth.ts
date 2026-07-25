@@ -11,6 +11,7 @@ interface DbUser {
   password: string;
   balance: number;
   is_admin: number;
+  allowed: number;
 }
 
 export const authOptions: NextAuthOptions = {
@@ -52,6 +53,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.isAdmin = (user as any).isAdmin;
+        token.allowed = (user as any).allowed ?? 0;
       }
       return token;
     },
@@ -60,21 +62,23 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).id = token.id;
         (session.user as any).isAdmin = !!token.isAdmin;
         (session.user as any).username = token.name;
+        (session.user as any).allowed = token.allowed ?? 0;
 
         try {
           const db = getDb();
-          const user = await db.prepare("SELECT id, username, balance, is_admin FROM users WHERE id = ?").get(token.id) as {
-            id: number;
-            username: string;
-            balance: number;
-            is_admin: any;
-          } | undefined;
+          let user: any;
+          try {
+            user = await db.prepare("SELECT id, username, balance, is_admin, allowed FROM users WHERE id = ?").get(token.id);
+          } catch {
+            user = await db.prepare("SELECT id, username, balance, is_admin FROM users WHERE id = ?").get(token.id);
+          }
 
           if (user) {
             (session.user as any).id = user.id;
             (session.user as any).username = user.username;
             (session.user as any).balance = user.balance;
             (session.user as any).isAdmin = !!user.is_admin;
+            (session.user as any).allowed = user.allowed ?? 0;
           }
         } catch {
           (session.user as any).balance = 0;

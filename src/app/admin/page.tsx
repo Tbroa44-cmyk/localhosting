@@ -15,6 +15,7 @@ interface User {
   email: string;
   balance: number;
   is_admin: number;
+  allowed: number;
   created_at: string;
 }
 
@@ -154,6 +155,29 @@ export default function AdminPage() {
     } finally {
       setGivingCoins(false);
     }
+  }
+
+  async function handleBanToggle(userId: number, currentlyBanned: boolean) {
+    const action = currentlyBanned ? "unban" : "ban";
+    openConfirm(
+      currentlyBanned ? "Unban User" : "Ban User",
+      currentlyBanned ? "Are you sure you want to unban this user? They will be able to trade again." : "Are you sure you want to ban this user? They will be unable to place trades.",
+      !currentlyBanned,
+      async () => {
+        try {
+          const res = await fetch(`/api/admin/users/${userId}/ban`, { method: "POST" });
+          const data = await res.json();
+          if (res.ok) {
+            showToast(data.message, "success");
+            fetchAdminData();
+          } else {
+            showToast(data.error || "Failed", "error");
+          }
+        } catch {
+          showToast("Error toggling ban", "error");
+        }
+      }
+    );
   }
 
   async function handleCreateCompany(e: React.FormEvent) {
@@ -331,7 +355,7 @@ export default function AdminPage() {
           <button onClick={handleSaveTrading} disabled={savingTrading} className="btn-primary mt-4">
             {savingTrading ? "Saving..." : "Save Trading Hours"}
           </button>
-          <p className="text-xs text-gray-500 mt-2">Default: 0-24 (24/7). Set open/close hours to restrict trading times.</p>
+          <p className="text-xs text-gray-500 mt-2">Hours are in Australian Queensland time (AEST, UTC+10). Default: 0-24 (24/7).</p>
         </div>
 
         <div className="glass-card mb-8 border-red-500/30">
@@ -462,6 +486,7 @@ export default function AdminPage() {
                   <th className="text-left py-2 text-gray-400">Email</th>
                   <th className="text-right py-2 text-gray-400">Balance</th>
                   <th className="text-center py-2 text-gray-400">Role</th>
+                  <th className="text-center py-2 text-gray-400">Status</th>
                   <th className="text-center py-2 text-gray-400">Give Coins</th>
                   <th className="text-right py-2 text-gray-400">Joined</th>
                 </tr>
@@ -481,6 +506,20 @@ export default function AdminPage() {
                         <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded text-xs font-bold">ADMIN</span>
                       ) : (
                         <span className="text-gray-500 text-xs">Player</span>
+                      )}
+                    </td>
+                    <td className="py-2 text-center">
+                      {!u.is_admin && (
+                        <button
+                          onClick={() => handleBanToggle(u.id, u.allowed === 1)}
+                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            u.allowed === 1
+                              ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
+                              : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                          }`}
+                        >
+                          {u.allowed === 1 ? "Unban" : "Ban"}
+                        </button>
                       )}
                     </td>
                     <td className="py-2 text-center">

@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
-    const currentHour = now.getHours();
+    // Queensland AEST is UTC+10 (no daylight saving)
+    const currentHour = (now.getUTCHours() + 10) % 24;
     const isOpen = currentHour >= settings.trading_open_hour && currentHour < settings.trading_close_hour;
 
     return NextResponse.json({

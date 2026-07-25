@@ -13,7 +13,13 @@ export async function GET() {
     }
 
     const db = getDb();
-    const users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all();
+    let users: any[] = [];
+    try {
+      users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, created_at FROM users ORDER BY created_at DESC").all() as any[];
+    } catch {
+      users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
+      for (const u of users) u.allowed = 0;
+    }
     const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all();
     const totalBalanceRows = await db.prepare("SELECT SUM(balance) as total FROM users").all() as { total: number }[];
     const totalBalance = totalBalanceRows[0] || { total: 0 };

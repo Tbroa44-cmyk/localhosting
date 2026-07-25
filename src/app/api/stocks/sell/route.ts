@@ -14,7 +14,7 @@ async function isTradingOpen(): Promise<{ open: boolean; message: string }> {
       return { open: true, message: "" };
     }
     if (settings.trading_enabled === 0) return { open: false, message: "Markets closed by admin" };
-    const hour = new Date().getHours();
+    const hour = (new Date().getUTCHours() + 10) % 24;
     if (hour >= settings.trading_open_hour && hour < settings.trading_close_hour) return { open: true, message: "" };
     return { open: false, message: `Markets closed. Opens at ${settings.trading_open_hour}:00` };
   } catch { return { open: true, message: "" }; }
@@ -27,6 +27,18 @@ export async function POST(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const db = getDb();
+    try {
+      const userInfo = await db.prepare("SELECT allowed FROM users WHERE id = ?").get(userId) as any;
+      if (userInfo && Number(userInfo.allowed) === 1) {
+        return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
+      }
+    } catch {
+      if ((session?.user as any)?.allowed === 1) {
+        return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
+      }
     }
 
     const trading = await isTradingOpen();
@@ -42,7 +54,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid parameters. Shares must be a positive whole number." }, { status: 400 });
     }
 
-    const db = getDb();
     const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as any;
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });

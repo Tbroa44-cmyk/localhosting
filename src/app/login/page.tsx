@@ -33,7 +33,15 @@ export default function LoginPage() {
       setError("Invalid username or password");
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      const sessionRes = await fetch("/api/auth/session");
+      const sessionData = await sessionRes.json();
+      if (sessionData?.user?.allowed === 1) {
+        setError("Your account has been banned from trading. You can still browse the market but cannot place orders.");
+        setLoading(false);
+        await fetch("/api/auth/signout", { method: "POST" });
+      } else {
+        router.push("/dashboard");
+      }
     }
   }
 

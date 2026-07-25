@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   password TEXT,
   balance NUMERIC DEFAULT 0,
   is_admin BOOLEAN DEFAULT FALSE,
+  allowed INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
