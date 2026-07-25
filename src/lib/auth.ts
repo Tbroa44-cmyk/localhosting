@@ -18,16 +18,16 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        if (!credentials?.username || !credentials?.password) {
           return null;
         }
 
         const db = getDb();
-        const user = await db.prepare("SELECT * FROM users WHERE email = ?").get(credentials.email) as DbUser | undefined;
+        const user = await db.prepare("SELECT * FROM users WHERE username = ?").get(credentials.username) as DbUser | undefined;
 
         if (!user) {
           return null;

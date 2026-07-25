@@ -14,6 +14,7 @@ import {
   Tooltip,
 } from "chart.js";
 import Navbar from "@/components/Navbar";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from "next/link";
 import { formatCoins } from "@/lib/format";
 
@@ -53,14 +54,14 @@ interface PendingOrder {
   created_at: string;
 }
 
-type TimeFilter = "1d" | "7d" | "1m" | "6m" | "1y" | "all";
+type TimeFilter = "1h" | "1d" | "7d" | "1m" | "6m" | "all";
 
 const FILTER_OPTIONS: { key: TimeFilter; label: string; ms: number | null }[] = [
+  { key: "1h", label: "1H", ms: 3600000 },
   { key: "1d", label: "1D", ms: 24 * 60 * 60 * 1000 },
   { key: "7d", label: "7D", ms: 7 * 24 * 60 * 60 * 1000 },
   { key: "1m", label: "1M", ms: 30 * 24 * 60 * 60 * 1000 },
   { key: "6m", label: "6M", ms: 180 * 24 * 60 * 60 * 1000 },
-  { key: "1y", label: "1Y", ms: 365 * 24 * 60 * 60 * 1000 },
   { key: "all", label: "All", ms: null },
 ];
 
@@ -121,13 +122,10 @@ export default function PortfolioPage() {
   }
 
   const userBalance = apiBalance ?? ((session?.user as any)?.balance || 0);
-  const totalPortfolio = userBalance + totalValue;
   const pendingOrders = orders.filter((o) => o.status === "pending");
 
   const reservedBuys = orders.filter((o) => o.status === "pending" && o.type === "buy").reduce((s, o) => s + o.shares * o.price_per_share, 0);
   const reservedSells = orders.filter((o) => o.status === "pending" && o.type === "sell").reduce((s, o) => s + o.shares, 0);
-
-  const totalSharesOwned = holdings.reduce((s, h) => s + h.shares_owned, 0);
 
   const earningsChart = useMemo(() => {
     const allTimestamps = new Set<number>();
@@ -170,7 +168,7 @@ export default function PortfolioPage() {
 
     const labels = filtered.map((p) => {
       const date = new Date(p.timestamp);
-      if (earningsFilter === "1d") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (earningsFilter === "1h" || earningsFilter === "1d") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       if (earningsFilter === "7d") return date.toLocaleDateString([], { weekday: "short", hour: "2-digit" });
       return date.toLocaleDateString([], { month: "short", day: "numeric" });
     });
@@ -261,7 +259,7 @@ export default function PortfolioPage() {
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <LoadingSpinner size="lg" text="Loading..." />
       </div>
     );
   }
@@ -273,7 +271,7 @@ export default function PortfolioPage() {
         <h1 className="text-3xl font-bold text-white mb-2">Portfolio</h1>
         <p className="text-gray-400 mb-8">Your holdings and transaction history</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <div className="glass-card text-center">
             <div className="text-sm text-gray-400">Cash Balance</div>
             <div className="text-2xl font-bold text-blue-400">{formatCoins(userBalance)}</div>
@@ -282,15 +280,8 @@ export default function PortfolioPage() {
             )}
           </div>
           <div className="glass-card text-center">
-            <div className="text-sm text-gray-400">Holdings Value</div>
-            <div className="text-2xl font-bold text-green-400">{formatCoins(totalValue)}</div>
-            {reservedSells > 0 && (
-              <div className="text-xs text-yellow-400 mt-1">{reservedSells} shares reserved</div>
-            )}
-          </div>
-          <div className="glass-card text-center">
             <div className="text-sm text-gray-400">Total Net Worth</div>
-            <div className="text-2xl font-bold gradient-text">{formatCoins(totalPortfolio)}</div>
+            <div className="text-2xl font-bold gradient-text">{formatCoins(totalValue)}</div>
           </div>
         </div>
 
@@ -305,9 +296,11 @@ export default function PortfolioPage() {
                     const cx = 100, cy = 100;
                     let startAngle = -90;
                     const segments: JSX.Element[] = [];
+                    const totalHoldingValue = holdings.reduce((s, h) => s + h.share_price * h.shares_owned, 0);
                     for (let i = 0; i < holdings.length; i++) {
                       const h = holdings[i];
-                      const pct = totalSharesOwned > 0 ? h.shares_owned / totalSharesOwned : 0;
+                      const holdingValue = h.share_price * h.shares_owned;
+                      const pct = totalHoldingValue > 0 ? holdingValue / totalHoldingValue : 0;
                       const angle = pct * 360;
                       if (angle <= 0) continue;
                       const endAngle = startAngle + angle;
@@ -326,22 +319,23 @@ export default function PortfolioPage() {
                   })()}
                   <circle cx={100} cy={100} r={40} fill="#111827" />
                   <text x="100" y="96" textAnchor="middle" className="fill-white text-sm font-bold">
-                    {holdings.length}
+                    {formatCoins(totalValue)}
                   </text>
                   <text x="100" y="110" textAnchor="middle" className="fill-gray-400 text-xs">
-                    {totalSharesOwned} shares
+                    Portfolio
                   </text>
                 </svg>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 w-full mt-4">
-                  {holdings.map((h, i) => (
-                    <div key={h.company_id} className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="text-sm text-gray-300 truncate">{h.ticker}</span>
-                      <span className="text-sm text-white font-medium ml-auto">
-                        {totalSharesOwned > 0 ? ((h.shares_owned / totalSharesOwned) * 100).toFixed(0) : "0"}%
-                      </span>
-                    </div>
-                  ))}
+                  {holdings.map((h, i) => {
+                    const holdingValue = h.share_price * h.shares_owned;
+                    const pct = totalValue > 0 ? (holdingValue / totalValue) * 100 : 0;
+                    return (
+                      <div key={h.company_id} className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        <span className="text-sm text-white font-medium">{pct.toFixed(0)}% {h.company_name || h.ticker}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

@@ -49,68 +49,68 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
   const isUp = company.dayChangePercent >= 0;
 
   return (
-    <>
-      <div className="glass-card hover:border-blue-500/30 transition-all group overflow-hidden">
-        <Link href={`/dashboard/stocks/${company.id}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 font-bold text-sm shrink-0">
-                {company.ticker.slice(0, 3)}
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-bold text-white group-hover:text-blue-400 transition-colors">{company.ticker}</h3>
-                <p className="text-xs text-gray-400 truncate">{company.name}</p>
-              </div>
+    <div className={`glass-card hover:border-blue-500/30 transition-all group overflow-hidden ${modalOpen ? "" : ""}`}>
+      <Link href={`/dashboard/stocks/${company.id}`}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 font-bold text-sm shrink-0">
+              {company.ticker.slice(0, 3)}
             </div>
-            <div className="flex flex-col items-end shrink-0">
-              <span className="text-2xl font-bold text-white">{price}</span>
-              <span className={`text-sm font-medium ${isUp ? "text-green-400" : "text-red-400"}`}>
-                {isUp ? "+" : ""}{company.dayChangePercent?.toFixed(2) || "0.00"}%
-              </span>
+            <div className="min-w-0">
+              <h3 className="font-bold text-white group-hover:text-blue-400 transition-colors">{company.ticker}</h3>
+              <p className="text-xs text-gray-400 truncate">{company.name}</p>
             </div>
           </div>
+          <div className="flex flex-col items-end shrink-0">
+            <span className="text-2xl font-bold text-white">{price}</span>
+            <span className={`text-sm font-medium ${isUp ? "text-green-400" : "text-red-400"}`}>
+              {isUp ? "+" : ""}{company.dayChangePercent?.toFixed(2) || "0.00"}%
+            </span>
+          </div>
+        </div>
 
-          <div className="mb-4 overflow-hidden">
-            <MiniChart prices={company.recentPrices || []} height={60} />
-          </div>
+        <div className="mb-4 overflow-hidden">
+          <MiniChart prices={company.recentPrices || []} height={60} />
+        </div>
 
-          <div className="grid grid-cols-3 gap-3 text-center text-sm text-gray-400 mb-4">
-            <div>
-              <div className="text-white font-medium">{company.shares_available?.toLocaleString() || company.total_shares?.toLocaleString()}</div>
-              <div className="text-xs">Available</div>
-            </div>
-            <div>
-              <div className="text-white font-medium">{company.holderCount || 0}</div>
-              <div className="text-xs">Holders</div>
-            </div>
-            <div>
-              <div className="text-white font-medium">{company.buyCount || 0}</div>
-              <div className="text-xs">Trades</div>
-            </div>
+        <div className="grid grid-cols-3 gap-3 text-center text-sm text-gray-400 mb-4">
+          <div>
+            <div className="text-white font-medium">{company.shares_available?.toLocaleString() || company.total_shares?.toLocaleString()}</div>
+            <div className="text-xs">Available</div>
           </div>
+          <div>
+            <div className="text-white font-medium">{company.holderCount || 0}</div>
+            <div className="text-xs">Holders</div>
+          </div>
+          <div>
+            <div className="text-white font-medium">{company.buyCount || 0}</div>
+            <div className="text-xs">Trades</div>
+          </div>
+        </div>
+      </Link>
+
+      {!modalOpen && isLoggedIn && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setModalType("buy"); setModalOpen(true); }}
+            className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium transition-colors"
+          >
+            Buy
+          </button>
+          <button
+            onClick={() => { setModalType("sell"); setModalOpen(true); }}
+            className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
+          >
+            Sell
+          </button>
+        </div>
+      )}
+
+      {!modalOpen && !isLoggedIn && (
+        <Link href="/login" className="block w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors text-center">
+          Sign In to Trade
         </Link>
-
-        {isLoggedIn ? (
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setModalType("buy"); setModalOpen(true); }}
-              className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium transition-colors"
-            >
-              Buy
-            </button>
-            <button
-              onClick={() => { setModalType("sell"); setModalOpen(true); }}
-              className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
-            >
-              Sell
-            </button>
-          </div>
-        ) : (
-          <Link href="/login" className="block w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors text-center">
-            Sign In to Trade
-          </Link>
-        )}
-      </div>
+      )}
 
       {modalOpen && (
         <BuySellModal
@@ -123,6 +123,6 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
           onClose={() => setModalOpen(false)}
         />
       )}
-    </>
+    </div>
   );
 }

@@ -18,43 +18,19 @@ export async function POST(request: Request) {
 
     const db = getDb();
 
-    const existing = await db.prepare("SELECT id FROM users WHERE email = ? OR username = ?").get(email, username);
-    if (existing) {
-      return NextResponse.json({ error: "Email or username already taken" }, { status: 409 });
-    }
+    const existingEmail = await db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+    if (existingEmail) return NextResponse.json({ error: "Email already taken" }, { status: 409 });
+
+    const existingUsername = await db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+    if (existingUsername) return NextResponse.json({ error: "Username already taken" }, { status: 409 });
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const result = await db.prepare("INSERT INTO users (username, email, password, balance) VALUES (?, ?, ?, 0)").run(username, email, hashedPassword);
     const userId = result.lastInsertRowid;
 
-    const cheapCompany = await db.prepare(
-      "SELECT id, share_price FROM companies WHERE share_price < 50 ORDER BY RANDOM() LIMIT 1"
-    ).all() as { id: number; share_price: number }[];
-
-    let welcomeBonus = "";
-    if (cheapCompany.length > 0) {
-      const company = cheapCompany[0];
-      const existingHolding = await db.prepare(
-        "SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?"
-      ).get(userId, company.id);
-
-      if (existingHolding) {
-        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + 1 WHERE id = ?").run((existingHolding as any).id);
-      } else {
-        await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, 1)").run(userId, company.id);
-      }
-
-      await db.prepare(
-        "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', 1, 0, 0)"
-      ).run(userId, company.id);
-
-      const companyInfo = await db.prepare("SELECT name, ticker FROM companies WHERE id = ?").get(company.id) as any;
-      welcomeBonus = ` Welcome bonus: 1 free share of ${companyInfo?.name || "a company"} (${companyInfo?.ticker || ""})!`;
-    } else {
-      await db.prepare("UPDATE users SET balance = balance + 25 WHERE id = ?").run(userId);
-      welcomeBonus = " Welcome bonus: 25c added to your balance!";
-    }
+    await db.prepare("UPDATE users SET balance = balance + 1 WHERE id = ?").run(userId);
+    const welcomeBonus = " Welcome bonus: 1c added to your balance!";
 
     return NextResponse.json({
       message: `Account created successfully!${welcomeBonus}`,

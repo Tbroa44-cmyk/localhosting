@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Line } from "react-chartjs-2";
+import { Line, Bar } from "react-chartjs-2";
 import { formatCoins } from "@/lib/format";
 import {
   Chart as ChartJS,
@@ -9,25 +9,34 @@ import {
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   Filler,
   Tooltip,
 } from "chart.js";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Tooltip);
 
 interface PricePoint {
   price: number;
   timestamp: number;
 }
 
-type TimeFilter = "1d" | "7d" | "1m" | "6m" | "1y" | "all";
+interface Transaction {
+  type: string;
+  shares: number;
+  price_per_share: number;
+  created_at: string;
+}
+
+type TimeFilter = "1h" | "1d" | "7d" | "1m" | "6m" | "all";
+type ViewMode = "price" | "trades";
 
 const FILTER_OPTIONS: { key: TimeFilter; label: string; ms: number | null }[] = [
+  { key: "1h", label: "1H", ms: 60 * 60 * 1000 },
   { key: "1d", label: "1D", ms: 24 * 60 * 60 * 1000 },
   { key: "7d", label: "7D", ms: 7 * 24 * 60 * 60 * 1000 },
   { key: "1m", label: "1M", ms: 30 * 24 * 60 * 60 * 1000 },
   { key: "6m", label: "6M", ms: 180 * 24 * 60 * 60 * 1000 },
-  { key: "1y", label: "1Y", ms: 365 * 24 * 60 * 60 * 1000 },
   { key: "all", label: "All", ms: null },
 ];
 
@@ -60,18 +69,95 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
     result.push(curr);
   }
 
-  const lastPoint = data[data.length - 1];
-  if (lastPoint.timestamp < now - 60_000) {
-    result.push({ price: currentPrice, timestamp: now });
-  } else {
-    result.push({ price: currentPrice, timestamp: now });
-  }
+  result.push({ price: currentPrice, timestamp: now });
 
   return result;
 }
 
-export default function PriceChart({ priceHistory, currentPrice }: { priceHistory: PricePoint[]; currentPrice: number }) {
+function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter) {
+  const now = Date.now();
+  const option = FILTER_OPTIONS.find((f) => f.key === filter);
+  let filtered = transactions;
+
+  if (option?.ms) {
+    const cutoff = now - option.ms;
+    filtered = transactions.filter((t) => new Date(t.created_at).getTime() >= cutoff);
+  }
+
+  let bucketSize: number;
+  let formatLabel: (ts: number) => string;
+
+  switch (filter) {
+    case "1h":
+      bucketSize = 5 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      break;
+    case "1d":
+      bucketSize = 60 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      break;
+    case "7d":
+      bucketSize = 24 * 60 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      break;
+    case "1m":
+      bucketSize = 24 * 60 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
+      break;
+    case "6m":
+      bucketSize = 7 * 24 * 60 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
+      break;
+    default:
+      bucketSize = 30 * 24 * 60 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", year: "2-digit" });
+  }
+
+  if (filtered.length === 0) {
+    return { labels: ["No data"], buys: [0], sells: [0], rawBuys: [0], rawSells: [0] };
+  }
+
+  const minTime = Math.min(...filtered.map((t) => new Date(t.created_at).getTime()));
+  const maxTime = Math.max(...filtered.map((t) => new Date(t.created_at).getTime()));
+
+  const buckets = new Map<number, { buys: number; sells: number }>();
+
+  for (const tx of filtered) {
+    const txTime = new Date(tx.created_at).getTime();
+    const bucketStart = Math.floor((txTime - minTime) / bucketSize) * bucketSize + minTime;
+    if (!buckets.has(bucketStart)) {
+      buckets.set(bucketStart, { buys: 0, sells: 0 });
+    }
+    const bucket = buckets.get(bucketStart)!;
+    if (String(tx.type).toLowerCase().includes("buy")) {
+      bucket.buys++;
+    } else {
+      bucket.sells++;
+    }
+  }
+
+  const sortedBuckets = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]);
+
+  return {
+    labels: sortedBuckets.map(([ts]) => formatLabel(ts)),
+    buys: sortedBuckets.map(([, b]) => b.buys),
+    sells: sortedBuckets.map(([, b]) => b.sells),
+    rawBuys: sortedBuckets.map(([, b]) => b.buys),
+    rawSells: sortedBuckets.map(([, b]) => b.sells),
+  };
+}
+
+export default function PriceChart({
+  priceHistory,
+  currentPrice,
+  transactions,
+}: {
+  priceHistory: PricePoint[];
+  currentPrice: number;
+  transactions?: Transaction[];
+}) {
   const [filter, setFilter] = useState<TimeFilter>("7d");
+  const [viewMode, setViewMode] = useState<ViewMode>("price");
   const hasAnimated = useRef(false);
 
   useEffect(() => {
@@ -90,7 +176,7 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
     return interpolateGaps(data, now, currentPrice);
   }, [priceHistory, filter, currentPrice]);
 
-  const chartData = useMemo(() => {
+  const priceChartData = useMemo(() => {
     if (filteredData.length === 0) {
       return {
         labels: ["No data"],
@@ -100,13 +186,13 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
 
     const labels = filteredData.map((p) => {
       const date = new Date(p.timestamp);
+      if (filter === "1h") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       if (filter === "1d") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       if (filter === "7d") return date.toLocaleDateString([], { weekday: "short", hour: "2-digit" });
       return date.toLocaleDateString([], { month: "short", day: "numeric" });
     });
 
     const prices = filteredData.map((p) => p.price / 100);
-
     const firstPrice = prices[0];
     const lastPrice = prices[prices.length - 1];
     const isUp = lastPrice >= firstPrice;
@@ -130,6 +216,38 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
     };
   }, [filteredData, filter]);
 
+  const tradeChartData = useMemo(() => {
+    if (!transactions || transactions.length === 0) {
+      return {
+        labels: ["No trades"],
+        datasets: [
+          { data: [0], backgroundColor: "rgba(34, 197, 94, 0.7)", borderRadius: 4 },
+          { data: [0], backgroundColor: "rgba(239, 68, 68, 0.7)", borderRadius: 4 },
+        ],
+      };
+    }
+
+    const grouped = groupTransactionsByTime(transactions, filter);
+
+    return {
+      labels: grouped.labels,
+      datasets: [
+        {
+          label: "Buys",
+          data: grouped.buys,
+          backgroundColor: "rgba(34, 197, 94, 0.7)",
+          borderRadius: 4,
+        },
+        {
+          label: "Sells",
+          data: grouped.sells,
+          backgroundColor: "rgba(239, 68, 68, 0.7)",
+          borderRadius: 4,
+        },
+      ],
+    };
+  }, [transactions, filter]);
+
   const yScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 1 };
     const prices = filteredData.map((p) => p.price / 100);
@@ -143,7 +261,7 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
     };
   }, [filteredData]);
 
-  const options = useMemo(
+  const priceOptions = useMemo(
     () => ({
       responsive: true,
       maintainAspectRatio: false,
@@ -188,44 +306,141 @@ export default function PriceChart({ priceHistory, currentPrice }: { priceHistor
     [yScale]
   );
 
+  const tradeOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: hasAnimated.current ? false : { duration: 800, easing: "easeOutQuart" } as any,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "rgba(0,0,0,0.8)",
+          titleColor: "#fff",
+          bodyColor: "#fff",
+          borderColor: "rgba(255,255,255,0.1)",
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        x: {
+          display: true,
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: { color: "#6b7280", maxTicksLimit: 8, font: { size: 11 } },
+          border: { display: false },
+        },
+        y: {
+          display: true,
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: {
+            color: "#6b7280",
+            font: { size: 11 },
+            stepSize: 1,
+            callback: (val: any) => val,
+          },
+          border: { display: false },
+        },
+      },
+      interaction: {
+        intersect: false,
+        mode: "index" as const,
+      },
+    }),
+    []
+  );
+
   const displayPrice = filteredData.length > 0 ? filteredData[filteredData.length - 1].price / 100 : 0;
   const startPrice = filteredData.length > 0 ? filteredData[0].price / 100 : 0;
   const change = displayPrice - startPrice;
   const changePercent = startPrice > 0 ? ((change / startPrice) * 100).toFixed(2) : "0.00";
 
-  const chartKey = filter;
+  const chartKey = `${filter}-${viewMode}`;
+
+  const totalBuys = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
 
   return (
     <div className="glass-card">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-white">Price History</h3>
+          <h3 className="text-lg font-semibold text-white">
+            {viewMode === "price" ? "Price History" : "Trade Activity"}
+          </h3>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-xl font-bold text-white">{formatCoins(displayPrice * 100)}</span>
-            <span className={`text-sm font-medium ${change >= 0 ? "text-green-400" : "text-red-400"}`}>
-              {change >= 0 ? "+" : ""}{formatCoins(change * 100)} ({change >= 0 ? "+" : ""}{changePercent}%)
-            </span>
+            {viewMode === "price" ? (
+              <>
+                <span className="text-xl font-bold text-white">{formatCoins(displayPrice * 100)}</span>
+                <span className={`text-sm font-medium ${change >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {change >= 0 ? "+" : ""}{formatCoins(change * 100)} ({change >= 0 ? "+" : ""}{changePercent}%)
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-green-400 font-medium">{totalBuys} buys</span>
+                <span className="text-gray-600">·</span>
+                <span className="text-sm text-red-400 font-medium">{totalSells} sells</span>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1">
-          {FILTER_OPTIONS.map((opt) => (
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1">
             <button
-              key={opt.key}
-              onClick={() => setFilter(opt.key)}
+              onClick={() => setViewMode("price")}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                filter === opt.key
+                viewMode === "price"
                   ? "bg-blue-600 text-white"
                   : "text-gray-400 hover:text-white hover:bg-gray-700"
               }`}
             >
-              {opt.label}
+              Price
             </button>
-          ))}
+            <button
+              onClick={() => setViewMode("trades")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                viewMode === "trades"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-700"
+              }`}
+            >
+              Trades
+            </button>
+          </div>
+          <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1">
+            {FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setFilter(opt.key)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                  filter === opt.key
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-400 hover:text-white hover:bg-gray-700"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="h-64 sm:h-80">
-        <Line key={chartKey} data={chartData} options={options} />
+        {viewMode === "price" ? (
+          <Line key={chartKey} data={priceChartData} options={priceOptions} />
+        ) : (
+          <Bar key={chartKey} data={tradeChartData} options={tradeOptions} />
+        )}
       </div>
+      {viewMode === "trades" && tradeChartData.labels.length > 1 && (
+        <div className="flex items-center justify-center gap-6 mt-2 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(34, 197, 94, 0.7)" }} />
+            <span className="text-gray-400">Buys ({totalBuys})</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
+            <span className="text-gray-400">Sells ({totalSells})</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

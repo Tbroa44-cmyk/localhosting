@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import StockCard from "@/components/StockCard";
 import Navbar from "@/components/Navbar";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 type SortKey = "name" | "price-asc" | "price-desc" | "day-asc" | "day-desc" | "month-asc" | "month-desc" | "holders" | "buyers" | "sellers";
 
@@ -108,7 +109,7 @@ export default function DashboardPage() {
         <Navbar />
         <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="flex items-center justify-center h-64">
-            <div className="text-gray-400 text-lg">Loading markets...</div>
+            <LoadingSpinner size="lg" text="Loading markets..." />
           </div>
         </div>
       </div>

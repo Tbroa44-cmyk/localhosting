@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { formatCoins } from "@/lib/format";
 import Navbar from "@/components/Navbar";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import ConfirmModal from "@/components/ConfirmModal";
 import { showToast } from "@/components/Toast";
 
@@ -242,7 +243,7 @@ export default function AdminPage() {
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <LoadingSpinner size="lg" text="Loading..." />
       </div>
     );
   }

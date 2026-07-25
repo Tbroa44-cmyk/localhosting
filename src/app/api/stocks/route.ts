@@ -47,6 +47,11 @@ export async function GET(request: NextRequest) {
         "SELECT COUNT(*) as count FROM holdings WHERE company_id = ? AND shares_owned > 0"
       ).all(company.id))[0] as { count: number };
 
+      const sharesHeld = (await db.prepare(
+        "SELECT COALESCE(SUM(shares_owned), 0) as total FROM holdings WHERE company_id = ?"
+      ).all(company.id))[0] as { total: number };
+      const shares_available = Math.max(0, Number(company.total_shares) - Number(sharesHeld.total));
+
       const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);
 
       return {
@@ -57,6 +62,7 @@ export async function GET(request: NextRequest) {
         buyCount: buyCount?.count || 0,
         sellCount: sellCount?.count || 0,
         holderCount: holderCount?.count || 0,
+        shares_available,
         recentPrices,
       };
     }));

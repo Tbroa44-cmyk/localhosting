@@ -7,6 +7,8 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import PriceChart from "@/components/PriceChart";
 import TradeAnimation from "@/components/TradeAnimation";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import ButtonSpinner from "@/components/ButtonSpinner";
 import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
 
@@ -131,7 +133,7 @@ export default function StockDetailPage() {
       <div className="min-h-screen">
         <Navbar />
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-400">Loading...</div>
+          <LoadingSpinner size="lg" text="Loading..." />
         </div>
       </div>
     );
@@ -320,11 +322,11 @@ export default function StockDetailPage() {
             <button
               onClick={handlePlaceOrder}
               disabled={orderLoading || (orderMode === "limit" && !orderPrice)}
-              className={`w-full py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 ${
+              className={`w-full py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
                 orderType === "buy" ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500"
               }`}
             >
-              {orderLoading ? "Processing..." : orderMode === "market" ? (orderType === "buy" ? "Buy Now" : "List for Sale") : `Place ${orderType} Limit Order`}
+              {orderLoading ? <><ButtonSpinner size={18} /> Processing...</> : orderMode === "market" ? (orderType === "buy" ? "Buy Now" : "List for Sale") : `Place ${orderType} Limit Order`}
             </button>
           </div>
         )}
@@ -356,7 +358,7 @@ export default function StockDetailPage() {
         )}
 
         <div className="mb-6">
-          <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} />
+          <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company.recent_transactions} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
