@@ -14,10 +14,10 @@ const PACKAGES = [
 ];
 
 const KOFI_URLS: Record<number, string> = {
-  100: "https://ko-fi.com/s/YOUR_STARTER_LINK",
-  500: "https://ko-fi.com/s/YOUR_POPULAR_LINK",
-  1000: "https://ko-fi.com/s/YOUR_BEST_VALUE_LINK",
-  5000: "https://ko-fi.com/s/YOUR_WHALE_LINK",
+  100: "https://ko-fi.com/s/f1b66e7d8a",
+  500: "",
+  1000: "",
+  5000: "",
 };
 
 interface PaymentRecord {
@@ -78,8 +78,8 @@ export default function WalletPage() {
   function openKoFi() {
     if (!showCheckout) return;
     const url = KOFI_URLS[showCheckout.coins];
-    if (url.includes("YOUR_")) {
-      window.alert("This payment tier is not configured yet. Please contact the admin.");
+    if (!url) {
+      window.alert("This tier is not available yet. Please check back soon!");
       return;
     }
     window.open(url, "_blank");
@@ -146,21 +146,29 @@ export default function WalletPage() {
           <>
             <h2 className="text-xl font-semibold text-white mb-4">Select a Package</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              {PACKAGES.map((pkg) => (
-                <button
-                  key={pkg.coins}
-                  onClick={() => handleBuyTier(pkg)}
-                  className={`glass-card text-center transition-all hover:scale-[1.02] ${pkg.border}`}
-                >
-                  {pkg.badge && (
-                    <div className={`text-xs font-bold ${pkg.text} mb-1`}>{pkg.badge}</div>
-                  )}
-                  <div className={`text-xs font-medium ${pkg.text} mb-1 opacity-70`}>{pkg.label}</div>
-                  <div className="text-2xl font-bold text-white">{pkg.receive.toLocaleString()}c</div>
-                  <div className="text-lg text-gray-300 font-semibold mt-1">${pkg.price.toFixed(2)}</div>
-                  <div className="text-xs text-gray-500 mt-2">Pay on Ko-fi</div>
-                </button>
-              ))}
+              {PACKAGES.map((pkg) => {
+                const available = !!KOFI_URLS[pkg.coins];
+                return (
+                  <button
+                    key={pkg.coins}
+                    onClick={() => available && handleBuyTier(pkg)}
+                    disabled={!available}
+                    className={`glass-card text-center transition-all ${
+                      available
+                        ? "hover:scale-[1.02] cursor-pointer"
+                        : "opacity-40 cursor-not-allowed"
+                    } ${pkg.border}`}
+                  >
+                    {pkg.badge && (
+                      <div className={`text-xs font-bold ${pkg.text} mb-1`}>{pkg.badge}</div>
+                    )}
+                    <div className={`text-xs font-medium ${pkg.text} mb-1 opacity-70`}>{pkg.label}</div>
+                    <div className="text-2xl font-bold text-white">{pkg.receive.toLocaleString()}c</div>
+                    <div className="text-lg text-gray-300 font-semibold mt-1">${pkg.price.toFixed(2)}</div>
+                    <div className="text-xs text-gray-500 mt-2">{available ? "Pay on Ko-fi" : "Coming soon"}</div>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
