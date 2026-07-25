@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ButtonSpinner from "./ButtonSpinner";
 
 interface Comment {
@@ -38,21 +38,28 @@ function getLevelBg(level: number): string {
 export default function CommentsSection({ companyId, isLoggedIn }: CommentsSectionProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [rateLimitPopup, setRateLimitPopup] = useState("");
+  const commentsRef = useRef<HTMLDivElement>(null);
+  const prevCountRef = useRef(0);
 
   const fetchComments = useCallback(async () => {
     try {
       const res = await fetch(`/api/stocks/${companyId}/comments?t=${Date.now()}`);
       const data = await res.json();
-      if (Array.isArray(data)) setComments(data);
+      if (Array.isArray(data)) {
+        setComments((prev) => {
+          if (JSON.stringify(prev) !== JSON.stringify(data)) return data;
+          return prev;
+        });
+      }
     } catch {}
   }, [companyId]);
 
   useEffect(() => {
     fetchComments();
-    const interval = setInterval(fetchComments, 10000);
+    const interval = setInterval(fetchComments, 15000);
     return () => clearInterval(interval);
   }, [fetchComments]);
 
@@ -67,7 +74,15 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
         body: JSON.stringify({ comment: newComment }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        if (data.rateLimited) {
+          setRateLimitPopup(data.error);
+          setTimeout(() => setRateLimitPopup(""), 5000);
+        } else {
+          setError(data.error);
+        }
+        return;
+      }
       setNewComment("");
       fetchComments();
     } catch (err: any) {
@@ -95,8 +110,17 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
   }
 
   return (
-    <div className="glass-card mt-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Comments ({comments.length})</h3>
+    <div className="mt-6 relative">
+      {rateLimitPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in" onClick={() => setRateLimitPopup("")}>
+          <div className="glass-card max-w-sm w-full mx-4 text-center animate-fade-up" onClick={(e) => e.stopPropagation()}>
+            <div className="text-4xl mb-3">⏳</div>
+            <p className="text-white font-medium mb-1">Slow down!</p>
+            <p className="text-gray-400 text-sm mb-4">{rateLimitPopup}</p>
+            <button onClick={() => setRateLimitPopup("")} className="btn-primary px-6 py-2 text-sm">Got it</button>
+          </div>
+        </div>
+      )}
 
       {isLoggedIn && (
         <div className="mb-4">
@@ -105,7 +129,7 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
               type="text"
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Leave a comment... (+3 XP)"
+              placeholder="Leave a comment..."
               maxLength={500}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               className="input-field flex-1 text-sm"
@@ -120,20 +144,15 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
             </button>
           </div>
           {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-          <p className="text-xs text-gray-600 mt-1">1 comment per hour</p>
         </div>
       )}
 
-      {!isLoggedIn && (
-        <p className="text-gray-500 text-sm mb-4">Sign in to comment and earn XP.</p>
-      )}
-
-      <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-        {comments.length === 0 && (
+      <div ref={commentsRef} className="space-y-3 max-h-96 overflow-y-auto pr-1">
+        {comments.length === 0 && isLoggedIn && (
           <p className="text-gray-500 text-sm">No comments yet. Be the first!</p>
         )}
         {comments.map((c) => (
-          <div key={c.id} className="bg-gray-800/40 rounded-lg px-4 py-3 group">
+          <div key={c.id} className="border border-gray-700/50 rounded-lg px-4 py-3">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-white text-sm font-medium">{c.username}</span>
               <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${getLevelBg(c.level)} ${getLevelColor(c.level)}`}>

@@ -1,15 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import MiniChart from "@/components/MiniChart";
 import { formatCoins } from "@/lib/format";
+
+const clickEffects = [
+  "scale(1.15) rotate(-2deg)",
+  "scale(0.92) rotate(1deg)",
+  "scale(1.05) translateY(-4px)",
+  "scale(0.97) rotate(-0.5deg)",
+];
 
 export default function Home() {
   const router = useRouter();
   const [stocks, setStocks] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+  const [clickAnim, setClickAnim] = useState<string | null>(null);
+  const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
+  const rippleId = useRef(0);
 
   useEffect(() => {
     fetch(`/api/stocks?t=${Date.now()}`)
@@ -26,35 +35,56 @@ export default function Home() {
       .catch(() => setLoaded(true));
   }, []);
 
-  return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-transparent to-purple-900/20 pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+  const addRipple = useCallback((x: number, y: number) => {
+    const id = rippleId.current++;
+    setRipples((prev) => [...prev, { id, x, y }]);
+    setTimeout(() => setRipples((prev) => prev.filter((r) => r.id !== id)), 800);
+  }, []);
 
-      <nav className="relative z-10 flex justify-between items-center px-6 py-5">
-        <div className="text-2xl font-bold gradient-text">stockgame.uk</div>
-        <button
-          onClick={() => router.push("/login")}
-          className={`px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 border
-            ${hoveredBtn === "signin"
-              ? "bg-blue-600/30 border-blue-400/60 text-blue-300 scale-105 rotate-[-1deg]"
-              : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:border-white/30"
-            }`}
-          onMouseEnter={() => setHoveredBtn("signin")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          style={{ transform: hoveredBtn === "signin" ? "rotate(-1deg) scale(1.05)" : "rotate(0.5deg)" }}
+  function handleClick(e: React.MouseEvent, path: string) {
+    const effect = clickEffects[Math.floor(Math.random() * clickEffects.length)];
+    setClickAnim(effect);
+    addRipple(e.clientX, e.clientY);
+    setTimeout(() => setClickAnim(null), 300);
+    router.push(path);
+  }
+
+  return (
+    <div className="min-h-screen relative overflow-hidden select-none">
+      {ripples.map((r) => (
+        <div
+          key={r.id}
+          className="fixed pointer-events-none z-50"
+          style={{ left: r.x, top: r.y, transform: "translate(-50%, -50%)" }}
         >
-          Sign In
-        </button>
-      </nav>
+          <div className="w-20 h-20 rounded-full border border-blue-400/40 animate-ping" />
+        </div>
+      ))}
+
+      <div className="absolute inset-0 pointer-events-none">
+        {[...Array(6)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full opacity-[0.03] bg-blue-400"
+            style={{
+              width: `${80 + i * 60}px`,
+              height: `${80 + i * 60}px`,
+              left: `${10 + i * 15}%`,
+              top: `${20 + (i % 3) * 25}%`,
+              animation: `float${i % 3} ${8 + i * 2}s ease-in-out infinite`,
+            }}
+          />
+        ))}
+      </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 pt-10 pb-20">
         <div className="text-center mb-16 animate-fade-up">
           <h1 className="text-6xl md:text-7xl font-bold mb-6">
-            <span className="gradient-text">Trade Virtual Stocks</span>
+            <span className="gradient-text">stockgame.uk</span>
           </h1>
           <p className="text-xl text-gray-400 max-w-xl mx-auto mb-4">
-            Buy and sell real-time virtual company shares. Watch prices move with every trade.
+            Buy and sell virtual company shares in real-time.
+            Watch prices move with every trade.
           </p>
           <p className="text-sm text-gray-500">No real money. Pure strategy.</p>
         </div>
@@ -62,15 +92,14 @@ export default function Home() {
         {stocks.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-20 max-w-4xl mx-auto">
             {stocks.map((stock, i) => {
-              const rotations = ["rotate-[-1.5deg]", "rotate-[1deg]", "rotate-[-0.5deg]"];
-              const delays = ["animation-delay-100", "animation-delay-300", "animation-delay-500"];
               const isUp = (stock.dayChangePercent || 0) >= 0;
+              const rotations = ["rotate-[-1.5deg]", "rotate-[1deg]", "rotate-[-0.5deg]"];
               return (
                 <div
                   key={stock.id}
-                  className={`glass-card cursor-pointer group ${rotations[i]} hover:!rotate-0 transition-all duration-500 animate-fade-up ${delays[i]}`}
-                  style={{ animationDelay: `${100 + i * 200}ms` }}
-                  onClick={() => router.push(`/dashboard/stocks/${stock.id}`)}
+                  className={`glass-card cursor-pointer group ${rotations[i]} hover:!rotate-0 transition-all duration-500 animate-fade-up`}
+                  style={{ animationDelay: `${100 + i * 200}ms`, animationFillMode: "both" }}
+                  onClick={(e) => handleClick(e, `/dashboard/stocks/${stock.id}`)}
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-8 h-8 bg-blue-500/20 rounded flex items-center justify-center text-blue-400 font-bold text-xs">
@@ -104,32 +133,35 @@ export default function Home() {
           </div>
         )}
 
-        <div className="relative max-w-lg mx-auto" style={{ minHeight: "280px" }}>
+        <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
           <button
-            onClick={() => router.push("/register")}
-            className="absolute top-0 right-0 px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 border border-green-500/30 bg-green-600/10 text-green-400 hover:bg-green-600/25 hover:border-green-400/50 hover:scale-105 hover:rotate-[1deg]"
-            style={{ transform: "rotate(-2deg)" }}
-            onMouseEnter={() => setHoveredBtn("signup")}
-            onMouseLeave={() => setHoveredBtn(null)}
+            onClick={(e) => handleClick(e, "/register")}
+            className="w-full px-8 py-5 rounded-2xl text-lg font-bold transition-all duration-300 border-2 border-green-500/40 bg-gradient-to-br from-green-600/15 to-green-900/10 text-green-400 hover:from-green-600/30 hover:to-green-900/20 hover:border-green-400/60 hover:scale-[1.03] hover:shadow-lg hover:shadow-green-500/10 active:scale-[0.97]"
+            style={{ transform: "rotate(-1.5deg)" }}
           >
             Sign Up Free
-            <span className="block text-xs text-green-500/60 mt-1 font-normal">Start with 1.00c bonus</span>
+            <span className="block text-xs text-green-500/50 mt-1 font-normal">Start with 1.00c bonus</span>
           </button>
 
-          <button
-            onClick={() => router.push("/login")}
-            className="absolute top-16 left-0 px-7 py-3.5 rounded-xl text-base font-medium transition-all duration-300 border border-purple-500/30 bg-purple-600/10 text-purple-400 hover:bg-purple-600/25 hover:border-purple-400/50 hover:scale-105 hover:rotate-[2deg]"
-            style={{ transform: "rotate(1.5deg)" }}
-            onMouseEnter={() => setHoveredBtn("guest")}
-            onMouseLeave={() => setHoveredBtn(null)}
-            onMouseDown={() => {
-              document.cookie = "guest=1;path=/;max-age=86400";
-              router.push("/dashboard");
-            }}
-          >
-            Enter as Guest
-            <span className="block text-xs text-purple-500/60 mt-1 font-normal">Browse without account</span>
-          </button>
+          <div className="flex gap-4 w-full">
+            <button
+              onClick={(e) => handleClick(e, "/login")}
+              className="flex-1 px-6 py-4 rounded-xl text-base font-semibold transition-all duration-300 border border-blue-500/30 bg-gradient-to-br from-blue-600/15 to-purple-900/10 text-blue-400 hover:from-blue-600/25 hover:to-purple-900/20 hover:border-blue-400/50 hover:scale-[1.03] hover:shadow-lg hover:shadow-blue-500/10 active:scale-[0.97]"
+              style={{ transform: "rotate(1deg)" }}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={(e) => {
+                document.cookie = "guest=1;path=/;max-age=86400";
+                handleClick(e, "/dashboard");
+              }}
+              className="flex-1 px-6 py-4 rounded-xl text-base font-semibold transition-all duration-300 border border-purple-500/30 bg-gradient-to-br from-purple-600/15 to-indigo-900/10 text-purple-400 hover:from-purple-600/25 hover:to-indigo-900/20 hover:border-purple-400/50 hover:scale-[1.03] hover:shadow-lg hover:shadow-purple-500/10 active:scale-[0.97]"
+              style={{ transform: "rotate(-0.5deg)" }}
+            >
+              Guest
+            </button>
+          </div>
         </div>
 
         <div className="mt-20 grid grid-cols-3 gap-6 text-center max-w-2xl mx-auto">
@@ -147,6 +179,7 @@ export default function Home() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

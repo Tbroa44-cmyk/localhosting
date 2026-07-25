@@ -7,6 +7,25 @@ import { authOptions, getUserIdFromRequest } from "@/lib/auth";
 import getDb from "@/lib/db";
 import { awardXP } from "@/lib/stock-engine";
 
+async function cleanupOldComments(db: any, companyId: number) {
+  try {
+    const all = await db.prepare(
+      "SELECT id FROM comments WHERE company_id = ? ORDER BY created_at DESC"
+    ).all(companyId) as any[];
+    if (all.length > 25) {
+      const idsToKeep = all.slice(0, 25).map((c: any) => c.id);
+      const placeholders = idsToKeep.map(() => "?").join(",");
+      if (placeholders) {
+        await db.prepare(
+          `DELETE FROM comments WHERE company_id = ? AND id NOT IN (${placeholders})`
+        ).run(companyId, ...idsToKeep);
+      }
+    }
+  } catch (e: any) {
+    console.error("Comment cleanup error:", e?.message || e);
+  }
+}
+
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const companyId = Number(params.id);
@@ -14,19 +33,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const db = getDb();
 
-    await db.prepare(
-      "DELETE FROM comments WHERE company_id = ? AND id NOT IN (SELECT id FROM comments WHERE company_id = ? ORDER BY created_at DESC LIMIT 25)"
-    ).run(companyId, companyId);
+    await cleanupOldComments(db, companyId);
 
-    const comments = await db.prepare(`
-      SELECT c.id, c.user_id, c.company_id, c.comment, c.likes, c.created_at,
-             u.username, u.level
-      FROM comments c
-      LEFT JOIN users u ON c.user_id = u.id
-      WHERE c.company_id = ?
-      ORDER BY c.created_at DESC
-      LIMIT 25
-    `).all(companyId) as any[];
+    const comments = await db.prepare(
+      "SELECT c.id, c.user_id, c.company_id, c.comment, c.likes, c.created_at, u.username, u.level FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.company_id = ? ORDER BY c.created_at DESC LIMIT 25"
+    ).all(companyId) as any[];
 
     let userId: number | null = null;
     try {
@@ -49,7 +60,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json(enriched);
   } catch (error) {
     console.error("Get comments error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json([], { status: 200 });
   }
 }
 
@@ -88,7 +99,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const hourMs = 60 * 60 * 1000;
       if (now - lastTime < hourMs) {
         const waitMins = Math.ceil((hourMs - (now - lastTime)) / 60000);
-        return NextResponse.json({ error: `You can comment again in ${waitMins} minute${waitMins > 1 ? "s" : ""}` }, { status: 429 });
+        return NextResponse.json({ error: `You can only comment on each stock page once per hour. Try again in ${waitMins} minute${waitMins > 1 ? "s" : ""}.`, rateLimited: true }, { status: 429 });
       }
     }
 
@@ -98,17 +109,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     await awardXP(db, userId, 3);
 
-    const countResult = await db.prepare(
-      "SELECT COUNT(*) as count FROM comments WHERE company_id = ?"
-    ).get(companyId) as any;
+    await cleanupOldComments(db, companyId);
 
-    if (countResult && countResult.count > 25) {
-      await db.prepare(
-        "DELETE FROM comments WHERE company_id = ? AND id NOT IN (SELECT id FROM comments WHERE company_id = ? ORDER BY created_at DESC LIMIT 25)"
-      ).run(companyId, companyId);
-    }
-
-    return NextResponse.json({ message: "Comment posted! +3 XP" });
+    return NextResponse.json({ message: "Comment posted!" });
   } catch (error: any) {
     console.error("Post comment error:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
