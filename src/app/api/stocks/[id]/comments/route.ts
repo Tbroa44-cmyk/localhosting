@@ -14,11 +14,11 @@ async function cleanupOldComments(db: any, companyId: number) {
     ).all(companyId) as any[];
     if (all.length > 25) {
       const idsToKeep = all.slice(0, 25).map((c: any) => c.id);
-      const placeholders = idsToKeep.map(() => "?").join(",");
-      if (placeholders) {
-        await db.prepare(
-          `DELETE FROM comments WHERE company_id = ? AND id NOT IN (${placeholders})`
-        ).run(companyId, ...idsToKeep);
+      for (const row of all) {
+        if (!idsToKeep.includes(row.id)) {
+          await db.prepare("DELETE FROM comments WHERE id = ?").run(row.id);
+          await db.prepare("DELETE FROM comment_likes WHERE comment_id = ?").run(row.id);
+        }
       }
     }
   } catch (e: any) {
@@ -33,27 +33,48 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const db = getDb();
 
-    await cleanupOldComments(db, companyId);
+    let comments: any[] = [];
+    try {
+      comments = await db.prepare(
+        "SELECT * FROM comments WHERE company_id = ? ORDER BY created_at DESC LIMIT 25"
+      ).all(companyId) as any[];
+    } catch {
+      return NextResponse.json([]);
+    }
 
-    const comments = await db.prepare(
-      "SELECT c.id, c.user_id, c.company_id, c.comment, c.likes, c.created_at, u.username, u.level FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.company_id = ? ORDER BY c.created_at DESC LIMIT 25"
-    ).all(companyId) as any[];
+    const userIds = [...new Set(comments.map((c: any) => c.user_id).filter(Boolean))];
+    const userMap: Record<number, { username: string; level: number }> = {};
 
-    let userId: number | null = null;
+    for (const uid of userIds) {
+      try {
+        const u = await db.prepare("SELECT username, level FROM users WHERE id = ?").get(uid) as any;
+        if (u) userMap[uid] = { username: u.username || "Unknown", level: u.level || 1 };
+      } catch {}
+    }
+
+    let currentUserId: number | null = null;
     try {
       const session = await getServerSession(authOptions);
-      userId = session?.user ? (session.user as any).id : await getUserIdFromRequest(request);
+      currentUserId = session?.user ? (session.user as any).id : await getUserIdFromRequest(request);
     } catch {}
 
     let likedCommentIds: number[] = [];
-    if (userId) {
-      const likes = await db.prepare("SELECT comment_id FROM comment_likes WHERE user_id = ?").all(userId) as any[];
-      likedCommentIds = likes.map((l: any) => l.comment_id);
+    if (currentUserId) {
+      try {
+        const likes = await db.prepare("SELECT comment_id FROM comment_likes WHERE user_id = ?").all(currentUserId) as any[];
+        likedCommentIds = likes.map((l: any) => l.comment_id);
+      } catch {}
     }
 
     const enriched = comments.map((c: any) => ({
-      ...c,
-      level: c.level || 1,
+      id: c.id,
+      user_id: c.user_id,
+      company_id: c.company_id,
+      comment: c.comment,
+      likes: c.likes || 0,
+      created_at: c.created_at,
+      username: userMap[c.user_id]?.username || "Unknown",
+      level: userMap[c.user_id]?.level || 1,
       liked: likedCommentIds.includes(c.id),
     }));
 
@@ -79,7 +100,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const cleanComment = comment.trim().slice(0, 500);
-
     const db = getDb();
 
     try {
@@ -89,26 +109,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     } catch {}
 
-    const lastComment = await db.prepare(
-      "SELECT created_at FROM comments WHERE user_id = ? AND company_id = ? ORDER BY created_at DESC LIMIT 1"
-    ).get(userId, companyId) as any;
+    try {
+      const lastComment = await db.prepare(
+        "SELECT created_at FROM comments WHERE user_id = ? AND company_id = ? ORDER BY created_at DESC LIMIT 1"
+      ).get(userId, companyId) as any;
 
-    if (lastComment) {
-      const lastTime = new Date(lastComment.created_at).getTime();
-      const now = Date.now();
-      const hourMs = 60 * 60 * 1000;
-      if (now - lastTime < hourMs) {
-        const waitMins = Math.ceil((hourMs - (now - lastTime)) / 60000);
-        return NextResponse.json({ error: `You can only comment on each stock page once per hour. Try again in ${waitMins} minute${waitMins > 1 ? "s" : ""}.`, rateLimited: true }, { status: 429 });
+      if (lastComment) {
+        const lastTime = new Date(lastComment.created_at).getTime();
+        const now = Date.now();
+        const hourMs = 60 * 60 * 1000;
+        if (now - lastTime < hourMs) {
+          const waitMins = Math.ceil((hourMs - (now - lastTime)) / 60000);
+          return NextResponse.json({ error: `You can only comment on each stock page once per hour. Try again in ${waitMins} minute${waitMins > 1 ? "s" : ""}.`, rateLimited: true }, { status: 429 });
+        }
       }
-    }
+    } catch {}
 
     await db.prepare(
       "INSERT INTO comments (user_id, company_id, comment, created_at) VALUES (?, ?, ?, ?)"
     ).run(userId, companyId, cleanComment, new Date().toISOString());
 
     await awardXP(db, userId, 3);
-
     await cleanupOldComments(db, companyId);
 
     return NextResponse.json({ message: "Comment posted!" });

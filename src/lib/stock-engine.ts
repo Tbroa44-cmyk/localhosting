@@ -43,6 +43,9 @@ export async function recalculateCompanyPrice(
 ): Promise<number> {
   let newPrice: number;
 
+  const currentRow = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+  const currentPrice = currentRow ? Number(currentRow.share_price) : 0;
+
   if (knownLowestSell !== undefined) {
     newPrice = knownLowestSell;
   } else {
@@ -50,8 +53,13 @@ export async function recalculateCompanyPrice(
     if (lowestSell !== null) {
       newPrice = lowestSell;
     } else {
-      newPrice = fallbackPrice ?? 0;
+      newPrice = fallbackPrice ?? currentPrice;
     }
+  }
+
+  const priceFloor = Math.max(5, Math.round(currentPrice * 0.5));
+  if (newPrice < priceFloor && currentPrice > 0) {
+    newPrice = priceFloor;
   }
 
   await updateCompanyPrice(companyId, newPrice);
@@ -96,6 +104,14 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 
     if (!user) throw new Error("User not found");
     const isAdmin = !!user.is_admin;
+
+    if (!isAdmin) {
+      const buyerBalance = Number(user.balance) || 0;
+      const maxCostAtCurrentPrice = company.share_price * shares;
+      if (buyerBalance < maxCostAtCurrentPrice) {
+        throw new Error(`Insufficient balance. You need ${formatCoins(maxCostAtCurrentPrice)} but have ${formatCoins(buyerBalance)}`);
+      }
+    }
 
     try {
       const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
@@ -367,6 +383,11 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
 
       if (available < shares) {
         throw new Error(`Not enough shares. Available: ${available}, requested: ${shares}`);
+      }
+
+      const sellPriceFloor = Math.max(5, Math.round(Number(company.share_price) * 0.5));
+      if (priceCents < sellPriceFloor) {
+        throw new Error(`Sell price too low. Minimum is ${formatCoins(sellPriceFloor)} (50% of current market price ${formatCoins(company.share_price)})`);
       }
     }
 
