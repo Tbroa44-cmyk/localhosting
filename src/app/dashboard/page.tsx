@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [scrollScale, setScrollScale] = useState(1);
+  const [isBanned, setIsBanned] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,6 +45,13 @@ export default function DashboardPage() {
     const interval = setInterval(loadStocks, 5000);
     const onVisible = () => { if (document.visibilityState === "visible") loadStocks(); };
     document.addEventListener("visibilitychange", onVisible);
+
+    fetch("/api/auth/check-ban").then(r => r.json()).then(d => {
+      if (d.banned) setIsBanned(true);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("banned") === "1") setIsBanned(true);
+    }).catch(() => {});
+
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
@@ -120,6 +128,18 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
       <Navbar />
+      {isBanned && (
+        <div className="bg-red-500/10 border-b border-red-500/30 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-red-400 text-sm">
+              Your account has been <strong>banned</strong>. You can browse the market but cannot place orders, view your portfolio, or add funds.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-6 py-8" ref={mainRef} style={{ transform: `scale(${scrollScale})`, transformOrigin: "top center" }}>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">

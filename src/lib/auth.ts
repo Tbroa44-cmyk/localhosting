@@ -44,7 +44,8 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.username,
           isAdmin: !!user.is_admin,
-        };
+          allowed: user.allowed ?? 0,
+        } as any;
       },
     }),
   ],

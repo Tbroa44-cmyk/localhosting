@@ -33,10 +33,19 @@ export default function LoginPage() {
       setError("Invalid username or password");
       setLoading(false);
     } else {
-      const sessionRes = await fetch("/api/auth/session");
-      const sessionData = await sessionRes.json();
-      if (sessionData?.user?.allowed === 1) {
-        setError("Your account has been banned from trading. You can still browse the market but cannot place orders.");
+      let isBanned = false;
+      try {
+        const banCheck = await fetch("/api/auth/check-ban");
+        const banData = await banCheck.json();
+        isBanned = banData.banned === true;
+      } catch {
+        const sessionRes = await fetch("/api/auth/session");
+        const sessionData = await sessionRes.json();
+        isBanned = sessionData?.user?.allowed === 1;
+      }
+
+      if (isBanned) {
+        setError("Your account has been banned. You cannot log in.");
         setLoading(false);
         await fetch("/api/auth/signout", { method: "POST" });
       } else {

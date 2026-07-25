@@ -10,6 +10,12 @@ export default withAuth(
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
 
+    if ((token as any)?.allowed === 1) {
+      if (pathname.startsWith("/portfolio") || pathname.startsWith("/wallet")) {
+        return NextResponse.redirect(new URL("/dashboard?banned=1", req.url));
+      }
+    }
+
     return NextResponse.next();
   },
   {
