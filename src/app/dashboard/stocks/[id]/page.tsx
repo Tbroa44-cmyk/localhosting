@@ -119,6 +119,7 @@ export default function StockDetailPage() {
   }
 
   async function handleCancelOrder(orderId: number) {
+    if (!confirm("Cancel this order? This cannot be undone.")) return;
     try {
       setTradeAnimType("cancel");
       const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
@@ -351,14 +352,13 @@ export default function StockDetailPage() {
                 return (
                   <div
                     key={order.id}
-                    onClick={() => handleCancelOrder(order.id)}
-                    className="flex items-center justify-between py-2 px-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-red-500/10 transition-colors group"
+                    className="flex items-center justify-between py-2 px-3 bg-gray-800/50 rounded-lg group"
                   >
                     <div className="flex items-center gap-3">
                       <span className={`text-xs font-bold px-2 py-1 rounded ${order.type === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                         {order.type.toUpperCase()}
                       </span>
-                      <span className="text-white group-hover:text-red-400 transition-colors">
+                      <span className="text-white">
                         {order.shares} shares @ {formatCoins(order.price_per_share)}
                       </span>
                       {isPartial && (
@@ -374,7 +374,10 @@ export default function StockDetailPage() {
                         </div>
                       )}
                       <span className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</span>
-                      <span className="text-red-400 hover:text-red-300 text-xs font-medium">Cancel</span>
+                      <span
+                        onClick={(e) => { e.stopPropagation(); handleCancelOrder(order.id); }}
+                        className="text-red-400 hover:text-red-300 text-xs font-medium cursor-pointer px-2 py-1 rounded hover:bg-red-500/10"
+                      >Cancel</span>
                     </div>
                   </div>
                 );

@@ -113,6 +113,7 @@ export default function PortfolioPage() {
   }
 
   async function cancelOrder(orderId: number) {
+    if (!confirm("Cancel this order? This cannot be undone.")) return;
     try {
       await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
       fetchPortfolio();

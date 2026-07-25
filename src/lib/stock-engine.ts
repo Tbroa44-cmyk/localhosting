@@ -390,16 +390,7 @@ export async function cancelOrder(userId: number, orderId: number) {
       await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(refund, userId);
     }
 
-    if (order.type === "sell") {
-      const holding = await db.prepare("SELECT id FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, order.company_id) as
-        | { id: number } | undefined;
 
-      if (holding) {
-        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(order.shares, holding.id);
-      } else {
-        await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(userId, order.company_id, order.shares);
-      }
-    }
 
     await db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(orderId);
 
