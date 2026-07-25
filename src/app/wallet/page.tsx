@@ -145,19 +145,13 @@ export default function WalletPage() {
         {!isAdmin && !showCheckout && (
           <>
             <h2 className="text-xl font-semibold text-white mb-4">Select a Package</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              {PACKAGES.map((pkg) => {
-                const available = !!KOFI_URLS[pkg.coins];
-                return (
+            <div className="flex justify-center mb-8">
+              <div className="grid grid-cols-1 gap-4 w-full max-w-xs">
+              {PACKAGES.filter((pkg) => !!KOFI_URLS[pkg.coins]).map((pkg) => (
                   <button
                     key={pkg.coins}
-                    onClick={() => available && handleBuyTier(pkg)}
-                    disabled={!available}
-                    className={`glass-card text-center transition-all ${
-                      available
-                        ? "hover:scale-[1.02] cursor-pointer"
-                        : "opacity-40 cursor-not-allowed"
-                    } ${pkg.border}`}
+                    onClick={() => handleBuyTier(pkg)}
+                    className={`glass-card text-center transition-all hover:scale-[1.02] cursor-pointer ${pkg.border}`}
                   >
                     {pkg.badge && (
                       <div className={`text-xs font-bold ${pkg.text} mb-1`}>{pkg.badge}</div>
@@ -165,10 +159,10 @@ export default function WalletPage() {
                     <div className={`text-xs font-medium ${pkg.text} mb-1 opacity-70`}>{pkg.label}</div>
                     <div className="text-2xl font-bold text-white">{pkg.receive.toLocaleString()}c</div>
                     <div className="text-lg text-gray-300 font-semibold mt-1">${pkg.price.toFixed(2)}</div>
-                    <div className="text-xs text-gray-500 mt-2">{available ? "Pay on Ko-fi" : "Coming soon"}</div>
+                    <div className="text-xs text-gray-500 mt-2">Pay on Ko-fi</div>
                   </button>
-                );
-              })}
+              ))}
+              </div>
             </div>
           </>
         )}

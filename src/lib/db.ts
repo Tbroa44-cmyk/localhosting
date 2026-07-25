@@ -97,7 +97,7 @@ function restUrl(): string {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1`;
 }
 
-const TEXT_FIELDS = new Set(["ticker", "name", "description", "type", "status", "email", "username", "password", "paypal_order_id"]);
+const TEXT_FIELDS = new Set(["ticker", "name", "description", "type", "status", "email", "username", "password", "paypal_order_id", "code", "expires_at"]);
 
 function coerceValue(v: any, fieldName?: string): any {
   if (fieldName && TEXT_FIELDS.has(fieldName)) return v;

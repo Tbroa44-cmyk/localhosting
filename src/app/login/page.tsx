@@ -38,7 +38,63 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotStep, setForgotStep] = useState<"email" | "code">("email");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotCode, setForgotCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [devCode, setDevCode] = useState("");
+
   useEffect(() => { setMounted(true); }, []);
+
+  async function handleForgotSendCode() {
+    if (!forgotEmail.trim()) return;
+    setForgotLoading(true);
+    setForgotError("");
+    setForgotMsg("");
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await res.json();
+      if (data.dev) setDevCode(data.dev);
+      setForgotMsg(data.message || "Check your email for a 6-digit code.");
+      setForgotStep("code");
+    } catch {
+      setForgotError("Something went wrong. Try again.");
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
+  async function handleForgotReset() {
+    if (!forgotCode.trim() || !newPassword.trim()) return;
+    setForgotLoading(true);
+    setForgotError("");
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail, code: forgotCode, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setForgotError(data.error || "Failed to reset password");
+        return;
+      }
+      setForgotSuccess(true);
+    } catch {
+      setForgotError("Something went wrong. Try again.");
+    } finally {
+      setForgotLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -225,8 +281,92 @@ export default function LoginPage() {
               browse as guest
             </button>
           </p>
+          <button
+            onClick={() => { setForgotMode(true); setForgotStep("email"); setForgotEmail(""); setForgotCode(""); setNewPassword(""); setForgotMsg(""); setForgotError(""); setForgotSuccess(false); setDevCode(""); }}
+            className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
+          >
+            Forgot Password or Email?
+          </button>
         </div>
       </div>
+
+      {forgotMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in" onClick={() => setForgotMode(false)}>
+          <div className="glass-card max-w-sm w-full mx-4 animate-fade-up" onClick={(e) => e.stopPropagation()}>
+            {forgotSuccess ? (
+              <div className="text-center py-4">
+                <div className="text-4xl mb-3">&#10003;</div>
+                <h3 className="text-lg font-bold text-green-400 mb-2">Password Reset!</h3>
+                <p className="text-gray-400 text-sm mb-4">You can now sign in with your new password.</p>
+                <button onClick={() => { setForgotMode(false); setForgotStep("email"); }} className="btn-primary px-6 py-2 text-sm">Back to Login</button>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => setForgotMode(false)} className="absolute top-3 right-3 text-gray-500 hover:text-white text-lg">&times;</button>
+                {forgotStep === "email" ? (
+                  <>
+                    <h3 className="text-lg font-bold text-white mb-1">Reset Password</h3>
+                    <p className="text-gray-400 text-sm mb-4">Enter the email you registered with and we&apos;ll send you a verification code.</p>
+                    {forgotError && <p className="text-red-400 text-sm mb-3">{forgotError}</p>}
+                    <input
+                      type="email"
+                      placeholder="Your email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="input-field w-full mb-3"
+                      onKeyDown={(e) => e.key === "Enter" && handleForgotSendCode()}
+                    />
+                    <button
+                      onClick={handleForgotSendCode}
+                      disabled={forgotLoading || !forgotEmail.trim()}
+                      className="btn-primary w-full py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {forgotLoading ? "Sending..." : "Send Code"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-bold text-white mb-1">Enter Code</h3>
+                    <p className="text-gray-400 text-sm mb-1">A 6-digit code was sent to <strong className="text-white">{forgotEmail}</strong></p>
+                    {devCode && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2 mb-3 text-xs text-yellow-400 text-center">
+                        Dev mode — your code: <strong className="text-yellow-300">{devCode}</strong>
+                      </div>
+                    )}
+                    {forgotMsg && !devCode && <p className="text-green-400 text-xs mb-3">{forgotMsg}</p>}
+                    {forgotError && <p className="text-red-400 text-sm mb-3">{forgotError}</p>}
+                    <input
+                      type="text"
+                      placeholder="6-digit code"
+                      value={forgotCode}
+                      onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      className="input-field w-full mb-2 text-center text-lg tracking-[0.5em]"
+                      maxLength={6}
+                    />
+                    <input
+                      type="password"
+                      placeholder="New password (min 6 chars)"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="input-field w-full mb-3"
+                    />
+                    <button
+                      onClick={handleForgotReset}
+                      disabled={forgotLoading || forgotCode.length !== 6 || newPassword.length < 6}
+                      className="btn-primary w-full py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {forgotLoading ? "Resetting..." : "Reset Password"}
+                    </button>
+                    <button onClick={() => { setForgotStep("email"); setForgotError(""); setForgotMsg(""); setDevCode(""); }} className="text-xs text-gray-500 hover:text-gray-300 mt-3 w-full text-center">
+                      &larr; Use a different email
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
