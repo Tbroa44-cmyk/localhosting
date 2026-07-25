@@ -17,22 +17,38 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
     }
 
+    const body = await request.json().catch(() => ({}));
     const db = getDb();
-    const user = await db.prepare("SELECT id, allowed FROM users WHERE id = ?").get(userId) as any;
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    if (body.unban) {
+      try {
+        await db.prepare("UPDATE users SET allowed = 0, banned_until = NULL WHERE id = ?").run(userId);
+      } catch {
+        await db.prepare("UPDATE users SET allowed = 0 WHERE id = ?").run(userId);
+      }
+      return NextResponse.json({ success: true, banned: false, message: "User has been unbanned" });
     }
 
-    const newAllowed = user.allowed === 1 ? 0 : 1;
-    await db.prepare("UPDATE users SET allowed = ? WHERE id = ?").run(newAllowed, userId);
+    let bannedUntil: string | null = null;
+    if (body.days && typeof body.days === "number" && body.days > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + body.days);
+      bannedUntil = d.toISOString();
+    }
 
-    return NextResponse.json({
-      success: true,
-      banned: newAllowed === 1,
-      message: newAllowed === 1 ? "User has been banned" : "User has been unbanned"
-    });
+    try {
+      await db.prepare("UPDATE users SET allowed = 1, banned_until = ? WHERE id = ?").run(bannedUntil, userId);
+    } catch {
+      await db.prepare("UPDATE users SET allowed = 1 WHERE id = ?").run(userId);
+    }
+
+    const msg = bannedUntil
+      ? `User banned until ${new Date(bannedUntil).toLocaleDateString()}`
+      : "User has been banned indefinitely";
+
+    return NextResponse.json({ success: true, banned: true, message: msg });
   } catch (error: any) {
-    console.error("Ban toggle error:", error);
+    console.error("Ban error:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }

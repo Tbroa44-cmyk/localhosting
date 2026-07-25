@@ -16,6 +16,7 @@ interface User {
   balance: number;
   is_admin: number;
   allowed: number;
+  banned_until: string | null;
   created_at: string;
 }
 
@@ -68,6 +69,11 @@ export default function AdminPage() {
   const [confirmDanger, setConfirmDanger] = useState(false);
   const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
 
+  const [userSearch, setUserSearch] = useState("");
+  const [userBanFilter, setUserBanFilter] = useState<"all" | "banned" | "active">("all");
+  const [banDays, setBanDays] = useState<number | "infinite">("infinite");
+  const [banUserId, setBanUserId] = useState<number | null>(null);
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
@@ -75,6 +81,7 @@ export default function AdminPage() {
   useEffect(() => {
     fetchAdminData();
     fetchTradingSettings();
+    fetch("/api/admin/migrate", { method: "POST" });
     const interval = setInterval(fetchAdminData, 10000);
     const onVisible = () => { if (document.visibilityState === "visible") fetchAdminData(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -157,27 +164,55 @@ export default function AdminPage() {
     }
   }
 
-  async function handleBanToggle(userId: number, currentlyBanned: boolean) {
-    const action = currentlyBanned ? "unban" : "ban";
-    openConfirm(
-      currentlyBanned ? "Unban User" : "Ban User",
-      currentlyBanned ? "Are you sure you want to unban this user? They will be able to trade again." : "Are you sure you want to ban this user? They will be unable to place trades.",
-      !currentlyBanned,
-      async () => {
-        try {
-          const res = await fetch(`/api/admin/users/${userId}/ban`, { method: "POST" });
-          const data = await res.json();
-          if (res.ok) {
-            showToast(data.message, "success");
-            fetchAdminData();
-          } else {
-            showToast(data.error || "Failed", "error");
-          }
-        } catch {
-          showToast("Error toggling ban", "error");
-        }
+  function openBanModal(userId: number) {
+    setBanUserId(userId);
+    setBanDays("infinite");
+  }
+
+  async function handleBanConfirm() {
+    if (!banUserId) return;
+    try {
+      const body: any = {};
+      if (banDays !== "infinite") {
+        body.days = banDays;
       }
-    );
+      const res = await fetch(`/api/admin/users/${banUserId}/ban`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message, "success");
+        setBanUserId(null);
+        fetchAdminData();
+      } else {
+        showToast(data.error || "Failed", "error");
+      }
+    } catch {
+      showToast("Error banning user", "error");
+    }
+  }
+
+  async function handleUnban(userId: number) {
+    openConfirm("Unban User", "Are you sure you want to unban this user? They will be able to trade again.", false, async () => {
+      try {
+        const res = await fetch(`/api/admin/users/${userId}/ban`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ unban: true }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(data.message, "success");
+          fetchAdminData();
+        } else {
+          showToast(data.error || "Failed", "error");
+        }
+      } catch {
+        showToast("Error unbanning user", "error");
+      }
+    });
   }
 
   async function handleCreateCompany(e: React.FormEvent) {
@@ -209,22 +244,18 @@ export default function AdminPage() {
       const res = await fetch(`/api/admin/companies/${editingCompany.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editingCompany.name,
-          description: editingCompany.description,
-          share_price: editingCompany.share_price,
-          total_shares: editingCompany.total_shares,
-        }),
+        body: JSON.stringify({ total_shares: editingCompany.total_shares }),
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.error || "Failed to update company", "error");
+        showToast(data.error || "Failed to update shares", "error");
         return;
       }
+      showToast(data.message, "success");
       setEditingCompany(null);
       fetchAdminData();
     } catch {
-      showToast("Error updating company", "error");
+      showToast("Error updating shares", "error");
     }
   }
 
@@ -263,6 +294,16 @@ export default function AdminPage() {
       }
     });
   }
+
+  const filteredUsers = users.filter((u) => {
+    if (userSearch) {
+      const q = userSearch.toLowerCase();
+      if (!u.username.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
+    }
+    if (userBanFilter === "banned" && u.allowed !== 1) return false;
+    if (userBanFilter === "active" && u.allowed === 1) return false;
+    return true;
+  });
 
   if (status === "loading") {
     return (
@@ -420,24 +461,37 @@ export default function AdminPage() {
                   <form onSubmit={handleUpdateCompany} className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Name</label>
-                        <input value={editingCompany.name} onChange={(e) => setEditingCompany({ ...editingCompany, name: e.target.value })} className="input-field" required />
+                        <label className="text-xs text-gray-400 mb-1 block">Name (locked)</label>
+                        <input value={editingCompany.name} disabled className="input-field opacity-50 cursor-not-allowed" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Description</label>
-                        <input value={editingCompany.description || ""} onChange={(e) => setEditingCompany({ ...editingCompany, description: e.target.value })} className="input-field" />
+                        <label className="text-xs text-gray-400 mb-1 block">Description (locked)</label>
+                        <input value={editingCompany.description || ""} disabled className="input-field opacity-50 cursor-not-allowed" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Share Price (cents)</label>
-                        <input type="number" min="1" value={editingCompany.share_price} onChange={(e) => setEditingCompany({ ...editingCompany, share_price: Number(e.target.value) })} className="input-field" required />
+                        <label className="text-xs text-gray-400 mb-1 block">Share Price (locked)</label>
+                        <input value={formatCoins(editingCompany.share_price)} disabled className="input-field opacity-50 cursor-not-allowed" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Total Shares</label>
-                        <input type="number" min="0" value={editingCompany.total_shares} onChange={(e) => setEditingCompany({ ...editingCompany, total_shares: Number(e.target.value) })} className="input-field" required />
+                        <label className="text-xs text-gray-400 mb-1 block">Total Shares (can only increase)</label>
+                        <input
+                          type="number"
+                          min={c.total_shares + 1}
+                          value={editingCompany.total_shares}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            if (val > c.total_shares) {
+                              setEditingCompany({ ...editingCompany, total_shares: val });
+                            }
+                          }}
+                          className="input-field"
+                          required
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Current: {c.total_shares.toLocaleString()} — new value must be higher</p>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="submit" className="btn-success text-sm px-4 py-2">Save Changes</button>
+                      <button type="submit" disabled={editingCompany.total_shares <= c.total_shares} className="btn-success text-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed">Save Shares</button>
                       <button type="button" onClick={() => setEditingCompany(null)} className="text-gray-400 hover:text-white text-sm px-4 py-2">Cancel</button>
                     </div>
                   </form>
@@ -477,7 +531,25 @@ export default function AdminPage() {
         </div>
 
         <div className="glass-card">
-          <h2 className="text-xl font-semibold text-white mb-4">Users ({users.length})</h2>
+          <h2 className="text-xl font-semibold text-white mb-4">Users ({filteredUsers.length})</h2>
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Search by username or email..."
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              className="input-field flex-1"
+            />
+            <select
+              value={userBanFilter}
+              onChange={(e) => setUserBanFilter(e.target.value as any)}
+              className="input-field w-auto"
+            >
+              <option value="all">All Users</option>
+              <option value="active">Active Only</option>
+              <option value="banned">Banned Only</option>
+            </select>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -492,7 +564,7 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {filteredUsers.map((u) => (
                   <tr key={u.id} className="border-b border-gray-800/50">
                     <td className="py-2 text-white">{u.username}</td>
                     <td className="py-2 text-gray-400">{u.email}</td>
@@ -509,18 +581,26 @@ export default function AdminPage() {
                       )}
                     </td>
                     <td className="py-2 text-center">
-                      {!u.is_admin && (
-                        <button
-                          onClick={() => handleBanToggle(u.id, u.allowed === 1)}
-                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                            u.allowed === 1
-                              ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                              : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                          }`}
-                        >
-                          {u.allowed === 1 ? "Unban" : "Ban"}
-                        </button>
-                      )}
+                      {!u.is_admin ? (
+                        u.allowed === 1 ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-xs text-red-400 font-medium">Banned{u.banned_until ? ` until ${new Date(u.banned_until).toLocaleDateString()}` : " (infinite)"}</span>
+                            <button
+                              onClick={() => handleUnban(u.id)}
+                              className="text-green-400 hover:text-green-300 text-xs font-medium"
+                            >
+                              Unban
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => openBanModal(u.id)}
+                            className="text-red-400 hover:text-red-300 text-xs font-medium"
+                          >
+                            Ban
+                          </button>
+                        )
+                      ) : null}
                     </td>
                     <td className="py-2 text-center">
                       {!u.is_admin && (
@@ -557,6 +637,51 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+
+      {banUserId && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setBanUserId(null)}>
+          <div className="glass-card max-w-sm w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-white mb-4">Ban User</h3>
+            <div className="mb-4">
+              <label className="text-xs text-gray-400 mb-2 block">Ban Duration</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setBanDays("infinite")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${banDays === "infinite" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+                >
+                  Infinite
+                </button>
+                <button
+                  onClick={() => setBanDays(1)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${banDays !== "infinite" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+                >
+                  Timed
+                </button>
+              </div>
+            </div>
+            {banDays !== "infinite" && (
+              <div className="mb-4">
+                <label className="text-xs text-gray-400 mb-1 block">Number of Days</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={typeof banDays === "number" ? banDays : 1}
+                  onChange={(e) => setBanDays(Number(e.target.value) || 1)}
+                  className="input-field"
+                />
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={handleBanConfirm} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium transition-colors">
+                Ban User
+              </button>
+              <button onClick={() => setBanUserId(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-medium transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

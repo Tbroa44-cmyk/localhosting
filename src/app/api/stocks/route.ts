@@ -54,6 +54,18 @@ export async function GET(request: NextRequest) {
 
       const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);
 
+      const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      let shareEvent: any = null;
+      try {
+        const events = await db.prepare(
+          "SELECT shares_added, created_at FROM share_events WHERE company_id = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1"
+        ).all(company.id, new Date(oneWeekAgo).toISOString()) as any[];
+        if (events && events.length > 0) {
+          const totalAdded = events.reduce((sum: number, e: any) => sum + (Number(e.shares_added) || 0), 0);
+          shareEvent = { shares_added: totalAdded, since: events[events.length - 1].created_at };
+        }
+      } catch {}
+
       return {
         ...company,
         share_price: currentPrice,
@@ -64,6 +76,7 @@ export async function GET(request: NextRequest) {
         holderCount: holderCount?.count || 0,
         shares_available,
         recentPrices,
+        shareEvent,
       };
     }));
 

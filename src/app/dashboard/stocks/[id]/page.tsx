@@ -22,6 +22,7 @@ interface Company {
   price_history: any[];
   recent_transactions: any[];
   available_shares: number;
+  shareEvent: { shares_added: number } | null;
 }
 
 export default function StockDetailPage() {
@@ -186,6 +187,12 @@ export default function StockDetailPage() {
               )}
             </div>
           </div>
+          {(company as any).shareEvent && (
+            <div className="mt-4 flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm px-4 py-2 rounded-lg">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M2 12h20"/></svg>
+              <span>This stock released <strong>+{(company as any).shareEvent.shares_added.toLocaleString()}</strong> new shares in the past week</span>
+            </div>
+          )}
         </div>
 
         {canTrade && (
