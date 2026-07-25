@@ -29,8 +29,8 @@ export async function GET() {
     const companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
     const totalBalanceRows = await db.prepare("SELECT SUM(balance) as total FROM users").all() as { total: number }[];
     const totalBalance = totalBalanceRows[0] || { total: 0 };
-    const totalTransactionsRows = await db.prepare("SELECT COUNT(*) as count FROM transactions").all() as { count: number }[];
-    const totalTransactions = totalTransactionsRows[0] || { count: 0 };
+    const totalTransactionsRows = await db.prepare("SELECT id FROM transactions").all() as any[];
+    const totalTransactions = { count: Array.isArray(totalTransactionsRows) ? totalTransactionsRows.length : 0 };
     const bankFund = await db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
     const bankFundRow = bankFund[0] || { balance: 0 };
 

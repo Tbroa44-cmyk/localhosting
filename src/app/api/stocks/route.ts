@@ -35,17 +35,17 @@ export async function GET(request: NextRequest) {
       const monthChange = currentPrice - monthStart;
       const monthChangePercent = monthStart > 0 ? ((monthChange / monthStart) * 100) : 0;
 
-      const buyCount = (await db.prepare(
-        "SELECT COUNT(*) as count FROM transactions WHERE company_id = ? AND type = 'buy'"
-      ).all(company.id))[0] as { count: number };
+      const buyRows = await db.prepare(
+        "SELECT id FROM transactions WHERE company_id = ? AND type = 'buy'"
+      ).all(company.id) as any[];
 
-      const sellCount = (await db.prepare(
-        "SELECT COUNT(*) as count FROM transactions WHERE company_id = ? AND type = 'sell'"
-      ).all(company.id))[0] as { count: number };
+      const sellRows = await db.prepare(
+        "SELECT id FROM transactions WHERE company_id = ? AND type = 'sell'"
+      ).all(company.id) as any[];
 
-      const holderCount = (await db.prepare(
-        "SELECT COUNT(*) as count FROM holdings WHERE company_id = ? AND shares_owned > 0"
-      ).all(company.id))[0] as { count: number };
+      const holderRows = await db.prepare(
+        "SELECT id FROM holdings WHERE company_id = ? AND shares_owned > 0"
+      ).all(company.id) as any[];
 
       const sharesHeld = (await db.prepare(
         "SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?"
@@ -63,9 +63,9 @@ export async function GET(request: NextRequest) {
         share_price: currentPrice,
         dayChangePercent: Math.round(dayChangePercent * 100) / 100,
         monthChangePercent: Math.round(monthChangePercent * 100) / 100,
-        buyCount: buyCount?.count || 0,
-        sellCount: sellCount?.count || 0,
-        holderCount: holderCount?.count || 0,
+        buyCount: Array.isArray(buyRows) ? buyRows.length : 0,
+        sellCount: Array.isArray(sellRows) ? sellRows.length : 0,
+        holderCount: Array.isArray(holderRows) ? holderRows.length : 0,
         shares_available,
         recentPrices,
         shareEvent: sharesReleased > 0 ? { shares_added: sharesReleased } : null,
