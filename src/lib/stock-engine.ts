@@ -185,13 +185,14 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       pendingShares = remaining;
     }
 
-    const buyerHolding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, companyId) as
-      | { id: number; shares_owned: number } | undefined;
-
     const filledShares = shares - pendingShares;
     if (filledShares > 0) {
-      if (buyerHolding) {
-        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(filledShares, buyerHolding.id);
+      const existingHolding = await db.prepare(
+        "SELECT id FROM holdings WHERE user_id = ? AND company_id = ?"
+      ).get(userId, companyId) as { id: number } | undefined;
+
+      if (existingHolding) {
+        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(filledShares, existingHolding.id);
       } else {
         await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(userId, companyId, filledShares);
       }
@@ -356,8 +357,8 @@ export async function cancelOrder(userId: number, orderId: number) {
     }
 
     if (order.type === "sell") {
-      const holding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, order.company_id) as
-        | { id: number; shares_owned: number } | undefined;
+      const holding = await db.prepare("SELECT id FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, order.company_id) as
+        | { id: number } | undefined;
 
       if (holding) {
         await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(order.shares, holding.id);
@@ -423,8 +424,8 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
     }
   }
 
-  const buyerHolding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(buyOrder.user_id, buyOrder.company_id) as
-    | { id: number; shares_owned: number } | undefined;
+  const buyerHolding = await db.prepare("SELECT id FROM holdings WHERE user_id = ? AND company_id = ?").get(buyOrder.user_id, buyOrder.company_id) as
+    | { id: number } | undefined;
 
   if (buyerHolding) {
     await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(fillQty, buyerHolding.id);

@@ -13,18 +13,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
-  const [isGuest, setIsGuest] = useState(false);
   const [scrollScale, setScrollScale] = useState(1);
   const mainRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const guest = localStorage.getItem("guest") === "true";
-    setIsGuest(guest);
-    if (!guest && status !== "authenticated" && status !== "loading") {
-      localStorage.setItem("guest", "true");
-      setIsGuest(true);
-    }
-  }, [status]);
 
   useEffect(() => {
     function onScroll() {
@@ -172,25 +162,25 @@ export default function DashboardPage() {
           <p className="text-gray-400 text-sm mb-4">{filtered.length} companies found</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((company) => (
-              <StockCard key={company.id} company={company} isLoggedIn={!!session} isGuest={isGuest} />
+              <StockCard key={company.id} company={company} isLoggedIn={!!session} />
             ))}
           </div>
         </div>
       ) : (
         <>
-          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={topGainers} isLoggedIn={!!session} isGuest={isGuest} />
-          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={topLosers} isLoggedIn={!!session} isGuest={isGuest} />
-          <Section title="Most Held" subtitle="Companies with the most shareholders" items={mostHeld} isLoggedIn={!!session} isGuest={isGuest} />
-          <Section title="Most Bought" subtitle="Highest number of buy orders" items={mostTradedBuy} isLoggedIn={!!session} isGuest={isGuest} />
-          <Section title="Most Sold" subtitle="Highest number of sell orders" items={mostTradedSell} isLoggedIn={!!session} isGuest={isGuest} />
-          <Section title="Highest Price" subtitle="Most expensive stocks" items={priciest} isLoggedIn={!!session} isGuest={isGuest} />
+          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={topGainers} isLoggedIn={!!session} />
+          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={topLosers} isLoggedIn={!!session} />
+          <Section title="Most Held" subtitle="Companies with the most shareholders" items={mostHeld} isLoggedIn={!!session} />
+          <Section title="Most Bought" subtitle="Highest number of buy orders" items={mostTradedBuy} isLoggedIn={!!session} />
+          <Section title="Most Sold" subtitle="Highest number of sell orders" items={mostTradedSell} isLoggedIn={!!session} />
+          <Section title="Highest Price" subtitle="Most expensive stocks" items={priciest} isLoggedIn={!!session} />
 
           <div className="mt-10 mb-6">
             <h2 className="text-2xl font-bold text-white mb-1">All Companies</h2>
             <p className="text-gray-400 text-sm mb-4">{filtered.length} companies</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.map((company) => (
-                <StockCard key={company.id} company={company} isLoggedIn={!!session} isGuest={isGuest} />
+                <StockCard key={company.id} company={company} isLoggedIn={!!session} />
               ))}
             </div>
           </div>
@@ -201,7 +191,7 @@ export default function DashboardPage() {
   );
 }
 
-function Section({ title, subtitle, items, isLoggedIn, isGuest }: { title: string; subtitle: string; items: any[]; isLoggedIn: boolean; isGuest: boolean }) {
+function Section({ title, subtitle, items, isLoggedIn }: { title: string; subtitle: string; items: any[]; isLoggedIn: boolean }) {
   if (items.length === 0) return null;
 
   return (
@@ -210,7 +200,7 @@ function Section({ title, subtitle, items, isLoggedIn, isGuest }: { title: strin
       <p className="text-gray-400 text-sm mb-3">{subtitle}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((company) => (
-          <StockCard key={company.id} company={company} isLoggedIn={isLoggedIn} isGuest={isGuest} />
+          <StockCard key={company.id} company={company} isLoggedIn={isLoggedIn} />
         ))}
       </div>
     </div>

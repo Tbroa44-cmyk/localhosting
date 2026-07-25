@@ -9,10 +9,9 @@ import { formatCoins } from "@/lib/format";
 interface StockCardProps {
   company: any;
   isLoggedIn: boolean;
-  isGuest: boolean;
 }
 
-export default function StockCard({ company, isLoggedIn, isGuest }: StockCardProps) {
+export default function StockCard({ company, isLoggedIn }: StockCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"buy" | "sell">("buy");
   const [userBalance, setUserBalance] = useState(0);
@@ -91,7 +90,7 @@ export default function StockCard({ company, isLoggedIn, isGuest }: StockCardPro
           </div>
         </Link>
 
-        {isLoggedIn && !isGuest && (
+        {isLoggedIn ? (
           <div className="flex gap-2">
             <button
               onClick={() => { setModalType("buy"); setModalOpen(true); }}
@@ -106,8 +105,7 @@ export default function StockCard({ company, isLoggedIn, isGuest }: StockCardPro
               Sell
             </button>
           </div>
-        )}
-        {isGuest && (
+        ) : (
           <Link href="/login" className="block w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors text-center">
             Sign In to Trade
           </Link>

@@ -2,25 +2,17 @@
 
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { formatCoins } from "@/lib/format";
 
 export default function Navbar() {
   const { data: session, status } = useSession();
-  const [isGuest, setIsGuest] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  useEffect(() => {
-    setIsGuest(localStorage.getItem("guest") === "true");
-  }, []);
-
-  const isLoggedIn = isGuest || !!session;
 
   function handleLogout() {
     setLoggingOut(true);
     document.body.classList.add("animate-logout-slide");
     setTimeout(() => {
-      localStorage.removeItem("guest");
       signOut({ redirect: false }).then(() => {
         window.location.href = "/login";
       });
@@ -34,52 +26,34 @@ export default function Navbar() {
           StockSim
         </Link>
 
-        {isLoggedIn ? (
+        {session ? (
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors">
               Markets
             </Link>
-            {session && (
-              <>
-                <Link href="/portfolio" className="text-gray-300 hover:text-white transition-colors">
-                  Portfolio
-                </Link>
-                <Link href="/wallet" className="text-gray-300 hover:text-white transition-colors">
-                  Wallet
-                </Link>
-              </>
-            )}
-            {session && (session.user as any)?.isAdmin && (
+            <Link href="/portfolio" className="text-gray-300 hover:text-white transition-colors">
+              Portfolio
+            </Link>
+            <Link href="/wallet" className="text-gray-300 hover:text-white transition-colors">
+              Wallet
+            </Link>
+            {(session.user as any)?.isAdmin && (
               <Link href="/admin" className="text-yellow-400 hover:text-yellow-300 transition-colors font-medium">
                 Admin Panel
               </Link>
             )}
             <div className="flex items-center gap-3 pl-3 border-l border-gray-700">
-              {isGuest && !session ? (
-                <>
-                  <span className="text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full">Guest</span>
-                  <Link href="/login" className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
-                    Login
-                  </Link>
-                  <Link href="/register" className="btn-primary text-sm py-1 px-3">
-                    Sign Up
-                  </Link>
-                </>
-              ) : session ? (
-                <>
-                  <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
-                  <span className="text-green-400 font-semibold">
-                    {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
-                  </span>
-                  <button
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                    className="text-gray-400 hover:text-red-400 transition-colors text-sm disabled:opacity-50"
-                  >
-                    Logout
-                  </button>
-                </>
-              ) : null}
+              <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
+              <span className="text-green-400 font-semibold">
+                {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
+              </span>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="text-gray-400 hover:text-red-400 transition-colors text-sm disabled:opacity-50"
+              >
+                Logout
+              </button>
             </div>
           </div>
         ) : (

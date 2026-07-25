@@ -17,15 +17,17 @@ export async function GET(request: NextRequest) {
     const db = getDb();
 
     const rawHoldings = await db.prepare(
-      "SELECT id, shares_owned, company_id FROM holdings WHERE user_id = ?"
+      "SELECT company_id, SUM(shares_owned) as shares_owned FROM holdings WHERE user_id = ? GROUP BY company_id"
     ).all(userId) as any[];
-
-    console.log("[Portfolio] userId:", userId, "holdings count:", rawHoldings.length, "raw:", JSON.stringify(rawHoldings));
 
     const holdings: any[] = [];
     const priceHistories: Record<number, { price: number; timestamp: number }[]> = {};
+    const seenCompanies = new Set<number>();
 
     for (const h of rawHoldings) {
+      if (seenCompanies.has(h.company_id)) continue;
+      seenCompanies.add(h.company_id);
+
       const company = await db.prepare(
         "SELECT name as company_name, ticker, share_price, total_shares FROM companies WHERE id = ?"
       ).get(h.company_id) as any;
@@ -34,7 +36,6 @@ export async function GET(request: NextRequest) {
       const shares_owned = Number(h.shares_owned) || 0;
 
       holdings.push({
-        id: h.id,
         shares_owned,
         company_id: h.company_id,
         company_name: company?.company_name || "Unknown",

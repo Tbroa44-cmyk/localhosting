@@ -18,12 +18,6 @@ export default function LoginPage() {
     if (session) router.push("/dashboard");
   }, [session, router]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("guest");
-    }
-  }, []);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -39,14 +33,8 @@ export default function LoginPage() {
       setError("Invalid email or password");
       setLoading(false);
     } else {
-      localStorage.removeItem("guest");
       router.push("/dashboard");
     }
-  }
-
-  function handleGuest() {
-    localStorage.setItem("guest", "true");
-    window.location.href = "/dashboard";
   }
 
   return (
@@ -95,22 +83,6 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-700"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-gray-900 px-3 text-gray-500">or</span>
-          </div>
-        </div>
-
-        <button
-          onClick={handleGuest}
-          className="w-full py-3 rounded-lg border border-gray-600 text-gray-300 hover:text-white hover:border-gray-400 hover:bg-white/5 transition-all font-medium"
-        >
-          Continue as Guest
-        </button>
 
         <p className="text-center text-gray-400 text-sm mt-6">
           Don&apos;t have an account?{" "}

@@ -27,7 +27,6 @@ export default function StockDetailPage() {
   const router = useRouter();
   const params = useParams();
   const [company, setCompany] = useState<Company | null>(null);
-  const [isGuest, setIsGuest] = useState(false);
   const [userBalance, setUserBalance] = useState(0);
   const [sharesOwned, setSharesOwned] = useState(0);
   const [myOrders, setMyOrders] = useState<any[]>([]);
@@ -43,22 +42,13 @@ export default function StockDetailPage() {
 
   const companyId = Number(params.id);
 
-  useEffect(() => {
-    const guest = localStorage.getItem("guest") === "true";
-    setIsGuest(guest);
-    if (!guest && !session) {
-      localStorage.setItem("guest", "true");
-      setIsGuest(true);
-    }
-  }, [session]);
-
   const fetchData = () => {
     fetch(`/api/stocks/${companyId}?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((res) => res.json())
       .then(setCompany)
       .catch(console.error);
 
-    if (session && !isGuest) {
+    if (session) {
       fetch(`/api/portfolio?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
         .then((res) => res.json())
         .then((data) => {
@@ -81,7 +71,7 @@ export default function StockDetailPage() {
     fetchData();
     const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
-  }, [companyId, session, isGuest]);
+  }, [companyId, session]);
 
   async function handlePlaceOrder() {
     setOrderError("");
@@ -147,7 +137,7 @@ export default function StockDetailPage() {
     );
   }
 
-  const canTrade = session && !isGuest;
+  const canTrade = !!session;
   const isAdmin = (session?.user as any)?.isAdmin;
   const priceHistory = company.price_history || [];
   const currentPrice = company.share_price;
