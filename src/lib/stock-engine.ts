@@ -1,8 +1,9 @@
-import getDb, { insertPriceHistory, updateCompanyPrice, getLowestPendingSell } from "@/lib/db";
+import getDb, { insertPriceHistory, updateCompanyPrice } from "@/lib/db";
 import { formatCoins } from "@/lib/format";
 
 const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
+const MAX_PRICE_CHANGE_PERCENT = 0.25;
 
 export async function awardXP(db: any, userId: number, amount: number) {
   try {
@@ -26,6 +27,15 @@ export function calculateSellPrice(currentPrice: number, shares: number): number
   return Math.max(100, Math.round(currentPrice - priceDecrease));
 }
 
+function applyPriceCap(currentPrice: number, newPrice: number): number {
+  if (currentPrice <= 0) return newPrice;
+  const change = newPrice - currentPrice;
+  const changePercent = Math.abs(change) / currentPrice;
+  if (changePercent <= MAX_PRICE_CHANGE_PERCENT) return newPrice;
+  const direction = change > 0 ? 1 : -1;
+  return Math.round(currentPrice + direction * currentPrice * MAX_PRICE_CHANGE_PERCENT);
+}
+
 async function recordPriceHistory(db: any, companyId: number, price: number) {
   try {
     await insertPriceHistory(companyId, price, Date.now());
@@ -34,36 +44,12 @@ async function recordPriceHistory(db: any, companyId: number, price: number) {
   }
 }
 
-export async function recalculateCompanyPrice(
-  db: any,
-  companyId: number,
-  knownLowestSell?: number,
-  excludeOrderId?: number,
-  fallbackPrice?: number
-): Promise<number> {
-  let newPrice: number;
-
-  const currentRow = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
-  const currentPrice = currentRow ? Number(currentRow.share_price) : 0;
-
-  if (knownLowestSell !== undefined) {
-    newPrice = knownLowestSell;
-  } else {
-    const lowestSell = await getLowestPendingSell(companyId, excludeOrderId);
-    if (lowestSell !== null) {
-      newPrice = lowestSell;
-    } else {
-      newPrice = fallbackPrice ?? currentPrice;
-    }
-  }
-
-  const priceFloor = Math.max(5, Math.round(currentPrice * 0.5));
-  if (newPrice < priceFloor && currentPrice > 0) {
-    newPrice = priceFloor;
-  }
-
-  await updateCompanyPrice(companyId, newPrice);
-  return newPrice;
+export async function setPriceFromTrade(db: any, companyId: number, tradePrice: number): Promise<number> {
+  const row = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+  const currentPrice = row ? Number(row.share_price) : 0;
+  const cappedPrice = applyPriceCap(currentPrice, tradePrice);
+  await updateCompanyPrice(companyId, cappedPrice);
+  return cappedPrice;
 }
 
 async function getBankFund(db: any): Promise<number> {
@@ -163,9 +149,6 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
       }
 
-      await updateCompanyPrice(companyId, fillPrice);
-      await recordPriceHistory(db, companyId, fillPrice);
-      lastFillPrice = fillPrice;
       await db.prepare(
         "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
       ).run(userId, companyId, fillQty, fillPrice, cost);
@@ -175,9 +158,11 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 
       totalCost += cost;
       remaining -= fillQty;
+      lastFillPrice = fillPrice;
     }
 
-    const afterFillPrice = await recalculateCompanyPrice(db, companyId, undefined, undefined, lastFillPrice);
+    const afterFillPrice = await setPriceFromTrade(db, companyId, lastFillPrice);
+    await recordPriceHistory(db, companyId, afterFillPrice);
     company.share_price = afterFillPrice;
 
     if (remaining > 0) {
@@ -201,8 +186,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         totalCost += autoFillCost;
         remaining -= autoFillQty;
 
-        const newAutoPrice = calculateBuyPrice(company.share_price, autoFillQty);
-        await updateCompanyPrice(companyId, newAutoPrice);
+        const newAutoPrice = await setPriceFromTrade(db, companyId, calculateBuyPrice(company.share_price, autoFillQty));
         await db.prepare(
           "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
         ).run(userId, companyId, autoFillQty, company.share_price, autoFillCost);
@@ -214,9 +198,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       }
     }
 
-    const finalPrice = await recalculateCompanyPrice(db, companyId, undefined, undefined, company.share_price);
-    await recordPriceHistory(db, companyId, finalPrice);
-    company.share_price = finalPrice;
+    await recordPriceHistory(db, companyId, company.share_price);
 
     let pendingShares = 0;
     if (remaining > 0) {
@@ -287,7 +269,8 @@ export async function executeSell(userId: number, companyId: number, shares: num
     const grossRevenue = company.share_price * shares;
     const taxAmount = Math.round(grossRevenue * SELL_TAX_PERCENT);
     const totalRevenue = grossRevenue - taxAmount;
-    const newPrice = calculateSellPrice(company.share_price, shares);
+    const rawNewPrice = calculateSellPrice(company.share_price, shares);
+    const newPrice = applyPriceCap(company.share_price, rawNewPrice);
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number; is_admin: any };
     const isAdmin = !!user.is_admin;
@@ -311,14 +294,11 @@ export async function executeSell(userId: number, companyId: number, shares: num
 
     await recordPriceHistory(db, companyId, newPrice);
 
-    const recalculatedPrice = await recalculateCompanyPrice(db, companyId, undefined, undefined, newPrice);
-    await recordPriceHistory(db, companyId, recalculatedPrice);
+    await awardXP(db, userId, shares * 2);
 
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
-    await awardXP(db, userId, shares * 2);
-
-    return { newBalance: isAdmin ? -1 : updatedUser.balance, newPrice: recalculatedPrice, totalRevenue, taxPaid: taxAmount };
+    return { newBalance: isAdmin ? -1 : updatedUser.balance, newPrice, totalRevenue, taxPaid: taxAmount };
   });
 
   const result = sellTransaction;
@@ -384,22 +364,11 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
       if (available < shares) {
         throw new Error(`Not enough shares. Available: ${available}, requested: ${shares}`);
       }
-
-      const sellPriceFloor = Math.max(5, Math.round(Number(company.share_price) * 0.5));
-      if (priceCents < sellPriceFloor) {
-        throw new Error(`Sell price too low. Minimum is ${formatCoins(sellPriceFloor)} (50% of current market price ${formatCoins(company.share_price)})`);
-      }
     }
 
     const result = await db.prepare(
       "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
     ).run(userId, companyId, type, shares, shares, priceCents, requestId || null, new Date().toISOString());
-
-    if (type === "sell") {
-      const lowerSell = await getLowestPendingSell(companyId);
-      const effectivePrice = lowerSell !== null ? Math.min(lowerSell, priceCents) : priceCents;
-      await updateCompanyPrice(companyId, effectivePrice);
-    }
 
     await matchOrders(db, companyId);
 
@@ -415,9 +384,6 @@ export async function cancelOrder(userId: number, orderId: number) {
       | { id: number; company_id: number; type: string; shares: number; price_per_share: number; status: string } | undefined;
 
     if (!order) throw new Error("Order not found or already processed");
-
-    const companyRow = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(order.company_id) as { share_price: number } | undefined;
-    const currentFallback = companyRow ? Number(companyRow.share_price) : 0;
 
     if (order.type === "buy") {
       const refund = order.price_per_share * order.shares;
@@ -436,8 +402,6 @@ export async function cancelOrder(userId: number, orderId: number) {
     }
 
     await db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(orderId);
-
-    await recalculateCompanyPrice(db, order.company_id, undefined, orderId, currentFallback);
 
     return { message: "Order cancelled" };
   });
@@ -522,14 +486,11 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
     await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
   }
 
-  const newPrice = calculateBuyPrice(fillPrice, fillQty);
-  await updateCompanyPrice(buyOrder.company_id, newPrice);
+  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, fillPrice);
   await recordPriceHistory(db, buyOrder.company_id, newPrice);
 
   await awardXP(db, buyOrder.user_id, fillQty * 1);
   await awardXP(db, sellOrder.user_id, fillQty * 2);
-
-  await recalculateCompanyPrice(db, buyOrder.company_id, undefined, undefined, newPrice);
 }
 
 export async function getBankBalance(): Promise<number> {
