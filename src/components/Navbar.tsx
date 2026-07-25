@@ -104,6 +104,15 @@ export default function Navbar() {
             )}
             <div className="flex items-center gap-3 pl-3 border-l border-gray-700">
               <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
+              {(session.user as any)?.level && (
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                  (session.user as any).level >= 10 ? "bg-blue-500/20 text-blue-400" :
+                  (session.user as any).level >= 5 ? "bg-green-500/20 text-green-400" :
+                  "bg-gray-500/20 text-gray-400"
+                }`}>
+                  Lv.{(session.user as any).level}
+                </span>
+              )}
               <span className="text-green-400 font-semibold">
                 {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
               </span>

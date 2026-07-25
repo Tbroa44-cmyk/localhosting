@@ -73,7 +73,7 @@ export const authOptions: NextAuthOptions = {
           const db = getDb();
           let user: any;
           try {
-            user = await db.prepare("SELECT id, username, balance, is_admin, allowed, banned_until FROM users WHERE id = ?").get(token.id);
+            user = await db.prepare("SELECT id, username, balance, is_admin, allowed, banned_until, xp, level FROM users WHERE id = ?").get(token.id);
           } catch {
             user = await db.prepare("SELECT id, username, balance, is_admin FROM users WHERE id = ?").get(token.id);
           }
@@ -90,6 +90,8 @@ export const authOptions: NextAuthOptions = {
             (session.user as any).isAdmin = !!user.is_admin;
             (session.user as any).allowed = user.allowed ?? 0;
             (session.user as any).bannedUntil = user.banned_until || null;
+            (session.user as any).xp = user.xp ?? 0;
+            (session.user as any).level = user.level ?? 1;
           }
         } catch {
           (session.user as any).balance = 0;

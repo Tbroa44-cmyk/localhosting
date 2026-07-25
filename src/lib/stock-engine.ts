@@ -4,6 +4,18 @@ import { formatCoins } from "@/lib/format";
 const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
 
+export async function awardXP(db: any, userId: number, amount: number) {
+  try {
+    const user = await db.prepare("SELECT xp FROM users WHERE id = ?").get(userId) as { xp: number } | undefined;
+    if (!user) return;
+    const newXp = (user.xp || 0) + amount;
+    const newLevel = Math.floor(newXp / 1000) + 1;
+    await db.prepare("UPDATE users SET xp = ?, level = ? WHERE id = ?").run(newXp, newLevel, userId);
+  } catch (e: any) {
+    console.error("Failed to award XP:", e?.message || e);
+  }
+}
+
 export function calculateBuyPrice(currentPrice: number, shares: number): number {
   const priceIncrease = currentPrice * PRICE_CHANGE_PERCENT * shares;
   return Math.round(currentPrice + priceIncrease);
@@ -222,6 +234,10 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(totalCost, userId);
     }
 
+    if (filledShares > 0) {
+      await awardXP(db, userId, filledShares * 1);
+    }
+
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
     if (pendingShares > 0) {
@@ -283,6 +299,8 @@ export async function executeSell(userId: number, companyId: number, shares: num
     await recordPriceHistory(db, companyId, recalculatedPrice);
 
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+
+    await awardXP(db, userId, shares * 2);
 
     return { newBalance: isAdmin ? -1 : updatedUser.balance, newPrice: recalculatedPrice, totalRevenue, taxPaid: taxAmount };
   });
@@ -486,6 +504,9 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   const newPrice = calculateBuyPrice(fillPrice, fillQty);
   await updateCompanyPrice(buyOrder.company_id, newPrice);
   await recordPriceHistory(db, buyOrder.company_id, newPrice);
+
+  await awardXP(db, buyOrder.user_id, fillQty * 1);
+  await awardXP(db, sellOrder.user_id, fillQty * 2);
 
   await recalculateCompanyPrice(db, buyOrder.company_id, undefined, undefined, newPrice);
 }

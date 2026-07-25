@@ -9,6 +9,7 @@ import PriceChart from "@/components/PriceChart";
 import TradeAnimation from "@/components/TradeAnimation";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ButtonSpinner from "@/components/ButtonSpinner";
+import CommentsSection from "@/components/CommentsSection";
 import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
 
@@ -516,6 +517,8 @@ export default function StockDetailPage() {
             )}
           </div>
         </div>
+
+        <CommentsSection companyId={companyId} isLoggedIn={!!session} />
       </div>
     </div>
   );
