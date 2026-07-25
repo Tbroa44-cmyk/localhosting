@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getUserIdFromRequest } from "@/lib/auth";
 import { placeLimitOrder } from "@/lib/stock-engine";
 import getDb from "@/lib/db";
 
@@ -20,10 +20,12 @@ async function isTradingOpen(): Promise<{ open: boolean; message: string }> {
   } catch { return { open: true, message: "" }; }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    let userId = session?.user ? (session.user as any).id : await getUserIdFromRequest(request);
+
+    if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
@@ -33,7 +35,6 @@ export async function POST(request: Request) {
     }
 
     const { companyId, shares } = await request.json();
-    const userId = (session.user as any).id;
     console.log("[Sell] userId:", userId, "companyId:", companyId, "shares:", shares, "companyId type:", typeof companyId);
 
     if (!companyId || !shares || shares <= 0 || !Number.isInteger(shares)) {

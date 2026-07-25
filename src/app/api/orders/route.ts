@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getUserIdFromRequest } from "@/lib/auth";
 import { placeLimitOrder } from "@/lib/stock-engine";
 import getDb from "@/lib/db";
 
@@ -20,14 +21,15 @@ async function isTradingOpen(): Promise<{ open: boolean; message: string }> {
   } catch { return { open: true, message: "" }; }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const userId = session?.user ? (session.user as any).id : await getUserIdFromRequest(request);
+
+    if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const userId = (session.user as any).id;
     const db = getDb();
 
     const rawOrders = await db.prepare(
@@ -54,10 +56,12 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const userId = session?.user ? (session.user as any).id : await getUserIdFromRequest(request);
+
+    if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
@@ -66,7 +70,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: trading.message }, { status: 403 });
     }
 
-    const userId = (session.user as any).id;
     const { companyId, type, shares, priceCents } = await request.json();
 
     if (!companyId || !type || !shares || !priceCents) {

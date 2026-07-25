@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { jwtVerify } from "jose";
 import getDb from "@/lib/db";
 
 interface DbUser {
@@ -90,3 +91,21 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
+
+export async function getUserIdFromRequest(request: Request): Promise<number | null> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const token = cookieStore.get("next-auth.session-token")?.value
+    || cookieStore.get("__Secure-next-auth.session-token")?.value;
+
+  if (!token || !process.env.NEXTAUTH_SECRET) return null;
+
+  try {
+    const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
+    const { payload } = await jwtVerify(token, secret);
+    const userId = Number(payload.id);
+    return Number.isFinite(userId) && userId > 0 ? userId : null;
+  } catch {
+    return null;
+  }
+}
