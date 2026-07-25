@@ -76,7 +76,7 @@ export default function WalletPage() {
 
   return (
     <div className="min-h-screen">
-      <PageBackground />
+      <PageBackground variant="wallet" />
       <Navbar />
       <div className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-white mb-2">Purchase Coins</h1>

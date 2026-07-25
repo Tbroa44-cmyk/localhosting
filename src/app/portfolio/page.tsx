@@ -85,12 +85,12 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     fetchPortfolio();
-    const interval = setInterval(fetchPortfolio, 5000);
+    const interval = setInterval(fetchPortfolio, 15000);
     return () => clearInterval(interval);
   }, []);
 
   function fetchPortfolio() {
-    fetch(`/api/portfolio?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+    fetch(`/api/portfolio`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -104,7 +104,7 @@ export default function PortfolioPage() {
       })
       .catch(console.error);
 
-    fetch(`/api/orders?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+    fetch(`/api/orders`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -268,7 +268,7 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen">
-      <PageBackground />
+      <PageBackground variant="portfolio" />
       <Navbar />
       <div className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-white mb-2">Portfolio</h1>

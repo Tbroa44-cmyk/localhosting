@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import StockCard from "@/components/StockCard";
 import Navbar from "@/components/Navbar";
@@ -16,26 +16,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
-  const [scrollScale, setScrollScale] = useState(1);
   const [isBanned, setIsBanned] = useState(false);
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
-  const mainRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onScroll() {
-      const scrollY = window.scrollY;
-      const maxScroll = 800;
-      const progress = Math.min(scrollY / maxScroll, 1);
-      const scale = 1 + progress * 0.03;
-      setScrollScale(scale);
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   useEffect(() => {
     function loadStocks() {
-      fetch(`/api/stocks?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+      fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
         .then((r) => r.json())
         .then((data) => {
           setCompanies(Array.isArray(data) ? data : []);
@@ -44,7 +30,7 @@ export default function DashboardPage() {
         .catch(() => { setCompanies([]); setLoading(false); });
     }
     loadStocks();
-    const interval = setInterval(loadStocks, 5000);
+    const interval = setInterval(loadStocks, 15000);
     const onVisible = () => { if (document.visibilityState === "visible") loadStocks(); };
     document.addEventListener("visibilitychange", onVisible);
 
@@ -120,7 +106,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen">
-        <PageBackground />
+        <PageBackground variant="market" />
         <Navbar />
         <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="flex items-center justify-center h-64">
@@ -151,7 +137,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      <div className="max-w-7xl mx-auto px-6 py-8" ref={mainRef} style={{ transform: `scale(${scrollScale})`, transformOrigin: "top center" }}>
+      <div className="max-w-7xl mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>

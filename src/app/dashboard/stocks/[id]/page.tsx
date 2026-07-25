@@ -48,13 +48,13 @@ export default function StockDetailPage() {
   const companyId = Number(params.id);
 
   const fetchData = () => {
-    fetch(`/api/stocks/${companyId}?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+    fetch(`/api/stocks/${companyId}`)
       .then((res) => res.json())
       .then(setCompany)
       .catch(console.error);
 
     if (session) {
-      fetch(`/api/portfolio?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+      fetch(`/api/portfolio`)
         .then((res) => res.json())
         .then((data) => {
           if (data.user) setUserBalance(data.user.balance || 0);
@@ -63,7 +63,7 @@ export default function StockDetailPage() {
         })
         .catch(() => {});
 
-      fetch(`/api/orders?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+      fetch(`/api/orders`)
         .then((res) => res.json())
         .then((orders) => {
           setMyOrders(orders.filter((o: any) => o.company_id === companyId && o.status === "pending"));
@@ -74,7 +74,7 @@ export default function StockDetailPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 3000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [companyId, session]);
 
@@ -135,7 +135,7 @@ export default function StockDetailPage() {
   if (!company) {
     return (
       <div className="min-h-screen">
-        <PageBackground />
+        <PageBackground variant="stock" />
         <Navbar />
         <div className="flex items-center justify-center h-64">
           <LoadingSpinner size="lg" text="Loading..." />
