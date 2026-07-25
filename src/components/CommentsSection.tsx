@@ -42,7 +42,14 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
   const [error, setError] = useState("");
   const [rateLimitPopup, setRateLimitPopup] = useState("");
   const commentsRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(0);
+
+  function scrollToBottom() {
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 100);
+  }
 
   const fetchComments = useCallback(async () => {
     try {
@@ -85,6 +92,7 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
       }
       setNewComment("");
       fetchComments();
+      scrollToBottom();
     } catch (err: any) {
       setError(err.message || "Failed to post");
     } finally {
@@ -147,7 +155,7 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
         </div>
       )}
 
-      <div ref={commentsRef} className="space-y-3 max-h-96 overflow-y-auto pr-1">
+      <div ref={commentsRef} className="space-y-3 max-h-96 overflow-y-auto pr-1 pb-4">
         {comments.length === 0 && isLoggedIn && (
           <p className="text-gray-500 text-sm">No comments yet. Be the first!</p>
         )}
@@ -181,6 +189,7 @@ export default function CommentsSection({ companyId, isLoggedIn }: CommentsSecti
             </button>
           </div>
         ))}
+        <div ref={bottomRef} className="h-4" />
       </div>
     </div>
   );
