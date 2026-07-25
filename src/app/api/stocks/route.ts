@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import getDb, { getLowestPendingSellsBulk } from "@/lib/db";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const db = getDb();
     const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all() as any[];
