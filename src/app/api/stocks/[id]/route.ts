@@ -38,16 +38,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const availableShares = Math.max(0, companyData.total_shares - ownedShares);
 
     let shareEvent: any = null;
-    try {
-      const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const events = await db.prepare(
-        "SELECT shares_added, created_at FROM share_events WHERE company_id = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1"
-      ).all(id, new Date(oneWeekAgo).toISOString()) as any[];
-      if (events && events.length > 0) {
-        const totalAdded = events.reduce((sum: number, e: any) => sum + (Number(e.shares_added) || 0), 0);
-        shareEvent = { shares_added: totalAdded };
-      }
-    } catch {}
+    const initialShares = Number(companyData.initial_shares) || Number(companyData.total_shares);
+    const currentShares = Number(companyData.total_shares);
+    const sharesReleased = currentShares > initialShares ? currentShares - initialShares : 0;
+    if (sharesReleased > 0) {
+      shareEvent = { shares_added: sharesReleased };
+    }
 
     let myTrades: any[] = [];
     const session = await getServerSession(authOptions);

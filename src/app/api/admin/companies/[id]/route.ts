@@ -17,7 +17,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Invalid company ID" }, { status: 400 });
     }
 
-    const { total_shares } = await request.json();
+    const body = await request.json();
     const db = getDb();
 
     const company = await db.prepare("SELECT total_shares FROM companies WHERE id = ?").get(id) as any;
@@ -26,19 +26,20 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     const currentShares = Number(company.total_shares) || 0;
-    const newShares = Number(total_shares);
+    const newShares = Number(body.total_shares);
 
     if (!newShares || newShares <= currentShares) {
       return NextResponse.json({ error: `New share count must be higher than current (${currentShares})` }, { status: 400 });
     }
 
     const sharesAdded = newShares - currentShares;
+    const description = body.description !== undefined ? body.description : null;
 
-    await db.prepare("UPDATE companies SET total_shares = ? WHERE id = ?").run(newShares, id);
-
-    await db.prepare(
-      "INSERT INTO share_events (company_id, shares_added, created_at) VALUES (?, ?, ?)"
-    ).run(id, sharesAdded, new Date().toISOString());
+    if (description !== null) {
+      await db.prepare("UPDATE companies SET total_shares = ?, description = ? WHERE id = ?").run(newShares, description, id);
+    } else {
+      await db.prepare("UPDATE companies SET total_shares = ? WHERE id = ?").run(newShares, id);
+    }
 
     return NextResponse.json({ message: `Added ${sharesAdded} shares. Total now: ${newShares}` });
   } catch (error: any) {

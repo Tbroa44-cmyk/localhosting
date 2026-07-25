@@ -14,18 +14,8 @@ export async function GET() {
 
     const db = getDb();
 
-    try {
-      await db.prepare("UPDATE users SET allowed = 0, banned_until = NULL WHERE allowed = 1 AND banned_until IS NOT NULL AND banned_until < ?").run(new Date().toISOString());
-    } catch {}
-
-    let users: any[] = [];
-    try {
-      users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, banned_until, created_at FROM users ORDER BY created_at DESC").all() as any[];
-    } catch {
-      users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
-      for (const u of users) u.allowed = 0;
-    }
-    const companies = await db.prepare("SELECT * FROM companies ORDER BY ticker").all();
+    const users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, created_at FROM users ORDER BY created_at DESC").all() as any[];
+    const companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
     const totalBalanceRows = await db.prepare("SELECT SUM(balance) as total FROM users").all() as { total: number }[];
     const totalBalance = totalBalanceRows[0] || { total: 0 };
     const totalTransactionsRows = await db.prepare("SELECT COUNT(*) as count FROM transactions").all() as { count: number }[];

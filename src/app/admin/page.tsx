@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { formatCoins } from "@/lib/format";
@@ -16,7 +16,6 @@ interface User {
   balance: number;
   is_admin: number;
   allowed: number;
-  banned_until: string | null;
   created_at: string;
 }
 
@@ -44,13 +43,18 @@ interface TradingSettings {
   trading_close_hour: number;
 }
 
+type Tab = "overview" | "companies" | "users" | "settings";
+
 export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [users, setUsers] = useState<User[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [stats, setStats] = useState<Stats>({ totalUsers: 0, totalBalance: 0, totalTransactions: 0, bankFund: 0 });
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [editDescription, setEditDescription] = useState("");
+  const [editShares, setEditShares] = useState(0);
   const [newCompany, setNewCompany] = useState({ name: "", ticker: "", description: "", share_price: 10000, total_shares: 1000 });
   const [showNewForm, setShowNewForm] = useState(false);
   const [error, setError] = useState("");
@@ -71,8 +75,7 @@ export default function AdminPage() {
 
   const [userSearch, setUserSearch] = useState("");
   const [userBanFilter, setUserBanFilter] = useState<"all" | "banned" | "active">("all");
-  const [banDays, setBanDays] = useState<number | "infinite">("infinite");
-  const [banUserId, setBanUserId] = useState<number | null>(null);
+  const [banModalUserId, setBanModalUserId] = useState<number | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -81,7 +84,6 @@ export default function AdminPage() {
   useEffect(() => {
     fetchAdminData();
     fetchTradingSettings();
-    fetch("/api/admin/migrate", { method: "POST" });
     const interval = setInterval(fetchAdminData, 10000);
     const onVisible = () => { if (document.visibilityState === "visible") fetchAdminData(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -92,10 +94,7 @@ export default function AdminPage() {
     fetch(`/api/admin/companies?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((res) => res.json())
       .then((data) => {
-        if (data.error) {
-          setError(data.error);
-          return;
-        }
+        if (data.error) { setError(data.error); return; }
         setUsers(data.users || []);
         setCompanies(data.companies || []);
         setStats(data.stats || { totalUsers: 0, totalBalance: 0, totalTransactions: 0, bankFund: 0 });
@@ -106,11 +105,7 @@ export default function AdminPage() {
   function fetchTradingSettings() {
     fetch(`/api/admin/settings?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
       .then((r) => r.json())
-      .then((data) => {
-        if (data.trading_enabled !== undefined) {
-          setTradingSettings(data);
-        }
-      })
+      .then((data) => { if (data.trading_enabled !== undefined) setTradingSettings(data); })
       .catch(console.error);
   }
 
@@ -164,37 +159,28 @@ export default function AdminPage() {
     }
   }
 
-  function openBanModal(userId: number) {
-    setBanUserId(userId);
-    setBanDays("infinite");
+  async function handleBanUser(userId: number) {
+    openConfirm("Ban User", "Are you sure you want to ban this user? They will not be able to trade.", true, async () => {
+      try {
+        const res = await fetch(`/api/admin/users/${userId}/ban`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(data.message || "User banned", "success");
+          fetchAdminData();
+        } else {
+          showToast(data.error || "Failed", "error");
+        }
+      } catch {
+        showToast("Error banning user", "error");
+      }
+    });
   }
 
-  async function handleBanConfirm() {
-    if (!banUserId) return;
-    try {
-      const body: any = {};
-      if (banDays !== "infinite") {
-        body.days = banDays;
-      }
-      const res = await fetch(`/api/admin/users/${banUserId}/ban`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(data.message, "success");
-        setBanUserId(null);
-        fetchAdminData();
-      } else {
-        showToast(data.error || "Failed", "error");
-      }
-    } catch {
-      showToast("Error banning user", "error");
-    }
-  }
-
-  async function handleUnban(userId: number) {
+  async function handleUnbanUser(userId: number) {
     openConfirm("Unban User", "Are you sure you want to unban this user? They will be able to trade again.", false, async () => {
       try {
         const res = await fetch(`/api/admin/users/${userId}/ban`, {
@@ -204,7 +190,7 @@ export default function AdminPage() {
         });
         const data = await res.json();
         if (res.ok) {
-          showToast(data.message, "success");
+          showToast(data.message || "User unbanned", "success");
           fetchAdminData();
         } else {
           showToast(data.error || "Failed", "error");
@@ -224,38 +210,47 @@ export default function AdminPage() {
         body: JSON.stringify(newCompany),
       });
       const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Failed to create company", "error");
-        return;
-      }
+      if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
+      showToast("Company created!", "success");
       setShowNewForm(false);
       setNewCompany({ name: "", ticker: "", description: "", share_price: 10000, total_shares: 1000 });
       fetchAdminData();
     } catch {
       showToast("Error creating company", "error");
-      fetchAdminData();
     }
+  }
+
+  function startEditCompany(c: Company) {
+    setEditingCompany(c);
+    setEditDescription(c.description || "");
+    setEditShares(c.total_shares);
   }
 
   async function handleUpdateCompany(e: React.FormEvent) {
     e.preventDefault();
     if (!editingCompany) return;
+    const hasShareChange = editShares > editingCompany.total_shares;
+    const hasDescChange = editDescription !== (editingCompany.description || "");
+    if (!hasShareChange && !hasDescChange) {
+      showToast("No changes to save", "error");
+      return;
+    }
     try {
+      const body: any = {};
+      if (hasShareChange) body.total_shares = editShares;
+      if (hasDescChange) body.description = editDescription;
       const res = await fetch(`/api/admin/companies/${editingCompany.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ total_shares: editingCompany.total_shares }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Failed to update shares", "error");
-        return;
-      }
-      showToast(data.message, "success");
+      if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
+      showToast(data.message || "Updated!", "success");
       setEditingCompany(null);
       fetchAdminData();
     } catch {
-      showToast("Error updating shares", "error");
+      showToast("Error updating company", "error");
     }
   }
 
@@ -264,10 +259,8 @@ export default function AdminPage() {
       try {
         const res = await fetch(`/api/admin/companies/${id}`, { method: "DELETE" });
         const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || "Failed to delete company", "error");
-          return;
-        }
+        if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
+        showToast("Company deleted", "success");
         fetchAdminData();
       } catch {
         showToast("Error deleting company", "error");
@@ -321,6 +314,13 @@ export default function AdminPage() {
     );
   }
 
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: "overview", label: "Overview", icon: "📊" },
+    { key: "companies", label: "Companies", icon: "🏢" },
+    { key: "users", label: "Users", icon: "👥" },
+    { key: "settings", label: "Settings", icon: "⚙️" },
+  ];
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -333,355 +333,392 @@ export default function AdminPage() {
         onConfirm={() => { setConfirmOpen(false); confirmAction(); }}
         onCancel={() => setConfirmOpen(false)}
       />
+
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Admin Panel</h1>
-        <p className="text-gray-400 mb-8">Manage companies, users, and the market</p>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="glass-card text-center">
-            <div className="text-sm text-gray-400">Users</div>
-            <div className="text-3xl font-bold text-white">{stats.totalUsers}</div>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
+            <p className="text-gray-400 text-sm mt-1">Manage companies, users, and the market</p>
           </div>
-          <div className="glass-card text-center">
-            <div className="text-sm text-gray-400">Coins in Circulation</div>
-            <div className="text-3xl font-bold text-blue-400">{formatCoins(stats.totalBalance)}</div>
-          </div>
-          <div className="glass-card text-center">
-            <div className="text-sm text-gray-400">Transactions</div>
-            <div className="text-3xl font-bold text-green-400">{stats.totalTransactions}</div>
-          </div>
-          <div className="glass-card text-center border-yellow-500/30">
-            <div className="text-sm text-gray-400">Bank Fund (3% Tax)</div>
-            <div className="text-3xl font-bold text-yellow-400">{formatCoins(stats.bankFund)}</div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${stats.totalUsers > 0 ? "bg-green-400" : "bg-gray-500"}`} />
+            <span className="text-xs text-gray-400">Live</span>
           </div>
         </div>
 
-        <div className="glass-card mb-8 border-purple-500/30">
-          <h2 className="text-xl font-semibold text-white mb-4">Trading Hours</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Trading Status</label>
-              <select
-                value={tradingSettings.trading_enabled}
-                onChange={(e) => setTradingSettings({ ...tradingSettings, trading_enabled: Number(e.target.value) })}
-                className="input-field"
-              >
-                <option value={1}>Open</option>
-                <option value={0}>Closed (Admin Lock)</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Open Hour (0-23)</label>
-              <input
-                type="number"
-                min="0"
-                max="23"
-                value={tradingSettings.trading_open_hour}
-                onChange={(e) => setTradingSettings({ ...tradingSettings, trading_open_hour: Number(e.target.value) })}
-                className="input-field"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Close Hour (1-24)</label>
-              <input
-                type="number"
-                min="1"
-                max="24"
-                value={tradingSettings.trading_close_hour}
-                onChange={(e) => setTradingSettings({ ...tradingSettings, trading_close_hour: Number(e.target.value) })}
-                className="input-field"
-              />
-            </div>
-          </div>
-          <button onClick={handleSaveTrading} disabled={savingTrading} className="btn-primary mt-4">
-            {savingTrading ? "Saving..." : "Save Trading Hours"}
-          </button>
-          <p className="text-xs text-gray-500 mt-2">Hours are in Australian Queensland time (AEST, UTC+10). Default: 0-24 (24/7).</p>
-        </div>
-
-        <div className="glass-card mb-8 border-red-500/30">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-semibold text-white">Danger Zone</h2>
-              <p className="text-sm text-gray-400">Reset the entire market to initial state</p>
-            </div>
+        <div className="flex gap-1 mb-8 bg-gray-900/50 border border-gray-800 rounded-xl p-1">
+          {tabs.map((tab) => (
             <button
-              onClick={handleResetMarket}
-              disabled={resetting}
-              className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg transition-colors disabled:opacity-50"
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab.key
+                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              }`}
             >
-              {resetting ? "Resetting..." : "Reset All Holdings & Prices"}
+              <span className="mr-1.5">{tab.icon}</span>
+              {tab.label}
             </button>
-          </div>
-          <p className="text-xs text-red-400">
-            This will delete all user share holdings and reset every company back to its original price and share count.
-          </p>
+          ))}
         </div>
 
-        <div className="glass-card mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-white">Companies ({companies.length})</h2>
-            <button onClick={() => setShowNewForm(!showNewForm)} className="btn-primary">
-              {showNewForm ? "Cancel" : "+ New Company"}
-            </button>
-          </div>
-
-          {showNewForm && (
-            <form onSubmit={handleCreateCompany} className="glass p-4 mb-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Company Name</label>
-                  <input placeholder="e.g. Acme Corp" value={newCompany.name} onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })} className="input-field" required />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Ticker Symbol (max 6 chars)</label>
-                  <input placeholder="e.g. ACME" value={newCompany.ticker} onChange={(e) => setNewCompany({ ...newCompany, ticker: e.target.value.toUpperCase() })} className="input-field" required maxLength={6} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Initial Price (in cents)</label>
-                  <input type="number" min="1" value={newCompany.share_price} onChange={(e) => setNewCompany({ ...newCompany, share_price: Number(e.target.value) })} className="input-field" required />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Total Shares to Create</label>
-                  <input type="number" min="1" value={newCompany.total_shares} onChange={(e) => setNewCompany({ ...newCompany, total_shares: Number(e.target.value) })} className="input-field" required />
-                </div>
+        {activeTab === "overview" && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="glass-card text-center group hover:border-blue-500/30 transition-colors">
+                <div className="text-sm text-gray-400 mb-1">Users</div>
+                <div className="text-3xl font-bold text-white group-hover:text-blue-400 transition-colors">{stats.totalUsers}</div>
               </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Description</label>
-                <input placeholder="What does this company do?" value={newCompany.description} onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })} className="input-field" />
+              <div className="glass-card text-center group hover:border-blue-500/30 transition-colors">
+                <div className="text-sm text-gray-400 mb-1">Coins in Circulation</div>
+                <div className="text-3xl font-bold text-blue-400">{formatCoins(stats.totalBalance)}</div>
               </div>
-              <button type="submit" className="btn-success">Create Company</button>
-            </form>
-          )}
-
-          <div className="space-y-2">
-            {companies.map((c) => (
-              <div key={c.id} className="rounded-lg border border-gray-800 p-4 hover:border-gray-700 transition-colors">
-                {editingCompany?.id === c.id ? (
-                  <form onSubmit={handleUpdateCompany} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Name (locked)</label>
-                        <input value={editingCompany.name} disabled className="input-field opacity-50 cursor-not-allowed" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Description (locked)</label>
-                        <input value={editingCompany.description || ""} disabled className="input-field opacity-50 cursor-not-allowed" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Share Price (locked)</label>
-                        <input value={formatCoins(editingCompany.share_price)} disabled className="input-field opacity-50 cursor-not-allowed" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Total Shares (can only increase)</label>
-                        <input
-                          type="number"
-                          min={c.total_shares + 1}
-                          value={editingCompany.total_shares}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            if (val > c.total_shares) {
-                              setEditingCompany({ ...editingCompany, total_shares: val });
-                            }
-                          }}
-                          className="input-field"
-                          required
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Current: {c.total_shares.toLocaleString()} — new value must be higher</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="submit" disabled={editingCompany.total_shares <= c.total_shares} className="btn-success text-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed">Save Shares</button>
-                      <button type="button" onClick={() => setEditingCompany(null)} className="text-gray-400 hover:text-white text-sm px-4 py-2">Cancel</button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="text-xs font-mono text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">#{c.id}</span>
-                        <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-1 rounded">{c.ticker}</span>
-                        <span className="text-white font-medium">{c.name}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 ml-12">{c.description || "No description"}</p>
-                    </div>
-                    <div className="flex items-center gap-6 text-sm">
-                      <div className="text-right">
-                        <div className="text-white font-semibold">{formatCoins(c.share_price)}</div>
-                        <div className="text-xs text-gray-500">per share</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-white">{c.total_shares.toLocaleString()}</div>
-                        <div className="text-xs text-gray-500">shares</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => setEditingCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">
-                          Edit
-                        </button>
-                        <button onClick={() => handleDeleteCompany(c.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <div className="glass-card text-center group hover:border-green-500/30 transition-colors">
+                <div className="text-sm text-gray-400 mb-1">Transactions</div>
+                <div className="text-3xl font-bold text-green-400">{stats.totalTransactions}</div>
               </div>
-            ))}
-          </div>
-        </div>
+              <div className="glass-card text-center group hover:border-yellow-500/30 transition-colors">
+                <div className="text-sm text-gray-400 mb-1">Bank Fund (3% Tax)</div>
+                <div className="text-3xl font-bold text-yellow-400">{formatCoins(stats.bankFund)}</div>
+              </div>
+            </div>
 
-        <div className="glass-card">
-          <h2 className="text-xl font-semibold text-white mb-4">Users ({filteredUsers.length})</h2>
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
-            <input
-              type="text"
-              placeholder="Search by username or email..."
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              className="input-field flex-1"
-            />
-            <select
-              value={userBanFilter}
-              onChange={(e) => setUserBanFilter(e.target.value as any)}
-              className="input-field w-auto"
-            >
-              <option value="all">All Users</option>
-              <option value="active">Active Only</option>
-              <option value="banned">Banned Only</option>
-            </select>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left py-2 text-gray-400">Username</th>
-                  <th className="text-left py-2 text-gray-400">Email</th>
-                  <th className="text-right py-2 text-gray-400">Balance</th>
-                  <th className="text-center py-2 text-gray-400">Role</th>
-                  <th className="text-center py-2 text-gray-400">Status</th>
-                  <th className="text-center py-2 text-gray-400">Give Coins</th>
-                  <th className="text-right py-2 text-gray-400">Joined</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((u) => (
-                  <tr key={u.id} className="border-b border-gray-800/50">
-                    <td className="py-2 text-white">{u.username}</td>
-                    <td className="py-2 text-gray-400">{u.email}</td>
-                    {u.is_admin ? (
-                      <td className="py-2 text-right text-yellow-400 font-semibold">Unlimited</td>
-                    ) : (
-                      <td className="py-2 text-right text-blue-400">{formatCoins(u.balance)}</td>
-                    )}
-                    <td className="py-2 text-center">
-                      {u.is_admin ? (
-                        <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded text-xs font-bold">ADMIN</span>
-                      ) : (
-                        <span className="text-gray-500 text-xs">Player</span>
-                      )}
-                    </td>
-                    <td className="py-2 text-center">
-                      {!u.is_admin ? (
-                        u.allowed === 1 ? (
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-xs text-red-400 font-medium">Banned{u.banned_until ? ` until ${new Date(u.banned_until).toLocaleDateString()}` : " (infinite)"}</span>
-                            <button
-                              onClick={() => handleUnban(u.id)}
-                              className="text-green-400 hover:text-green-300 text-xs font-medium"
-                            >
-                              Unban
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openBanModal(u.id)}
-                            className="text-red-400 hover:text-red-300 text-xs font-medium"
-                          >
-                            Ban
-                          </button>
-                        )
-                      ) : null}
-                    </td>
-                    <td className="py-2 text-center">
-                      {!u.is_admin && (
-                        giveCoinsUserId === u.id ? (
-                          <div className="flex items-center gap-1 justify-center">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              value={giveCoinsAmount}
-                              onChange={(e) => setGiveCoinsAmount(e.target.value)}
-                              placeholder="Amount"
-                              className="w-20 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs"
-                            />
-                            <button onClick={() => handleGiveCoins(u.id)} disabled={givingCoins} className="text-green-400 hover:text-green-300 text-xs font-bold">
-                              {givingCoins ? "..." : "Give"}
-                            </button>
-                            <button onClick={() => { setGiveCoinsUserId(null); setGiveCoinsAmount(""); }} className="text-gray-500 hover:text-white text-xs">
-                              X
-                            </button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setGiveCoinsUserId(u.id)} className="text-green-400 hover:text-green-300 text-xs font-medium">
-                            + Give Coins
-                          </button>
-                        )
-                      )}
-                    </td>
-                    <td className="py-2 text-right text-gray-500 text-xs">{new Date(u.created_at).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {banUserId && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setBanUserId(null)}>
-          <div className="glass-card max-w-sm w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-white mb-4">Ban User</h3>
-            <div className="mb-4">
-              <label className="text-xs text-gray-400 mb-2 block">Ban Duration</label>
-              <div className="flex gap-2">
+            <div className="glass-card border-red-500/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-white font-semibold">Danger Zone</h3>
+                  <p className="text-gray-400 text-sm mt-1">Reset the entire market to initial state</p>
+                </div>
                 <button
-                  onClick={() => setBanDays("infinite")}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${banDays === "infinite" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+                  onClick={handleResetMarket}
+                  disabled={resetting}
+                  className="bg-red-600/90 hover:bg-red-700 text-white font-medium py-2.5 px-5 rounded-lg transition-colors disabled:opacity-50 text-sm"
                 >
-                  Infinite
-                </button>
-                <button
-                  onClick={() => setBanDays(1)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${banDays !== "infinite" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
-                >
-                  Timed
+                  {resetting ? "Resetting..." : "Reset All Holdings & Prices"}
                 </button>
               </div>
             </div>
-            {banDays !== "infinite" && (
-              <div className="mb-4">
-                <label className="text-xs text-gray-400 mb-1 block">Number of Days</label>
+          </div>
+        )}
+
+        {activeTab === "companies" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Companies ({companies.length})</h2>
+              <button onClick={() => setShowNewForm(!showNewForm)} className="btn-primary text-sm">
+                {showNewForm ? "Cancel" : "+ New Company"}
+              </button>
+            </div>
+
+            {showNewForm && (
+              <form onSubmit={handleCreateCompany} className="glass-card space-y-4">
+                <h3 className="text-white font-medium">New Company</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Company Name</label>
+                    <input placeholder="e.g. Acme Corp" value={newCompany.name} onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })} className="input-field" required />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Ticker Symbol (max 6 chars)</label>
+                    <input placeholder="e.g. ACME" value={newCompany.ticker} onChange={(e) => setNewCompany({ ...newCompany, ticker: e.target.value.toUpperCase() })} className="input-field" required maxLength={6} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Initial Price (in cents)</label>
+                    <input type="number" min="1" value={newCompany.share_price} onChange={(e) => setNewCompany({ ...newCompany, share_price: Number(e.target.value) })} className="input-field" required />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Total Shares</label>
+                    <input type="number" min="1" value={newCompany.total_shares} onChange={(e) => setNewCompany({ ...newCompany, total_shares: Number(e.target.value) })} className="input-field" required />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Description</label>
+                  <input placeholder="What does this company do?" value={newCompany.description} onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })} className="input-field" />
+                </div>
+                <button type="submit" className="btn-success text-sm">Create Company</button>
+              </form>
+            )}
+
+            <div className="space-y-3">
+              {companies.map((c) => {
+                const sharesIncreased = c.initial_shares && c.total_shares > c.initial_shares;
+                return (
+                  <div key={c.id} className="glass-card hover:border-gray-700 transition-colors">
+                    {editingCompany?.id === c.id ? (
+                      <form onSubmit={handleUpdateCompany} className="space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-1 rounded">{c.ticker}</span>
+                          <span className="text-white font-medium">{c.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">Editing</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
+                            <label className="text-xs text-gray-500 block mb-1">Company Name</label>
+                            <div className="text-white text-sm">{c.name}</div>
+                            <span className="text-[10px] text-yellow-500 mt-1 inline-block">🔒 Locked</span>
+                          </div>
+                          <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
+                            <label className="text-xs text-gray-500 block mb-1">Share Price</label>
+                            <div className="text-white text-sm">{formatCoins(c.share_price)}</div>
+                            <span className="text-[10px] text-yellow-500 mt-1 inline-block">🔒 Locked</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Description</label>
+                          <input
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                            className="input-field"
+                            placeholder="Company description"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">
+                            Total Shares — can only increase
+                          </label>
+                          <input
+                            type="number"
+                            min={c.total_shares + 1}
+                            value={editShares}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setEditShares(val);
+                            }}
+                            className="input-field"
+                            required
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Current: {c.total_shares.toLocaleString()}
+                            {editShares > c.total_shares && (
+                              <span className="text-green-400 ml-2">(+{(editShares - c.total_shares).toLocaleString()} new shares)</span>
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={editShares <= c.total_shares && editDescription === (c.description || "")}
+                            className="btn-success text-sm px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Save Changes
+                          </button>
+                          <button type="button" onClick={() => setEditingCompany(null)} className="text-gray-400 hover:text-white text-sm px-4 py-2">Cancel</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-mono text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">#{c.id}</span>
+                            <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">{c.ticker}</span>
+                            <span className="text-white font-medium truncate">{c.name}</span>
+                            {sharesIncreased && (
+                              <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
+                                +{(c.total_shares - (c.initial_shares || 0)).toLocaleString()} shares released
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 truncate">{c.description || "No description"}</p>
+                        </div>
+                        <div className="flex items-center gap-5 text-sm ml-4 shrink-0">
+                          <div className="text-right">
+                            <div className="text-white font-semibold">{formatCoins(c.share_price)}</div>
+                            <div className="text-[10px] text-gray-500">per share</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white">{c.total_shares.toLocaleString()}</div>
+                            <div className="text-[10px] text-gray-500">shares</div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => startEditCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">
+                              Edit
+                            </button>
+                            <button onClick={() => handleDeleteCompany(c.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {companies.length === 0 && (
+                <div className="text-center text-gray-500 py-8">No companies yet</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "users" && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.35-4.35" />
+                </svg>
                 <input
-                  type="number"
-                  min="1"
-                  value={typeof banDays === "number" ? banDays : 1}
-                  onChange={(e) => setBanDays(Number(e.target.value) || 1)}
-                  className="input-field"
+                  type="text"
+                  placeholder="Search by username or email..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="input-field pl-10"
                 />
               </div>
-            )}
-            <div className="flex gap-2">
-              <button onClick={handleBanConfirm} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium transition-colors">
-                Ban User
-              </button>
-              <button onClick={() => setBanUserId(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-medium transition-colors">
-                Cancel
-              </button>
+              <select
+                value={userBanFilter}
+                onChange={(e) => setUserBanFilter(e.target.value as any)}
+                className="input-field w-auto sm:w-44"
+              >
+                <option value="all">All Users ({users.length})</option>
+                <option value="active">Active Only</option>
+                <option value="banned">Banned Only</option>
+              </select>
+            </div>
+
+            <div className="glass-card overflow-hidden !p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-800">
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">User</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden sm:table-cell">Email</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Balance</th>
+                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Role</th>
+                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Status</th>
+                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Actions</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden md:table-cell">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((u) => (
+                      <tr key={u.id} className="border-b border-gray-800/50 hover:bg-gray-800/20 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="text-white font-medium">{u.username}</div>
+                          <div className="text-gray-500 text-xs sm:hidden">{u.email}</div>
+                        </td>
+                        <td className="py-3 px-4 text-gray-400 hidden sm:table-cell">{u.email}</td>
+                        <td className="py-3 px-4 text-right">
+                          {u.is_admin ? (
+                            <span className="text-yellow-400 font-semibold">Unlimited</span>
+                          ) : (
+                            <span className="text-blue-400">{formatCoins(u.balance)}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {u.is_admin ? (
+                            <span className="text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded text-xs font-bold">ADMIN</span>
+                          ) : (
+                            <span className="text-gray-500 text-xs">Player</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {u.is_admin ? null : u.allowed === 1 ? (
+                            <span className="text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-xs font-medium">Banned</span>
+                          ) : (
+                            <span className="text-green-400 bg-green-400/10 px-2 py-0.5 rounded text-xs font-medium">Active</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {!u.is_admin && (
+                            <div className="flex items-center justify-center gap-2">
+                              {u.allowed === 1 ? (
+                                <button onClick={() => handleUnbanUser(u.id)} className="text-green-400 hover:text-green-300 text-xs font-medium">
+                                  Unban
+                                </button>
+                              ) : (
+                                <button onClick={() => handleBanUser(u.id)} className="text-red-400 hover:text-red-300 text-xs font-medium">
+                                  Ban
+                                </button>
+                              )}
+                              {giveCoinsUserId === u.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    value={giveCoinsAmount}
+                                    onChange={(e) => setGiveCoinsAmount(e.target.value)}
+                                    placeholder="c"
+                                    className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs"
+                                  />
+                                  <button onClick={() => handleGiveCoins(u.id)} disabled={givingCoins} className="text-green-400 hover:text-green-300 text-xs font-bold">
+                                    {givingCoins ? "..." : "Give"}
+                                  </button>
+                                  <button onClick={() => { setGiveCoinsUserId(null); setGiveCoinsAmount(""); }} className="text-gray-500 hover:text-white text-xs">X</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => { setGiveCoinsUserId(u.id); setGiveCoinsAmount(""); }} className="text-gray-400 hover:text-green-400 text-xs font-medium">
+                                  + Coins
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-500 text-xs hidden md:table-cell">{new Date(u.created_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {filteredUsers.length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  {userSearch || userBanFilter !== "all" ? "No users match your filters" : "No users yet"}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {activeTab === "settings" && (
+          <div className="space-y-6">
+            <div className="glass-card border-purple-500/20">
+              <h3 className="text-white font-semibold mb-4">Trading Hours</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Trading Status</label>
+                  <select
+                    value={tradingSettings.trading_enabled}
+                    onChange={(e) => setTradingSettings({ ...tradingSettings, trading_enabled: Number(e.target.value) })}
+                    className="input-field"
+                  >
+                    <option value={1}>Open</option>
+                    <option value={0}>Closed (Admin Lock)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Open Hour (0-23)</label>
+                  <input
+                    type="number" min="0" max="23"
+                    value={tradingSettings.trading_open_hour}
+                    onChange={(e) => setTradingSettings({ ...tradingSettings, trading_open_hour: Number(e.target.value) })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Close Hour (1-24)</label>
+                  <input
+                    type="number" min="1" max="24"
+                    value={tradingSettings.trading_close_hour}
+                    onChange={(e) => setTradingSettings({ ...tradingSettings, trading_close_hour: Number(e.target.value) })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+              <button onClick={handleSaveTrading} disabled={savingTrading} className="btn-primary text-sm">
+                {savingTrading ? "Saving..." : "Save Trading Hours"}
+              </button>
+              <p className="text-xs text-gray-500 mt-2">Hours are in Australian Queensland time (AEST, UTC+10). Default: 0-24 (24/7).</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
