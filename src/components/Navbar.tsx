@@ -9,8 +9,13 @@ export default function Navbar() {
   const { data: session, status } = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
   const [tradingStatus, setTradingStatus] = useState<{ isOpen: boolean; openHour: number; closeHour: number; message: string } | null>(null);
+  const [userTz, setUserTz] = useState<string>("");
 
   useEffect(() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setUserTz(tz);
+    } catch {}
     fetchTradingStatus();
     const interval = setInterval(fetchTradingStatus, 60000);
     return () => clearInterval(interval);
@@ -21,6 +26,26 @@ export default function Navbar() {
       .then(r => r.json())
       .then(setTradingStatus)
       .catch(() => {});
+  }
+
+  function getLocalTimeLabel(): string {
+    if (!tradingStatus || !userTz) return "";
+    try {
+      const now = new Date();
+      const aestOffset = 10;
+      const aestDate = new Date(now.toLocaleString("en-US", { timeZone: "Australia/Brisbane" }));
+      aestDate.setHours(tradingStatus.openHour, 0, 0, 0);
+      const openLocal = new Date(aestDate.toLocaleString("en-US", { timeZone: userTz }));
+      aestDate.setHours(tradingStatus.closeHour, 0, 0, 0);
+      const closeLocal = new Date(aestDate.toLocaleString("en-US", { timeZone: userTz }));
+
+      const fmt = (d: Date) => d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: userTz });
+      const tzAbbr = new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: userTz }).formatToParts(now).find(p => p.type === "timeZoneName")?.value || userTz.split("/").pop();
+
+      return `${fmt(openLocal)} - ${fmt(closeLocal)} ${tzAbbr}`;
+    } catch {
+      return `${tradingStatus.openHour}:00 - ${tradingStatus.closeHour}:00 AEST`;
+    }
   }
 
   function getTimeUntilChange(): string {
@@ -74,13 +99,13 @@ export default function Navbar() {
               <span className="flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" fill="none" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 Open
-                <span className="text-amber-400/60 ml-0.5">{getTimeUntilChange()}</span>
+                <span className="text-amber-400/60 ml-0.5">{getLocalTimeLabel() || getTimeUntilChange()}</span>
               </span>
             ) : (
               <span className="flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
                 Closed
-                <span className="text-indigo-400/60 ml-0.5">{getTimeUntilChange()}</span>
+                <span className="text-indigo-400/60 ml-0.5">{getLocalTimeLabel() || getTimeUntilChange()}</span>
               </span>
             )}
           </div>

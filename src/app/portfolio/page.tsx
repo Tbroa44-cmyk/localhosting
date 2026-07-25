@@ -17,6 +17,7 @@ import Navbar from "@/components/Navbar";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from "next/link";
 import { formatCoins } from "@/lib/format";
+import PageBackground from "@/components/PageBackground";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
@@ -267,6 +268,7 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen">
+      <PageBackground />
       <Navbar />
       <div className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-white mb-2">Portfolio</h1>

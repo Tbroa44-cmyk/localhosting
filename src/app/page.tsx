@@ -83,10 +83,9 @@ export default function Home() {
             <span className="gradient-text">stockgame.uk</span>
           </h1>
           <p className="text-xl text-gray-400 max-w-xl mx-auto mb-4">
-            Buy and sell virtual company shares in real-time.
-            Watch prices move with every trade.
+            Invest in real time against other users.
           </p>
-          <p className="text-sm text-gray-500">No real money. Pure strategy.</p>
+          <p className="text-sm text-gray-500">A market simulation</p>
         </div>
 
         {stocks.length > 0 && (

@@ -12,6 +12,7 @@ import ButtonSpinner from "@/components/ButtonSpinner";
 import CommentsSection from "@/components/CommentsSection";
 import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
+import PageBackground from "@/components/PageBackground";
 
 interface Company {
   id: number;
@@ -134,6 +135,7 @@ export default function StockDetailPage() {
   if (!company) {
     return (
       <div className="min-h-screen">
+        <PageBackground />
         <Navbar />
         <div className="flex items-center justify-center h-64">
           <LoadingSpinner size="lg" text="Loading..." />
@@ -160,6 +162,7 @@ export default function StockDetailPage() {
 
   return (
     <div className="min-h-screen">
+      <PageBackground />
       <Navbar />
       <TradeAnimation type={tradeAnimType} onComplete={() => setTradeAnimType(null)} />
       <div className="max-w-6xl mx-auto px-4 py-8 animate-stock-zoom">

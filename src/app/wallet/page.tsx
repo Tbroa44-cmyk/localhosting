@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Navbar from "@/components/Navbar";
 import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
+import PageBackground from "@/components/PageBackground";
 
 const PACKAGES = [
   { coins: 100, price: 1.0, label: "Starter", bonus: "" },
@@ -75,6 +76,7 @@ export default function WalletPage() {
 
   return (
     <div className="min-h-screen">
+      <PageBackground />
       <Navbar />
       <div className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-white mb-2">Purchase Coins</h1>
