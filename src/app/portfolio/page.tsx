@@ -508,33 +508,44 @@ export default function PortfolioPage() {
             <p className="text-gray-400 text-sm py-4 text-center">No transactions yet</p>
           ) : (
             <div className="space-y-2">
-              {transactions.map((tx) => (
+              {transactions.map((tx) => {
+                const isBank = tx.type === "bank_deposit" || tx.type === "bank_withdraw";
+                const isDeposit = tx.type === "bank_deposit";
+                return (
                 <div key={tx.id} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
                   <div className="flex items-center gap-3">
                     <span
                       className={`text-xs font-bold px-2 py-1 rounded ${
-                        String(tx.type) === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                        isBank
+                          ? "bg-blue-500/20 text-blue-400"
+                          : String(tx.type) === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
                       }`}
                     >
-                      {String(tx.type).toUpperCase()}
+                      {isBank ? "BANK" : String(tx.type).toUpperCase()}
                     </span>
                     <div>
-                      <span className="text-white">{tx.ticker}</span>
-                      <span className="text-gray-400 ml-2">
-                        {tx.shares} share{tx.shares > 1 ? "s" : ""}
-                      </span>
+                      <span className="text-white">{isBank ? (isDeposit ? "Wallet → Bank" : "Bank → Wallet") : tx.ticker}</span>
+                      {!isBank && (
+                        <span className="text-gray-400 ml-2">
+                          {tx.shares} share{tx.shares > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {isBank && (
+                        <span className="text-gray-400 ml-2">{formatCoins(tx.total_amount)}</span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={String(tx.type) === "buy" ? "text-red-400" : "text-green-400"}>
-                      {String(tx.type) === "buy" ? "-" : "+"}{formatCoins(tx.total_amount)}
+                    <div className={isDeposit ? "text-yellow-400" : !isBank && String(tx.type) === "buy" ? "text-red-400" : "text-green-400"}>
+                      {isBank ? (isDeposit ? "-" : "+") : String(tx.type) === "buy" ? "-" : "+"}{formatCoins(tx.total_amount)}
                     </div>
                     <div className="text-xs text-gray-500">
                       {new Date(tx.created_at).toLocaleString()}
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

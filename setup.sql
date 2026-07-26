@@ -64,7 +64,10 @@ CREATE TABLE IF NOT EXISTS settings (
   id SERIAL PRIMARY KEY,
   trading_enabled INTEGER DEFAULT 1,
   trading_open_hour INTEGER DEFAULT 0,
-  trading_close_hour INTEGER DEFAULT 24
+  trading_close_hour INTEGER DEFAULT 24,
+  emergency_close INTEGER DEFAULT 0,
+  emergency_message TEXT DEFAULT 'Markets under maintenance',
+  trading_days TEXT DEFAULT '1,2,3,4,5,6,7'
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -119,6 +122,15 @@ CREATE TABLE IF NOT EXISTS password_resets (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS custom_date_ranges (
+  id SERIAL PRIMARY KEY,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  label TEXT,
+  enabled INTEGER DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS user_bank_accounts (
   id SERIAL PRIMARY KEY,
   user_id INTEGER UNIQUE NOT NULL,
@@ -141,11 +153,15 @@ CREATE TABLE IF NOT EXISTS user_bank_investments (
 );
 
 ALTER TABLE user_bank_investments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_date_ranges DISABLE ROW LEVEL SECURITY;
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_shares INTEGER;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS request_id TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 1;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS emergency_close INTEGER DEFAULT 0;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS emergency_message TEXT DEFAULT 'Markets under maintenance';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS trading_days TEXT DEFAULT '1,2,3,4,5,6,7';
 
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE companies DISABLE ROW LEVEL SECURITY;
@@ -162,6 +178,7 @@ ALTER TABLE kofi_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE password_resets DISABLE ROW LEVEL SECURITY;
 ALTER TABLE user_bank_accounts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE user_bank_investments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_date_ranges DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO bank_fund (id, balance) VALUES (1, 0) ON CONFLICT DO NOTHING;
 INSERT INTO settings (id, trading_enabled, trading_open_hour, trading_close_hour) VALUES (1, 1, 0, 24) ON CONFLICT DO NOTHING;

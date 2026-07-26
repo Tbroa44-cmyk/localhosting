@@ -39,6 +39,10 @@ export async function deposit(userId: number, amountCents: number) {
   await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(amountCents, userId);
   await db.prepare("UPDATE user_bank_accounts SET balance = balance + ? WHERE id = ?").run(amountCents, account.id);
 
+  await db.prepare(
+    "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount, created_at) VALUES (?, 0, 'bank_deposit', 0, 0, ?, ?)"
+  ).run(userId, amountCents, new Date().toISOString());
+
   const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
   const updatedAccount = await db.prepare("SELECT * FROM user_bank_accounts WHERE user_id = ?").get(userId);
 
@@ -61,6 +65,10 @@ export async function withdraw(userId: number, amountCents: number) {
 
   await db.prepare("UPDATE user_bank_accounts SET balance = balance - ? WHERE id = ?").run(amountCents, account.id);
   await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(amountCents, userId);
+
+  await db.prepare(
+    "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount, created_at) VALUES (?, 0, 'bank_withdraw', 0, 0, ?, ?)"
+  ).run(userId, amountCents, new Date().toISOString());
 
   const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
   const updatedAccount = await db.prepare("SELECT * FROM user_bank_accounts WHERE user_id = ?").get(userId);

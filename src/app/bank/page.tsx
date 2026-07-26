@@ -231,14 +231,34 @@ export default function BankPage() {
 
             <div className="glass-card">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">Investments</h3>
-                <button
-                  onClick={handleInvest}
-                  disabled={investing || !bankData?.canOperate}
-                  className="btn-primary text-sm flex items-center gap-2"
-                >
-                  {investing ? <><ButtonSpinner size={14} /> Picking...</> : "Pick Companies"}
-                </button>
+                <h3 className="text-lg font-semibold text-white">
+                  Investments
+                  {bankData?.investments && bankData.investments.length > 0 && (
+                    <span className="text-sm font-normal text-gray-400 ml-2">({bankData.investments.length} companies)</span>
+                  )}
+                </h3>
+                {bankData?.canOperate && (
+                  <>
+                    {(!bankData.investments || bankData.investments.length === 0) && (
+                      <button
+                        onClick={handleInvest}
+                        disabled={investing}
+                        className="btn-primary text-sm flex items-center gap-2"
+                      >
+                        {investing ? <><ButtonSpinner size={14} /> Picking...</> : "Pick Companies"}
+                      </button>
+                    )}
+                    {bankData.investments && bankData.investments.length > 0 && bankData.needsRotation && (
+                      <button
+                        onClick={handleInvest}
+                        disabled={investing}
+                        className="btn-primary text-sm flex items-center gap-2"
+                      >
+                        {investing ? <><ButtonSpinner size={14} /> Improving...</> : "Improve Selected Companies"}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
 
               {!bankData?.canOperate && (
@@ -249,15 +269,7 @@ export default function BankPage() {
                 </div>
               )}
 
-              {bankData?.canOperate && (!bankData.investments || bankData.investments.length === 0) && (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3">📈</div>
-                  <p className="text-gray-400 mb-2">No investments yet</p>
-                  <p className="text-gray-500 text-sm">Click &quot;Pick Companies&quot; to let the bank choose the best investments for you</p>
-                </div>
-              )}
-
-              {(bankData?.investments?.length || 0) > 0 && (
+              {bankData?.canOperate && bankData.investments && bankData.investments.length > 0 && (
                 <div className="space-y-3">
                   {bankData?.investments?.map((inv) => (
                     <div key={inv.company_id} className="flex items-center justify-between py-3 px-4 bg-gray-800/50 rounded-lg">

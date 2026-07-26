@@ -1,22 +1,13 @@
 import getDb, { insertPriceHistory, updateCompanyPrice } from "@/lib/db";
 import { formatCoins } from "@/lib/format";
+import { isTradingOpen as isTradingOpenCore } from "@/lib/trading-hours";
 
 const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
 const MAX_PRICE_CHANGE_PERCENT = 0.25;
 
 async function isTradingOpen(db: any): Promise<boolean> {
-  try {
-    const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
-    if (!settings || (settings.trading_enabled === 1 && settings.trading_open_hour === 0 && settings.trading_close_hour === 24)) {
-      return true;
-    }
-    if (settings.trading_enabled === 0) return false;
-    const hour = (new Date().getUTCHours() + 10) % 24;
-    return hour >= settings.trading_open_hour && hour < settings.trading_close_hour;
-  } catch {
-    return true;
-  }
+  return isTradingOpenCore(db);
 }
 
 export async function awardXP(db: any, userId: number, amount: number) {

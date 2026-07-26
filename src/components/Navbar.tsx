@@ -10,7 +10,7 @@ import { usePathname } from "next/navigation";
 export default function Navbar() {
   const { data: session, status } = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
-  const [tradingStatus, setTradingStatus] = useState<{ isOpen: boolean; openHour: number; closeHour: number; message: string } | null>(null);
+  const [tradingStatus, setTradingStatus] = useState<{ isOpen: boolean; openHour: number; closeHour: number; message: string; emergencyClose?: boolean; emergencyMessage?: string; nextChange?: string } | null>(null);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -64,6 +64,8 @@ export default function Navbar() {
 
   function getTimeUntilChange(): string {
     if (!tradingStatus) return "";
+    if (tradingStatus.emergencyClose) return "maintenance";
+    if (tradingStatus.nextChange) return tradingStatus.nextChange;
     const now = new Date();
     const currentHour = (now.getUTCHours() + 10) % 24;
     if (tradingStatus.isOpen) {
@@ -92,6 +94,7 @@ export default function Navbar() {
   }
 
   const isOpen = tradingStatus?.isOpen ?? true;
+  const isEmergency = tradingStatus?.emergencyClose ?? false;
 
   return (
     <nav
@@ -109,15 +112,23 @@ export default function Navbar() {
             stockgame.uk
           </Link>
           <div className={`flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-            isOpen
-              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-              : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
+            isEmergency
+              ? "bg-red-500/10 border-red-500/30 text-red-400"
+              : isOpen
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
           }`}>
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isOpen ? "bg-amber-400" : "bg-indigo-400"}`} />
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${isOpen ? "bg-amber-500" : "bg-indigo-500"}`} />
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isEmergency ? "bg-red-400" : isOpen ? "bg-amber-400" : "bg-indigo-400"}`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isEmergency ? "bg-red-500" : isOpen ? "bg-amber-500" : "bg-indigo-500"}`} />
             </span>
-            {isOpen ? (
+            {isEmergency ? (
+              <span className="flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M1 1h22v22H1z" fill="none"/><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2"/></svg>
+                Maintenance
+                <span className="text-red-400/60 ml-0.5 hidden sm:inline">{getTimeUntilChange()}</span>
+              </span>
+            ) : isOpen ? (
               <span className="flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" fill="none" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 Open
@@ -164,7 +175,7 @@ export default function Navbar() {
                 </span>
               )}
               <span className="text-green-400 font-semibold">
-                {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
+                {formatCoins((session.user as any)?.balance || 0)}
               </span>
               <button
                 onClick={handleLogout}
@@ -206,7 +217,7 @@ export default function Navbar() {
               <div className="flex items-center justify-between px-2 py-2">
                 <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
                 <span className="text-green-400 font-semibold text-sm">
-                  {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
+                  {formatCoins((session.user as any)?.balance || 0)}
                 </span>
               </div>
               <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Markets</Link>
