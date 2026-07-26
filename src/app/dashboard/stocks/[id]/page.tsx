@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import CommentsSection from "@/components/CommentsSection";
 import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
 import PageBackground from "@/components/PageBackground";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface Company {
   id: number;
@@ -31,6 +32,8 @@ export default function StockDetailPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const params = useParams();
+  const isMobile = useIsMobile();
+  const isInitialLoad = useRef(true);
   const [company, setCompany] = useState<Company | null>(null);
   const [userBalance, setUserBalance] = useState(0);
   const [sharesOwned, setSharesOwned] = useState(0);
@@ -54,12 +57,15 @@ export default function StockDetailPage() {
   const companyId = Number(params.id);
 
   const fetchData = () => {
-    setLoadingSections(prev => ({ ...prev, chart: true, orders: true, position: true, trades: true }));
+    if (isInitialLoad.current) {
+      setLoadingSections({ chart: true, orders: true, position: true, trades: true });
+    }
 
     fetch(`/api/stocks/${companyId}`)
       .then((res) => res.json())
       .then((data) => {
         setCompany(data);
+        isInitialLoad.current = false;
         setLoadingSections(prev => ({ ...prev, chart: false }));
       })
       .catch(() => setLoadingSections(prev => ({ ...prev, chart: false })));
@@ -182,7 +188,7 @@ export default function StockDetailPage() {
       <PageBackground />
       <Navbar />
       <TradeAnimation type={tradeAnimType} onComplete={() => setTradeAnimType(null)} />
-      <div className="max-w-6xl mx-auto px-4 py-8 animate-stock-zoom">
+      <div className="max-w-6xl mx-auto px-3 md:px-4 py-6 md:py-8 animate-stock-zoom">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-white mb-6 inline-block">
           &larr; Back to Markets
         </button>
@@ -193,14 +199,14 @@ export default function StockDetailPage() {
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-sm font-mono text-blue-400 bg-blue-400/10 px-3 py-1 rounded">{company.ticker}</span>
               </div>
-              <h1 className="text-3xl font-bold text-white mb-2">{company.name}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{company.name}</h1>
               <p className="text-gray-400 mb-4">{company.description}</p>
               <div className="text-sm text-gray-500">
                 {company.total_shares.toLocaleString()} total shares &middot; {company.available_shares.toLocaleString()} available at market
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-4xl font-bold text-white mb-1">{formatCoins(currentPrice)}</div>
+              <div className="text-3xl md:text-4xl font-bold text-white mb-1">{formatCoins(currentPrice)}</div>
               <div className={`text-sm font-medium mb-4 ${priceChange >= 0 ? "text-green-400" : "text-red-400"}`}>
                 {priceChange >= 0 ? "+" : ""}{formatCoins(priceChange)} ({priceChange >= 0 ? "+" : ""}{priceChangePercent}%)
               </div>
@@ -254,7 +260,7 @@ export default function StockDetailPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Shares</label>
                 <input
@@ -363,7 +369,7 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        {canTrade && loadingSections.orders ? (
+        {canTrade && isInitialLoad.current && loadingSections.orders ? (
           <div className="glass-card mb-6 border-yellow-500/30">
             <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders</h3>
             <div className="space-y-2">
@@ -419,7 +425,7 @@ export default function StockDetailPage() {
         )}
 
         <div className="mb-6">
-          {loadingSections.chart ? (
+          {isInitialLoad.current && loadingSections.chart ? (
             <div className="glass-card">
               <div className="h-8 w-40 bg-gray-800 rounded animate-pulse mb-4" />
               <div className="h-64 sm:h-80 bg-gray-800/50 rounded-lg animate-pulse" />
@@ -429,11 +435,11 @@ export default function StockDetailPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           {canTrade && (
             <div className="glass-card">
               <h3 className="text-lg font-semibold text-white mb-4">Your Position</h3>
-              {loadingSections.position ? (
+              {isInitialLoad.current && loadingSections.position ? (
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-40 h-40 rounded-full bg-gray-800/50 animate-pulse" />
                   <div className="grid grid-cols-2 gap-4 w-full">
@@ -504,7 +510,7 @@ export default function StockDetailPage() {
 
           <div className="glass-card">
             <h3 className="text-lg font-semibold text-white mb-4">{canTrade ? "My Trades" : "Recent Trades"}</h3>
-            {loadingSections.trades ? (
+            {isInitialLoad.current && loadingSections.trades ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />

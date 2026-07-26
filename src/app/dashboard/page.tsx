@@ -139,7 +139,7 @@ export default function DashboardPage() {
       )}
       <div className="max-w-7xl mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">
+        <h1 className="text-2xl md:text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>
         </h1>
         <p className="text-gray-400">{companies.length} companies available for trading</p>
@@ -151,7 +151,7 @@ export default function DashboardPage() {
           placeholder="Search by ticker or company name..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full text-lg py-4 px-6 bg-gray-800/60 border border-gray-600/50 rounded-xl text-white placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+          className="w-full text-base md:text-lg py-3 md:py-4 px-4 md:px-6 bg-gray-800/60 border border-gray-600/50 rounded-xl text-white placeholder-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
         />
       </div>
 

@@ -19,6 +19,22 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
+    if (isLoggedIn) {
+      fetch("/api/portfolio")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.user) {
+            setUserBalance(data.user.balance || 0);
+            setIsAdmin(!!data.user.isAdmin);
+          }
+          const holding = data.holdings?.find((h: any) => h.company_id === company.id);
+          setSharesOwned(holding?.shares_owned || 0);
+        })
+        .catch(() => {});
+    }
+  }, [isLoggedIn, company.id]);
+
+  useEffect(() => {
     if (modalOpen) {
       fetch("/api/portfolio")
         .then((r) => r.json())

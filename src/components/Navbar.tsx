@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { useState, useEffect } from "react";
 import { formatCoins } from "@/lib/format";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export default function Navbar() {
   const { data: session, status } = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
   const [tradingStatus, setTradingStatus] = useState<{ isOpen: boolean; openHour: number; closeHour: number; message: string } | null>(null);
+  const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchTradingStatus();
@@ -55,13 +58,13 @@ export default function Navbar() {
   const isOpen = tradingStatus?.isOpen ?? true;
 
   return (
-    <nav className="glass sticky top-0 z-50 px-6 py-3">
+    <nav className="glass sticky top-0 z-50 px-4 md:px-6 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="text-2xl font-bold gradient-text">
+        <div className="flex items-center gap-2 md:gap-4">
+          <Link href="/dashboard" className="text-xl md:text-2xl font-bold gradient-text">
             stockgame.uk
           </Link>
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+          <div className={`flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
             isOpen
               ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
               : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
@@ -74,19 +77,19 @@ export default function Navbar() {
               <span className="flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" fill="none" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 Open
-                <span className="text-amber-400/60 ml-0.5">{getTimeUntilChange()}</span>
+                <span className="text-amber-400/60 ml-0.5 hidden sm:inline">{getTimeUntilChange()}</span>
               </span>
             ) : (
               <span className="flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
                 Closed
-                <span className="text-indigo-400/60 ml-0.5">{getTimeUntilChange()}</span>
+                <span className="text-indigo-400/60 ml-0.5 hidden sm:inline">{getTimeUntilChange()}</span>
               </span>
             )}
           </div>
         </div>
 
-        {session ? (
+        {!isMobile && session ? (
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors">
               Markets
@@ -125,7 +128,7 @@ export default function Navbar() {
               </button>
             </div>
           </div>
-        ) : (
+        ) : !isMobile ? (
           <div className="flex items-center gap-4">
             <Link href="/login" className="text-gray-300 hover:text-white transition-colors">
               Login
@@ -134,8 +137,47 @@ export default function Navbar() {
               Sign Up
             </Link>
           </div>
+        ) : null}
+
+        {isMobile && (
+          <button onClick={() => setMenuOpen(!menuOpen)} className="text-gray-300 hover:text-white p-2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {menuOpen ? (
+                <path d="M18 6L6 18M6 6l12 12" />
+              ) : (
+                <path d="M3 12h18M3 6h18M3 18h18" />
+              )}
+            </svg>
+          </button>
         )}
       </div>
+
+      {isMobile && menuOpen && (
+        <div className="md:hidden mt-3 pb-3 border-t border-gray-700/50 pt-3 space-y-2">
+          {session ? (
+            <>
+              <div className="flex items-center justify-between px-2 py-2">
+                <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
+                <span className="text-green-400 font-semibold text-sm">
+                  {(session.user as any)?.isAdmin ? "Unlimited" : formatCoins((session.user as any)?.balance || 0)}
+                </span>
+              </div>
+              <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Markets</Link>
+              <Link href="/portfolio" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Portfolio</Link>
+              <Link href="/wallet" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Wallet</Link>
+              {(session.user as any)?.isAdmin && (
+                <Link href="/admin" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-yellow-400 hover:text-yellow-300 hover:bg-white/5 rounded-lg transition-colors font-medium">Admin Panel</Link>
+              )}
+              <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="block w-full text-left px-2 py-2 text-red-400 hover:text-red-300 hover:bg-white/5 rounded-lg transition-colors">Logout</button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Login</Link>
+              <Link href="/register" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-blue-400 hover:text-blue-300 hover:bg-white/5 rounded-lg transition-colors font-medium">Sign Up</Link>
+            </>
+          )}
+        </div>
+      )}
     </nav>
   );
 }
