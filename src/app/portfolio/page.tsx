@@ -88,10 +88,12 @@ export default function PortfolioPage() {
   }, [status, router]);
 
   useEffect(() => {
-    fetchPortfolio();
-    const interval = setInterval(fetchPortfolio, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    if (status === "authenticated") {
+      fetchPortfolio();
+      const interval = setInterval(fetchPortfolio, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [status]);
 
   function fetchPortfolio() {
     fetch(`/api/portfolio`)

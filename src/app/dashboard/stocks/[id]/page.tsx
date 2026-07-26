@@ -28,7 +28,7 @@ interface Company {
 }
 
 export default function StockDetailPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const params = useParams();
   const isMobile = useIsMobile();
@@ -50,7 +50,7 @@ export default function StockDetailPage() {
   const [ordersLoaded, setOrdersLoaded] = useState(false);
 
   const companyId = Number(params.id);
-  const canTrade = !!session;
+  const canTrade = status === "authenticated";
 
   const fetchData = useCallback(() => {
     fetch(`/api/stocks/${companyId}`)
@@ -61,7 +61,7 @@ export default function StockDetailPage() {
       })
       .catch(() => setCompanyLoaded(true));
 
-    if (session) {
+    if (status === "authenticated") {
       fetch(`/api/portfolio`)
         .then((res) => res.json())
         .then((data) => {
@@ -79,17 +79,18 @@ export default function StockDetailPage() {
           setOrdersLoaded(true);
         })
         .catch(() => setOrdersLoaded(true));
-    } else {
+    } else if (status === "unauthenticated") {
       setPositionLoaded(true);
       setOrdersLoaded(true);
     }
-  }, [companyId, session]);
+  }, [companyId, status]);
 
   useEffect(() => {
+    if (status === "loading") return;
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, status]);
 
   async function handlePlaceOrder() {
     setOrderError("");

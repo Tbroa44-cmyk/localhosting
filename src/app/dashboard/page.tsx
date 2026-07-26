@@ -20,6 +20,18 @@ export default function DashboardPage() {
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
   const [userHoldings, setUserHoldings] = useState<Record<number, number>>({});
 
+  function loadHoldings() {
+    fetch("/api/portfolio").then(r => r.json()).then(data => {
+      const map: Record<number, number> = {};
+      if (Array.isArray(data.holdings)) {
+        for (const h of data.holdings) {
+          map[h.company_id] = h.shares_owned;
+        }
+      }
+      setUserHoldings(map);
+    }).catch(() => {});
+  }
+
   useEffect(() => {
     function loadStocks() {
       fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
@@ -30,24 +42,12 @@ export default function DashboardPage() {
         })
         .catch(() => { setCompanies([]); setLoading(false); });
     }
-    function loadHoldings() {
-      fetch("/api/portfolio").then(r => r.json()).then(data => {
-        const map: Record<number, number> = {};
-        if (Array.isArray(data.holdings)) {
-          for (const h of data.holdings) {
-            map[h.company_id] = h.shares_owned;
-          }
-        }
-        setUserHoldings(map);
-      }).catch(() => {});
-    }
     loadStocks();
-    loadHoldings();
     const interval = setInterval(loadStocks, 15000);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         loadStocks();
-        loadHoldings();
+        if (status === "authenticated") loadHoldings();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -63,6 +63,12 @@ export default function DashboardPage() {
 
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      loadHoldings();
+    }
+  }, [status]);
 
   const filtered = useMemo(() => {
     let list = [...companies];

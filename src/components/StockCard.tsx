@@ -63,7 +63,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {} }: St
       <div 
         onClick={() => {
           setExiting(true);
-          setTimeout(() => router.push(`/dashboard/stocks/${company.id}`), 280);
+          setTimeout(() => router.push(`/dashboard/stocks/${company.id}`), 340);
         }}
         className="cursor-pointer"
       >
