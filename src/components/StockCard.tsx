@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import MiniChart from "./MiniChart";
 import BuySellModal from "./BuySellModal";
@@ -9,30 +10,22 @@ import { formatCoins } from "@/lib/format";
 interface StockCardProps {
   company: any;
   isLoggedIn: boolean;
+  userHoldings?: Record<number, number>;
 }
 
-export default function StockCard({ company, isLoggedIn }: StockCardProps) {
+export default function StockCard({ company, isLoggedIn, userHoldings = {} }: StockCardProps) {
+  const router = useRouter();
+  const [exiting, setExiting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"buy" | "sell">("buy");
   const [userBalance, setUserBalance] = useState(0);
   const [sharesOwned, setSharesOwned] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const sharesFromProp = userHoldings[company.id] || 0;
   useEffect(() => {
-    if (isLoggedIn) {
-      fetch("/api/portfolio")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.user) {
-            setUserBalance(data.user.balance || 0);
-            setIsAdmin(!!data.user.isAdmin);
-          }
-          const holding = data.holdings?.find((h: any) => h.company_id === company.id);
-          setSharesOwned(holding?.shares_owned || 0);
-        })
-        .catch(() => {});
-    }
-  }, [isLoggedIn, company.id]);
+    setSharesOwned(sharesFromProp);
+  }, [sharesFromProp]);
 
   useEffect(() => {
     if (modalOpen) {
@@ -66,8 +59,14 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
   const isUp = company.dayChangePercent >= 0;
 
   return (
-    <div className={`glass-card hover:border-blue-500/30 transition-all group overflow-hidden ${modalOpen ? "" : ""}`}>
-      <Link href={`/dashboard/stocks/${company.id}`}>
+    <div className={`glass-card hover:border-blue-500/30 transition-all group overflow-hidden ${exiting ? "stock-card-exit" : ""}`}>
+      <div 
+        onClick={() => {
+          setExiting(true);
+          setTimeout(() => router.push(`/dashboard/stocks/${company.id}`), 280);
+        }}
+        className="cursor-pointer"
+      >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 font-bold text-sm shrink-0">
@@ -111,7 +110,7 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
             <div className="text-xs">Trades</div>
           </div>
         </div>
-      </Link>
+      </div>
 
       {!modalOpen && isLoggedIn && (
         <div className="flex gap-2">

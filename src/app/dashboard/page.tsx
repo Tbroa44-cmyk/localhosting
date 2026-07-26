@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [isBanned, setIsBanned] = useState(false);
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
+  const [userHoldings, setUserHoldings] = useState<Record<number, number>>({});
 
   useEffect(() => {
     function loadStocks() {
@@ -29,9 +30,26 @@ export default function DashboardPage() {
         })
         .catch(() => { setCompanies([]); setLoading(false); });
     }
+    function loadHoldings() {
+      fetch("/api/portfolio").then(r => r.json()).then(data => {
+        const map: Record<number, number> = {};
+        if (Array.isArray(data.holdings)) {
+          for (const h of data.holdings) {
+            map[h.company_id] = h.shares_owned;
+          }
+        }
+        setUserHoldings(map);
+      }).catch(() => {});
+    }
     loadStocks();
+    loadHoldings();
     const interval = setInterval(loadStocks, 15000);
-    const onVisible = () => { if (document.visibilityState === "visible") loadStocks(); };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        loadStocks();
+        loadHoldings();
+      }
+    };
     document.addEventListener("visibilitychange", onVisible);
 
     fetch("/api/auth/check-ban").then(r => r.json()).then(d => {
@@ -181,25 +199,25 @@ export default function DashboardPage() {
           <p className="text-gray-400 text-sm mb-4">{filtered.length} companies found</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((company) => (
-              <StockCard key={company.id} company={company} isLoggedIn={!!session} />
+              <StockCard key={company.id} company={company} isLoggedIn={!!session} userHoldings={userHoldings} />
             ))}
           </div>
         </div>
       ) : (
         <>
-          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={topGainers} isLoggedIn={!!session} />
-          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={topLosers} isLoggedIn={!!session} />
-          <Section title="Most Held" subtitle="Companies with the most shareholders" items={mostHeld} isLoggedIn={!!session} />
-          <Section title="Most Bought" subtitle="Highest number of buy orders" items={mostTradedBuy} isLoggedIn={!!session} />
-          <Section title="Most Sold" subtitle="Highest number of sell orders" items={mostTradedSell} isLoggedIn={!!session} />
-          <Section title="Highest Price" subtitle="Most expensive stocks" items={priciest} isLoggedIn={!!session} />
+          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={topGainers} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={topLosers} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Most Held" subtitle="Companies with the most shareholders" items={mostHeld} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Most Bought" subtitle="Highest number of buy orders" items={mostTradedBuy} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Most Sold" subtitle="Highest number of sell orders" items={mostTradedSell} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Highest Price" subtitle="Most expensive stocks" items={priciest} isLoggedIn={!!session} userHoldings={userHoldings} />
 
           <div className="mt-10 mb-6">
             <h2 className="text-2xl font-bold text-white mb-1">All Companies</h2>
             <p className="text-gray-400 text-sm mb-4">{filtered.length} companies</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.map((company) => (
-                <StockCard key={company.id} company={company} isLoggedIn={!!session} />
+                <StockCard key={company.id} company={company} isLoggedIn={!!session} userHoldings={userHoldings} />
               ))}
             </div>
           </div>
@@ -210,7 +228,7 @@ export default function DashboardPage() {
   );
 }
 
-function Section({ title, subtitle, items, isLoggedIn }: { title: string; subtitle: string; items: any[]; isLoggedIn: boolean }) {
+function Section({ title, subtitle, items, isLoggedIn, userHoldings }: { title: string; subtitle: string; items: any[]; isLoggedIn: boolean; userHoldings: Record<number, number> }) {
   if (items.length === 0) return null;
 
   return (
@@ -219,7 +237,7 @@ function Section({ title, subtitle, items, isLoggedIn }: { title: string; subtit
       <p className="text-gray-400 text-sm mb-3">{subtitle}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((company) => (
-          <StockCard key={company.id} company={company} isLoggedIn={isLoggedIn} />
+          <StockCard key={company.id} company={company} isLoggedIn={isLoggedIn} userHoldings={userHoldings} />
         ))}
       </div>
     </div>

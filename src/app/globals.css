@@ -228,3 +228,13 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out both;
 }
+
+@keyframes stockCardExit {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.08); opacity: 0; }
+}
+
+.stock-card-exit {
+  animation: stockCardExit 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}

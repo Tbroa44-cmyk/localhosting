@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Line } from "react-chartjs-2";
@@ -73,7 +73,6 @@ export default function PortfolioPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const isMobile = useIsMobile();
-  const isInitialLoad = useRef(true);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalValue, setTotalValue] = useState(0);
@@ -81,12 +80,8 @@ export default function PortfolioPage() {
   const [priceHistories, setPriceHistories] = useState<Record<number, { price: number; timestamp: number }[]>>({});
   const [apiBalance, setApiBalance] = useState<number | null>(null);
   const [earningsFilter, setEarningsFilter] = useState<TimeFilter>("7d");
-  const [loadingSections, setLoadingSections] = useState({
-    holdings: true,
-    chart: true,
-    orders: true,
-    history: true,
-  });
+  const [portfolioLoaded, setPortfolioLoaded] = useState(false);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -99,10 +94,6 @@ export default function PortfolioPage() {
   }, []);
 
   function fetchPortfolio() {
-    if (isInitialLoad.current) {
-      setLoadingSections({ holdings: true, chart: true, orders: true, history: true });
-    }
-
     fetch(`/api/portfolio`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -114,10 +105,9 @@ export default function PortfolioPage() {
         setTotalValue(data.totalValue || 0);
         setPriceHistories(data.priceHistories || {});
         if (data.user?.balance != null) setApiBalance(Number(data.user.balance));
-        isInitialLoad.current = false;
-        setLoadingSections(prev => ({ ...prev, holdings: false, chart: false, history: false }));
+        setPortfolioLoaded(true);
       })
-      .catch(() => setLoadingSections(prev => ({ ...prev, holdings: false, chart: false, history: false })));
+      .catch(() => setPortfolioLoaded(true));
 
     fetch(`/api/orders`)
       .then((res) => {
@@ -126,9 +116,9 @@ export default function PortfolioPage() {
       })
       .then((data) => {
         setOrders(data);
-        setLoadingSections(prev => ({ ...prev, orders: false }));
+        setOrdersLoaded(true);
       })
-      .catch(() => setLoadingSections(prev => ({ ...prev, orders: false })));
+      .catch(() => setOrdersLoaded(true));
   }
 
   async function cancelOrder(orderId: number) {
@@ -310,7 +300,7 @@ export default function PortfolioPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
             <div className="glass-card">
               <h2 className="text-lg font-semibold text-white mb-4">Holdings Breakdown</h2>
-              {isInitialLoad.current && loadingSections.holdings ? (
+              {!portfolioLoaded ? (
                 <div className="flex flex-col items-center">
                   <div className="w-48 h-48 rounded-full bg-gray-800/50 animate-pulse mx-auto" />
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1 w-full mt-4">
@@ -400,7 +390,7 @@ export default function PortfolioPage() {
                 </div>
               </div>
               <div className="h-64">
-                {isInitialLoad.current && loadingSections.chart ? (
+                {!portfolioLoaded ? (
                   <div className="h-full bg-gray-800/50 rounded-lg animate-pulse" />
                 ) : earningsChartJSData ? (
                   <Line data={earningsChartJSData} options={earningsChartOptions} />
@@ -414,7 +404,7 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {isInitialLoad.current && loadingSections.orders ? (
+        {!ordersLoaded ? (
           <div className="glass-card mb-8 border-yellow-500/30">
             <h2 className="text-xl font-semibold text-white mb-4">Pending Orders</h2>
             <div className="space-y-2">
@@ -458,7 +448,7 @@ export default function PortfolioPage() {
 
         <div className="glass-card mb-8">
           <h2 className="text-xl font-semibold text-white mb-4">Holdings</h2>
-          {isInitialLoad.current && loadingSections.holdings ? (
+          {!portfolioLoaded ? (
             <div className="space-y-2">
               {[1,2,3].map(i => <div key={i} className="h-14 bg-gray-800/50 rounded-lg animate-pulse" />)}
             </div>
@@ -506,7 +496,7 @@ export default function PortfolioPage() {
 
         <div className="glass-card">
           <h2 className="text-xl font-semibold text-white mb-4">Transaction History</h2>
-          {isInitialLoad.current && loadingSections.history ? (
+          {!portfolioLoaded ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />

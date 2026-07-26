@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import PriceChart from "@/components/PriceChart";
 import TradeAnimation from "@/components/TradeAnimation";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import ButtonSpinner from "@/components/ButtonSpinner";
 import CommentsSection from "@/components/CommentsSection";
 import { showToast } from "@/components/Toast";
@@ -33,7 +32,6 @@ export default function StockDetailPage() {
   const router = useRouter();
   const params = useParams();
   const isMobile = useIsMobile();
-  const isInitialLoad = useRef(true);
   const [company, setCompany] = useState<Company | null>(null);
   const [userBalance, setUserBalance] = useState(0);
   const [sharesOwned, setSharesOwned] = useState(0);
@@ -47,28 +45,21 @@ export default function StockDetailPage() {
   const [orderError, setOrderError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState("");
   const [tradeAnimType, setTradeAnimType] = useState<"buy" | "sell" | "cancel" | null>(null);
-  const [loadingSections, setLoadingSections] = useState({
-    chart: true,
-    orders: true,
-    position: true,
-    trades: true,
-  });
+  const [companyLoaded, setCompanyLoaded] = useState(false);
+  const [positionLoaded, setPositionLoaded] = useState(false);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
 
   const companyId = Number(params.id);
+  const canTrade = !!session;
 
-  const fetchData = () => {
-    if (isInitialLoad.current) {
-      setLoadingSections({ chart: true, orders: true, position: true, trades: true });
-    }
-
+  const fetchData = useCallback(() => {
     fetch(`/api/stocks/${companyId}`)
       .then((res) => res.json())
       .then((data) => {
         setCompany(data);
-        isInitialLoad.current = false;
-        setLoadingSections(prev => ({ ...prev, chart: false }));
+        setCompanyLoaded(true);
       })
-      .catch(() => setLoadingSections(prev => ({ ...prev, chart: false })));
+      .catch(() => setCompanyLoaded(true));
 
     if (session) {
       fetch(`/api/portfolio`)
@@ -77,27 +68,28 @@ export default function StockDetailPage() {
           if (data.user) setUserBalance(data.user.balance || 0);
           const holding = data.holdings?.find((h: any) => h.company_id === companyId);
           setSharesOwned(holding?.shares_owned || 0);
-          setLoadingSections(prev => ({ ...prev, position: false }));
+          setPositionLoaded(true);
         })
-        .catch(() => setLoadingSections(prev => ({ ...prev, position: false })));
+        .catch(() => setPositionLoaded(true));
 
       fetch(`/api/orders`)
         .then((res) => res.json())
         .then((orders) => {
           setMyOrders(orders.filter((o: any) => o.company_id === companyId && o.status === "pending"));
-          setLoadingSections(prev => ({ ...prev, orders: false, trades: false }));
+          setOrdersLoaded(true);
         })
-        .catch(() => setLoadingSections(prev => ({ ...prev, orders: false, trades: false })));
+        .catch(() => setOrdersLoaded(true));
     } else {
-      setLoadingSections(prev => ({ ...prev, position: false, orders: false, trades: false }));
+      setPositionLoaded(true);
+      setOrdersLoaded(true);
     }
-  };
+  }, [companyId, session]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, [companyId, session]);
+  }, [fetchData]);
 
   async function handlePlaceOrder() {
     setOrderError("");
@@ -155,25 +147,12 @@ export default function StockDetailPage() {
     }
   }
 
-  if (!company) {
-    return (
-      <div className="min-h-screen">
-        <PageBackground variant="stock" />
-        <Navbar />
-        <div className="flex items-center justify-center h-64">
-          <LoadingSpinner size="lg" text="Loading..." />
-        </div>
-      </div>
-    );
-  }
-
-  const canTrade = !!session;
-  const isAdmin = (session?.user as any)?.isAdmin;
-  const priceHistory = company.price_history || [];
-  const currentPrice = company.share_price;
-  const startPrice = priceHistory.length > 0 ? priceHistory[0].price : company.share_price;
+  const priceHistory = company?.price_history || [];
+  const currentPrice = company?.share_price || 0;
+  const startPrice = priceHistory.length > 0 ? priceHistory[0].price : currentPrice;
   const priceChange = currentPrice - startPrice;
   const priceChangePercent = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : "0.00";
+  const isAdmin = (session?.user as any)?.isAdmin;
 
   const reservedSells = myOrders.filter((o) => o.type === "sell").reduce((sum, o) => sum + o.shares, 0);
   const availableToSell = Math.max(0, sharesOwned - reservedSells);
@@ -194,28 +173,40 @@ export default function StockDetailPage() {
         </button>
 
         <div className="glass-card mb-6">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-sm font-mono text-blue-400 bg-blue-400/10 px-3 py-1 rounded">{company.ticker}</span>
-              </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{company.name}</h1>
-              <p className="text-gray-400 mb-4">{company.description}</p>
-              <div className="text-sm text-gray-500">
-                {company.total_shares.toLocaleString()} total shares &middot; {company.available_shares.toLocaleString()} available at market
+          {!companyLoaded ? (
+            <div className="space-y-3">
+              <div className="h-5 w-16 bg-gray-800/50 rounded animate-pulse" />
+              <div className="h-8 w-48 bg-gray-800/50 rounded animate-pulse" />
+              <div className="h-4 w-64 bg-gray-800/50 rounded animate-pulse" />
+              <div className="flex justify-between mt-4">
+                <div className="h-4 w-32 bg-gray-800/50 rounded animate-pulse" />
+                <div className="h-10 w-24 bg-gray-800/50 rounded animate-pulse" />
               </div>
             </div>
-            <div className="text-right shrink-0">
-              <div className="text-3xl md:text-4xl font-bold text-white mb-1">{formatCoins(currentPrice)}</div>
-              <div className={`text-sm font-medium mb-4 ${priceChange >= 0 ? "text-green-400" : "text-red-400"}`}>
-                {priceChange >= 0 ? "+" : ""}{formatCoins(priceChange)} ({priceChange >= 0 ? "+" : ""}{priceChangePercent}%)
+          ) : (
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-sm font-mono text-blue-400 bg-blue-400/10 px-3 py-1 rounded">{company!.ticker}</span>
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{company!.name}</h1>
+                <p className="text-gray-400 mb-4">{company!.description}</p>
+                <div className="text-sm text-gray-500">
+                  {company!.total_shares.toLocaleString()} total shares &middot; {company!.available_shares.toLocaleString()} available at market
+                </div>
               </div>
-              {!canTrade && (
-                <Link href="/login" className="btn-success px-8 py-3 text-lg inline-block">Sign In to Trade</Link>
-              )}
+              <div className="text-right shrink-0">
+                <div className="text-3xl md:text-4xl font-bold text-white mb-1">{formatCoins(currentPrice)}</div>
+                <div className={`text-sm font-medium mb-4 ${priceChange >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {priceChange >= 0 ? "+" : ""}{formatCoins(priceChange)} ({priceChange >= 0 ? "+" : ""}{priceChangePercent}%)
+                </div>
+                {!canTrade && (
+                  <Link href="/login" className="btn-success px-8 py-3 text-lg inline-block">Sign In to Trade</Link>
+                )}
+              </div>
             </div>
-          </div>
-          {(company as any).shareEvent && (
+          )}
+          {companyLoaded && (company as any)?.shareEvent && (
             <div className="mt-4 flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm px-4 py-2 rounded-lg">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M2 12h20"/></svg>
               <span>This stock released <strong>+{(company as any).shareEvent.shares_added.toLocaleString()}</strong> new shares in the past week</span>
@@ -223,8 +214,8 @@ export default function StockDetailPage() {
           )}
         </div>
 
-        {canTrade && (
-          <div className="glass-card mb-6">
+        {canTrade && companyLoaded && (
+          <div className="glass-card mb-6 animate-fade-up">
             <h3 className="text-lg font-semibold text-white mb-4">Place Order</h3>
 
             <div className="flex gap-2 mb-4">
@@ -369,8 +360,8 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        {canTrade && isInitialLoad.current && loadingSections.orders ? (
-          <div className="glass-card mb-6 border-yellow-500/30">
+        {canTrade && !ordersLoaded ? (
+          <div className="glass-card mb-6 border-yellow-500/30 animate-fade-up">
             <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders</h3>
             <div className="space-y-2">
               {[1, 2].map((i) => (
@@ -379,7 +370,7 @@ export default function StockDetailPage() {
             </div>
           </div>
         ) : canTrade && myOrders.length > 0 && (
-          <div className="glass-card mb-6 border-yellow-500/30">
+          <div className="glass-card mb-6 border-yellow-500/30 animate-fade-up">
             <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders ({myOrders.length})</h3>
             <div className="space-y-2">
               {myOrders.map((order) => {
@@ -425,21 +416,23 @@ export default function StockDetailPage() {
         )}
 
         <div className="mb-6">
-          {isInitialLoad.current && loadingSections.chart ? (
-            <div className="glass-card">
+          {!companyLoaded ? (
+            <div className="glass-card animate-fade-up">
               <div className="h-8 w-40 bg-gray-800 rounded animate-pulse mb-4" />
               <div className="h-64 sm:h-80 bg-gray-800/50 rounded-lg animate-pulse" />
             </div>
           ) : (
-            <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company.recent_transactions} />
+            <div className="animate-fade-up">
+              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company!.recent_transactions} />
+            </div>
           )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           {canTrade && (
-            <div className="glass-card">
+            <div className="glass-card animate-fade-up">
               <h3 className="text-lg font-semibold text-white mb-4">Your Position</h3>
-              {isInitialLoad.current && loadingSections.position ? (
+              {!positionLoaded ? (
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-40 h-40 rounded-full bg-gray-800/50 animate-pulse" />
                   <div className="grid grid-cols-2 gap-4 w-full">
@@ -450,7 +443,7 @@ export default function StockDetailPage() {
                 <div className="flex flex-col items-center">
                   <svg width="160" height="160" viewBox="0 0 160 160">
                     {(() => {
-                      const ownershipPercent = company.total_shares > 0 ? (sharesOwned / company.total_shares) * 100 : 0;
+                      const ownershipPercent = company!.total_shares > 0 ? (sharesOwned / company!.total_shares) * 100 : 0;
                       const unownedPercent = 100 - ownershipPercent;
                       const ownedAngle = (ownershipPercent / 100) * 360;
                       const r = 60;
@@ -477,7 +470,7 @@ export default function StockDetailPage() {
                       );
                     })()}
                     <text x="80" y="76" textAnchor="middle" className="fill-white text-xl font-bold">
-                      {company.total_shares > 0 ? ((sharesOwned / company.total_shares) * 100).toFixed(1) : "0.0"}%
+                      {company!.total_shares > 0 ? ((sharesOwned / company!.total_shares) * 100).toFixed(1) : "0.0"}%
                     </text>
                     <text x="80" y="94" textAnchor="middle" className="fill-gray-400 text-xs">
                       of market
@@ -494,7 +487,7 @@ export default function StockDetailPage() {
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-gray-400">Market Share</div>
-                      <div className="text-lg font-bold text-gray-300">{company.total_shares > 0 ? ((sharesOwned / company.total_shares) * 100).toFixed(1) : "0.0"}%</div>
+                      <div className="text-lg font-bold text-gray-300">{company!.total_shares > 0 ? ((sharesOwned / company!.total_shares) * 100).toFixed(1) : "0.0"}%</div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-gray-400">Market Value</div>
@@ -508,15 +501,15 @@ export default function StockDetailPage() {
             </div>
           )}
 
-          <div className="glass-card">
+          <div className="glass-card animate-fade-up">
             <h3 className="text-lg font-semibold text-white mb-4">{canTrade ? "My Trades" : "Recent Trades"}</h3>
-            {isInitialLoad.current && loadingSections.trades ? (
+            {!companyLoaded ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />
                 ))}
               </div>
-            ) : (!canTrade || (company as any).my_trades?.length === 0) && company.recent_transactions?.length === 0 ? (
+            ) : (!canTrade || (company as any).my_trades?.length === 0) && company!.recent_transactions?.length === 0 ? (
               <p className="text-gray-400 text-sm">No trades yet for this stock</p>
             ) : canTrade ? (
               (company as any).my_trades?.length === 0 ? (
