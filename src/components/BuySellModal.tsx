@@ -20,12 +20,13 @@ interface BuySellModalProps {
 }
 
 export default function BuySellModal({ company, mode, userBalance, sharesOwned, isAdmin, onExecute, onClose }: BuySellModalProps) {
-  const [shares, setShares] = useState(1);
+  const [shares, setShares] = useState<string | number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const totalCost = company.share_price * shares;
+  const numShares = Number(shares) || 0;
+  const totalCost = company.share_price * numShares;
   const totalInC = formatCoins(totalCost);
   const taxAmount = mode === "sell" ? Math.round(totalCost * 0.03) : 0;
   const netRevenue = mode === "sell" ? totalCost - taxAmount : totalCost;
@@ -33,22 +34,22 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
   const taxC = formatCoins(taxAmount);
 
   const canAfford = mode === "sell" || isAdmin || userBalance >= totalCost;
-  const hasShares = mode === "buy" || sharesOwned >= shares;
+  const hasShares = mode === "buy" || sharesOwned >= numShares;
 
   async function handleSubmit() {
     setLoading(true);
     setError("");
     setSuccess("");
     try {
-      const result = await onExecute(company.id, shares);
+      const result = await onExecute(company.id, numShares);
       if (result?.pendingShares > 0) {
         setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);
       } else if (result?.message) {
         setSuccess(result.message);
       } else if (mode === "buy") {
-        setSuccess(`Bought ${shares} share${shares > 1 ? "s" : ""} successfully!`);
+        setSuccess(`Bought ${numShares} share${numShares > 1 ? "s" : ""} successfully!`);
       } else {
-        setSuccess(`Listed ${shares} share${shares > 1 ? "s" : ""} for sale!`);
+        setSuccess(`Listed ${numShares} share${numShares > 1 ? "s" : ""} for sale!`);
       }
       setTimeout(() => onClose(), 2000);
     } catch (err: any) {
@@ -76,8 +77,10 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
           min="1"
           value={shares}
           onChange={(e) => {
-            const val = parseInt(e.target.value);
-            if (val > 0) setShares(val);
+            const val = e.target.value;
+            if (val === "" || val === "-") { setShares(val); return; }
+            const v = parseInt(val);
+            if (!isNaN(v) && v > 0) setShares(v);
           }}
           className="input-field text-center text-2xl font-bold"
         />
@@ -148,7 +151,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
         ? "Not enough shares"
         : !canAfford
         ? "Insufficient balance"
-        : `${mode === "buy" ? "Buy" : "Sell"} ${shares} share${shares > 1 ? "s" : ""}`}
+        : `${mode === "buy" ? "Buy" : "Sell"} ${numShares} share${numShares > 1 ? "s" : ""}`}
       </button>
     </div>
   );

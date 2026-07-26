@@ -38,7 +38,7 @@ export default function StockDetailPage() {
   const [myOrders, setMyOrders] = useState<any[]>([]);
 
   const [orderType, setOrderType] = useState<"buy" | "sell">("buy");
-  const [orderShares, setOrderShares] = useState(1);
+  const [orderShares, setOrderShares] = useState<string | number>(1);
   const [orderPrice, setOrderPrice] = useState("");
   const [orderMode, setOrderMode] = useState<"market" | "limit">("market");
   const [orderLoading, setOrderLoading] = useState(false);
@@ -97,21 +97,34 @@ export default function StockDetailPage() {
     setOrderSuccess("");
     setOrderLoading(true);
 
+    const shares = Number(orderShares);
+    if (!shares || shares <= 0 || !Number.isInteger(shares)) {
+      setOrderError("Enter a valid number of shares");
+      setOrderLoading(false);
+      return;
+    }
+
     try {
       if (orderMode === "market") {
         const endpoint = orderType === "buy" ? "/api/stocks/buy" : "/api/stocks/sell";
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companyId, shares: orderShares, requestId: crypto.randomUUID() }),
+          body: JSON.stringify({ companyId, shares, requestId: crypto.randomUUID() }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
-        setOrderSuccess(orderType === "buy"
-          ? (data.pendingShares > 0
-            ? data.message || `Bought ${data.filledShares || 0}, ${data.pendingShares} pending`
-            : `Market buy executed! ${orderShares} share${orderShares > 1 ? "s" : ""} purchased.`)
-          : `Sell order listed! ${orderShares} share${orderShares > 1 ? "s" : ""} at ${formatCoins(currentPrice)}.`);
+        if (data.duplicate) {
+          setOrderSuccess(data.message || "Order already placed");
+        } else if (orderType === "buy") {
+          if (data.pendingShares > 0) {
+            setOrderSuccess(data.message || `Bought ${data.filledShares || 0}, ${data.pendingShares} pending`);
+          } else {
+            setOrderSuccess(`Market buy executed! ${shares} share${shares > 1 ? "s" : ""} purchased.`);
+          }
+        } else {
+          setOrderSuccess(data.message || `Sell order listed! ${shares} share${shares > 1 ? "s" : ""} on the market.`);
+        }
         setTradeAnimType(orderType);
       } else {
         const priceCents = Math.round(parseFloat(orderPrice) * 100);
@@ -120,7 +133,7 @@ export default function StockDetailPage() {
         const res = await fetch("/api/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companyId, type: orderType, shares: orderShares, priceCents, requestId: crypto.randomUUID() }),
+          body: JSON.stringify({ companyId, type: orderType, shares, priceCents, requestId: crypto.randomUUID() }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -259,7 +272,12 @@ export default function StockDetailPage() {
                   type="number"
                   min="1"
                   value={orderShares}
-                  onChange={(e) => { const v = parseInt(e.target.value); if (v > 0) setOrderShares(v); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || val === "-") { setOrderShares(val); return; }
+                    const v = parseInt(val);
+                    if (!isNaN(v) && v > 0) setOrderShares(v);
+                  }}
                   className="input-field text-center text-lg font-bold"
                 />
               </div>
@@ -290,9 +308,9 @@ export default function StockDetailPage() {
                 {orderType === "buy" ? (
                   <>
                     <div className="flex justify-between font-bold">
-                      <span>Total cost:</span>
+                      <span>                      Total cost:</span>
                       <span className={isAdmin ? "text-green-400" : "text-red-400"}>
-                        {isAdmin ? "FREE" : formatCoins(currentPrice * orderShares)}
+                        {isAdmin ? "FREE" : formatCoins(currentPrice * Number(orderShares))}
                       </span>
                     </div>
                     {!isAdmin && (
@@ -328,7 +346,7 @@ export default function StockDetailPage() {
                 <div className="flex justify-between font-bold">
                   <span>Reserved {orderType === "buy" ? "cost" : "shares"}:</span>
                   <span className="text-yellow-400">
-                    {orderType === "buy" ? formatCoins(parseFloat(orderPrice) * 100 * orderShares) : `${orderShares} shares`}
+                    {orderType === "buy" ? formatCoins(parseFloat(orderPrice) * 100 * Number(orderShares)) : `${Number(orderShares)} shares`}
                   </span>
                 </div>
                 {orderType === "sell" && (

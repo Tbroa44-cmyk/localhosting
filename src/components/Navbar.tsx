@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatCoins } from "@/lib/format";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { usePathname } from "next/navigation";
 
 export default function Navbar() {
   const { data: session, status } = useSession();
@@ -12,6 +13,41 @@ export default function Navbar() {
   const [tradingStatus, setTradingStatus] = useState<{ isOpen: boolean; openHour: number; closeHour: number; message: string } | null>(null);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const [navHidden, setNavHidden] = useState(false);
+  const [navSolid, setNavSolid] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setNavHidden(false);
+      setNavSolid(false);
+      return;
+    }
+
+    function handleScroll() {
+      const y = window.scrollY;
+      const isStockPage = pathname.startsWith("/dashboard/stocks/");
+
+      if (isStockPage) {
+        if (y > lastScrollY.current && y > 60) {
+          setNavHidden(true);
+          setMenuOpen(false);
+        } else {
+          setNavHidden(false);
+        }
+      } else {
+        setNavHidden(false);
+        setNavSolid(y > 20);
+      }
+      lastScrollY.current = y;
+    }
+
+    lastScrollY.current = window.scrollY;
+    setNavSolid(window.scrollY > 20);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isMobile, pathname]);
 
   useEffect(() => {
     fetchTradingStatus();
@@ -58,7 +94,15 @@ export default function Navbar() {
   const isOpen = tradingStatus?.isOpen ?? true;
 
   return (
-    <nav className="glass sticky top-0 z-50 px-4 md:px-6 py-3">
+    <nav
+      className={`sticky top-0 z-50 px-4 md:px-6 py-3 transition-all duration-300 ${
+        isMobile && navHidden ? "-translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
+      } ${
+        isMobile && navSolid
+          ? "bg-gray-950/95 border-b border-gray-800/80 backdrop-blur-md"
+          : "glass"
+      }`}
+    >
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2 md:gap-4">
           <Link href="/dashboard" className="text-xl md:text-2xl font-bold gradient-text">

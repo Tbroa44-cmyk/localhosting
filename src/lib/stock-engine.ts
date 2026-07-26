@@ -339,12 +339,6 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
         throw new Error(`Insufficient balance. Need ${formatCoins(totalCost)}, have ${formatCoins(user.balance)}`);
       }
 
-      const totalSharesAllHoldings = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?").all(companyId) as { total: number }[];
-      const totalHeld = totalSharesAllHoldings[0]?.total || 0;
-      if (shares > company.total_shares - totalHeld) {
-        throw new Error(`Only ${company.total_shares - totalHeld} shares available to buy`);
-      }
-
       if (!isAdmin) {
         await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(totalCost, userId);
       }

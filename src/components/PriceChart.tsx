@@ -240,32 +240,16 @@ export default function PriceChart({
       labels: grouped.labels,
       datasets: [
         {
-          label: "Buys (pending)",
-          data: grouped.buys.map((b, i) => b - grouped.confirmedBuys[i]),
+          label: "Buys",
+          data: grouped.buys,
           backgroundColor: "rgba(34, 197, 94, 0.7)",
           borderRadius: 4,
-          stack: "buys",
         },
         {
-          label: "Buys (confirmed)",
-          data: grouped.confirmedBuys,
-          backgroundColor: "rgba(59, 130, 246, 0.8)",
-          borderRadius: 4,
-          stack: "buys",
-        },
-        {
-          label: "Sells (pending)",
-          data: grouped.sells.map((s, i) => s - grouped.confirmedSells[i]),
+          label: "Sells",
+          data: grouped.sells,
           backgroundColor: "rgba(239, 68, 68, 0.7)",
           borderRadius: 4,
-          stack: "sells",
-        },
-        {
-          label: "Sells (confirmed)",
-          data: grouped.confirmedSells,
-          backgroundColor: "rgba(59, 130, 246, 0.8)",
-          borderRadius: 4,
-          stack: "sells",
         },
       ],
     };
@@ -347,14 +331,12 @@ export default function PriceChart({
       scales: {
         x: {
           display: true,
-          stacked: true,
           grid: { color: "rgba(255,255,255,0.05)" },
           ticks: { color: "#6b7280", maxTicksLimit: 8, font: { size: 11 } },
           border: { display: false },
         },
         y: {
           display: true,
-          stacked: true,
           grid: { color: "rgba(255,255,255,0.05)" },
           ticks: {
             color: "#6b7280",
@@ -380,10 +362,8 @@ export default function PriceChart({
 
   const chartKey = `${filter}-${viewMode}`;
 
-  const totalBuys = (tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0)
-    + (tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0);
-  const totalSells = (tradeChartData.datasets[2]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0)
-    + (tradeChartData.datasets[3]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0);
+  const totalBuys = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
 
   return (
     <div className="glass-card">
@@ -465,10 +445,6 @@ export default function PriceChart({
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
             <span className="text-gray-400">Sells ({totalSells})</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(59, 130, 246, 0.8)" }} />
-            <span className="text-gray-400">Confirmed</span>
           </div>
         </div>
       )}
