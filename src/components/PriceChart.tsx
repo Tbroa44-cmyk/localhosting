@@ -26,6 +26,7 @@ interface Transaction {
   shares: number;
   price_per_share: number;
   created_at: string;
+  status?: string;
 }
 
 type TimeFilter = "1h" | "1d" | "7d" | "1m" | "6m" | "all";
@@ -114,25 +115,29 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
   }
 
   if (filtered.length === 0) {
-    return { labels: ["No data"], buys: [0], sells: [0], rawBuys: [0], rawSells: [0] };
+    return { labels: ["No data"], buys: [0], sells: [0], confirmedBuys: [0], confirmedSells: [0], rawBuys: [0], rawSells: [0] };
   }
 
   const minTime = Math.min(...filtered.map((t) => new Date(t.created_at).getTime()));
   const maxTime = Math.max(...filtered.map((t) => new Date(t.created_at).getTime()));
 
-  const buckets = new Map<number, { buys: number; sells: number }>();
+  const buckets = new Map<number, { buys: number; sells: number; confirmedBuys: number; confirmedSells: number }>();
 
   for (const tx of filtered) {
     const txTime = new Date(tx.created_at).getTime();
     const bucketStart = Math.floor((txTime - minTime) / bucketSize) * bucketSize + minTime;
     if (!buckets.has(bucketStart)) {
-      buckets.set(bucketStart, { buys: 0, sells: 0 });
+      buckets.set(bucketStart, { buys: 0, sells: 0, confirmedBuys: 0, confirmedSells: 0 });
     }
     const bucket = buckets.get(bucketStart)!;
+    const shares = Number(tx.shares) || 1;
+    const isConfirmed = tx.status === "confirmed";
     if (String(tx.type).toLowerCase().includes("buy")) {
-      bucket.buys++;
+      bucket.buys += shares;
+      if (isConfirmed) bucket.confirmedBuys += shares;
     } else {
-      bucket.sells++;
+      bucket.sells += shares;
+      if (isConfirmed) bucket.confirmedSells += shares;
     }
   }
 
@@ -142,6 +147,8 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
     labels: sortedBuckets.map(([ts]) => formatLabel(ts)),
     buys: sortedBuckets.map(([, b]) => b.buys),
     sells: sortedBuckets.map(([, b]) => b.sells),
+    confirmedBuys: sortedBuckets.map(([, b]) => b.confirmedBuys),
+    confirmedSells: sortedBuckets.map(([, b]) => b.confirmedSells),
     rawBuys: sortedBuckets.map(([, b]) => b.buys),
     rawSells: sortedBuckets.map(([, b]) => b.sells),
   };
@@ -233,16 +240,32 @@ export default function PriceChart({
       labels: grouped.labels,
       datasets: [
         {
-          label: "Buys",
-          data: grouped.buys,
+          label: "Buys (pending)",
+          data: grouped.buys.map((b, i) => b - grouped.confirmedBuys[i]),
           backgroundColor: "rgba(34, 197, 94, 0.7)",
           borderRadius: 4,
+          stack: "buys",
         },
         {
-          label: "Sells",
-          data: grouped.sells,
+          label: "Buys (confirmed)",
+          data: grouped.confirmedBuys,
+          backgroundColor: "rgba(59, 130, 246, 0.8)",
+          borderRadius: 4,
+          stack: "buys",
+        },
+        {
+          label: "Sells (pending)",
+          data: grouped.sells.map((s, i) => s - grouped.confirmedSells[i]),
           backgroundColor: "rgba(239, 68, 68, 0.7)",
           borderRadius: 4,
+          stack: "sells",
+        },
+        {
+          label: "Sells (confirmed)",
+          data: grouped.confirmedSells,
+          backgroundColor: "rgba(59, 130, 246, 0.8)",
+          borderRadius: 4,
+          stack: "sells",
         },
       ],
     };
@@ -324,12 +347,14 @@ export default function PriceChart({
       scales: {
         x: {
           display: true,
+          stacked: true,
           grid: { color: "rgba(255,255,255,0.05)" },
           ticks: { color: "#6b7280", maxTicksLimit: 8, font: { size: 11 } },
           border: { display: false },
         },
         y: {
           display: true,
+          stacked: true,
           grid: { color: "rgba(255,255,255,0.05)" },
           ticks: {
             color: "#6b7280",
@@ -355,8 +380,10 @@ export default function PriceChart({
 
   const chartKey = `${filter}-${viewMode}`;
 
-  const totalBuys = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
-  const totalSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalBuys = (tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0)
+    + (tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0);
+  const totalSells = (tradeChartData.datasets[2]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0)
+    + (tradeChartData.datasets[3]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0);
 
   return (
     <div className="glass-card">
@@ -375,9 +402,9 @@ export default function PriceChart({
               </>
             ) : (
               <>
-                <span className="text-sm text-green-400 font-medium">{totalBuys} buys</span>
+                <span className="text-sm text-green-400 font-medium">{totalBuys} bought</span>
                 <span className="text-gray-600">·</span>
-                <span className="text-sm text-red-400 font-medium">{totalSells} sells</span>
+                <span className="text-sm text-red-400 font-medium">{totalSells} sold</span>
               </>
             )}
           </div>
@@ -438,6 +465,10 @@ export default function PriceChart({
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
             <span className="text-gray-400">Sells ({totalSells})</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(59, 130, 246, 0.8)" }} />
+            <span className="text-gray-400">Confirmed</span>
           </div>
         </div>
       )}

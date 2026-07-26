@@ -78,6 +78,12 @@ export default function PortfolioPage() {
   const [priceHistories, setPriceHistories] = useState<Record<number, { price: number; timestamp: number }[]>>({});
   const [apiBalance, setApiBalance] = useState<number | null>(null);
   const [earningsFilter, setEarningsFilter] = useState<TimeFilter>("7d");
+  const [loadingSections, setLoadingSections] = useState({
+    holdings: true,
+    chart: true,
+    orders: true,
+    history: true,
+  });
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -90,6 +96,8 @@ export default function PortfolioPage() {
   }, []);
 
   function fetchPortfolio() {
+    setLoadingSections(prev => ({ ...prev, holdings: true, chart: true, orders: true, history: true }));
+
     fetch(`/api/portfolio`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -101,16 +109,20 @@ export default function PortfolioPage() {
         setTotalValue(data.totalValue || 0);
         setPriceHistories(data.priceHistories || {});
         if (data.user?.balance != null) setApiBalance(Number(data.user.balance));
+        setLoadingSections(prev => ({ ...prev, holdings: false, chart: false, history: false }));
       })
-      .catch(console.error);
+      .catch(() => setLoadingSections(prev => ({ ...prev, holdings: false, chart: false, history: false })));
 
     fetch(`/api/orders`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then((data) => setOrders(data))
-      .catch(() => {});
+      .then((data) => {
+        setOrders(data);
+        setLoadingSections(prev => ({ ...prev, orders: false }));
+      })
+      .catch(() => setLoadingSections(prev => ({ ...prev, orders: false })));
   }
 
   async function cancelOrder(orderId: number) {
@@ -292,6 +304,14 @@ export default function PortfolioPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <div className="glass-card">
               <h2 className="text-lg font-semibold text-white mb-4">Holdings Breakdown</h2>
+              {loadingSections.holdings ? (
+                <div className="flex flex-col items-center">
+                  <div className="w-48 h-48 rounded-full bg-gray-800/50 animate-pulse mx-auto" />
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 w-full mt-4">
+                    {[1,2,3].map(i => <div key={i} className="h-5 bg-gray-800/50 rounded animate-pulse" />)}
+                  </div>
+                </div>
+              ) : (
               <div className="flex flex-col items-center">
                 <svg width="300" height="300" viewBox="0 0 300 300">
                   {(() => {
@@ -341,6 +361,7 @@ export default function PortfolioPage() {
                   })}
                 </div>
               </div>
+              )}
             </div>
 
             <div className="glass-card">
@@ -373,7 +394,9 @@ export default function PortfolioPage() {
                 </div>
               </div>
               <div className="h-64">
-                {earningsChartJSData ? (
+                {loadingSections.chart ? (
+                  <div className="h-full bg-gray-800/50 rounded-lg animate-pulse" />
+                ) : earningsChartJSData ? (
                   <Line data={earningsChartJSData} options={earningsChartOptions} />
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500 text-sm">
@@ -385,7 +408,16 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {pendingOrders.length > 0 && (
+        {loadingSections.orders ? (
+          <div className="glass-card mb-8 border-yellow-500/30">
+            <h2 className="text-xl font-semibold text-white mb-4">Pending Orders</h2>
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-14 bg-gray-800/50 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </div>
+        ) : pendingOrders.length > 0 && (
           <div className="glass-card mb-8 border-yellow-500/30">
             <h2 className="text-xl font-semibold text-white mb-4">Pending Orders ({pendingOrders.length})</h2>
             <div className="space-y-2">
@@ -420,7 +452,11 @@ export default function PortfolioPage() {
 
         <div className="glass-card mb-8">
           <h2 className="text-xl font-semibold text-white mb-4">Holdings</h2>
-          {holdings.length === 0 ? (
+          {loadingSections.holdings ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="h-14 bg-gray-800/50 rounded-lg animate-pulse" />)}
+            </div>
+          ) : holdings.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-gray-400 mb-4">You don&apos;t own any shares yet</p>
               <Link href="/dashboard" className="btn-primary">
@@ -464,7 +500,13 @@ export default function PortfolioPage() {
 
         <div className="glass-card">
           <h2 className="text-xl font-semibold text-white mb-4">Transaction History</h2>
-          {transactions.length === 0 ? (
+          {loadingSections.history ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : transactions.length === 0 ? (
             <p className="text-gray-400 text-sm py-4 text-center">No transactions yet</p>
           ) : (
             <div className="space-y-2">

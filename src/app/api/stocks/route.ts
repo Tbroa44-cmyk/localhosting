@@ -47,10 +47,10 @@ export async function GET(request: NextRequest) {
         "SELECT id FROM holdings WHERE company_id = ? AND shares_owned > 0"
       ).all(company.id) as any[];
 
-      const sharesHeld = (await db.prepare(
-        "SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?"
-      ).all(company.id))[0] as any;
-      const shares_available = Math.max(0, Number(company.total_shares) - (sharesHeld ? Number(sharesHeld.total) || 0 : 0));
+      const pendingSellRows = await db.prepare(
+        "SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'"
+      ).all(company.id) as any[];
+      const shares_available = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
 
       const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);
 

@@ -83,7 +83,7 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
 
         <div className="grid grid-cols-3 gap-3 text-center text-sm text-gray-400 mb-4">
           <div>
-            <div className="text-white font-medium">{company.shares_available?.toLocaleString() || company.total_shares?.toLocaleString()}</div>
+            <div className="text-white font-medium">{company.shares_available?.toLocaleString() || "0"}</div>
             <div className="text-xs">Available</div>
           </div>
           <div>
@@ -105,12 +105,21 @@ export default function StockCard({ company, isLoggedIn }: StockCardProps) {
           >
             Buy
           </button>
-          <button
-            onClick={() => { setModalType("sell"); setModalOpen(true); }}
-            className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
-          >
-            Sell
-          </button>
+          {sharesOwned > 0 ? (
+            <button
+              onClick={() => { setModalType("sell"); setModalOpen(true); }}
+              className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
+            >
+              Sell
+            </button>
+          ) : (
+            <button
+              disabled
+              className="flex-1 py-2.5 bg-gray-800 text-gray-600 rounded-lg text-sm font-medium cursor-not-allowed"
+            >
+              Sell (0)
+            </button>
+          )}
         </div>
       )}
 

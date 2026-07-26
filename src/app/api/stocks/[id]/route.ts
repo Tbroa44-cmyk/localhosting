@@ -29,13 +29,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
     ).all(id);
 
-    const totalOwned = await db.prepare(
-      "SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?"
-    ).all(id) as { total: number }[];
-
-    const ownedShares = totalOwned[0]?.total || 0;
     const companyData = company as any;
-    const availableShares = Math.max(0, companyData.total_shares - ownedShares);
+
+    const pendingSellRows = await db.prepare(
+      "SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'"
+    ).all(id) as any[];
+    const availableShares = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
 
     let shareEvent: any = null;
     const initialShares = Number(companyData.initial_shares) || Number(companyData.total_shares);

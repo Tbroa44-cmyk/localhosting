@@ -44,14 +44,25 @@ export default function StockDetailPage() {
   const [orderError, setOrderError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState("");
   const [tradeAnimType, setTradeAnimType] = useState<"buy" | "sell" | "cancel" | null>(null);
+  const [loadingSections, setLoadingSections] = useState({
+    chart: true,
+    orders: true,
+    position: true,
+    trades: true,
+  });
 
   const companyId = Number(params.id);
 
   const fetchData = () => {
+    setLoadingSections(prev => ({ ...prev, chart: true, orders: true, position: true, trades: true }));
+
     fetch(`/api/stocks/${companyId}`)
       .then((res) => res.json())
-      .then(setCompany)
-      .catch(console.error);
+      .then((data) => {
+        setCompany(data);
+        setLoadingSections(prev => ({ ...prev, chart: false }));
+      })
+      .catch(() => setLoadingSections(prev => ({ ...prev, chart: false })));
 
     if (session) {
       fetch(`/api/portfolio`)
@@ -60,15 +71,19 @@ export default function StockDetailPage() {
           if (data.user) setUserBalance(data.user.balance || 0);
           const holding = data.holdings?.find((h: any) => h.company_id === companyId);
           setSharesOwned(holding?.shares_owned || 0);
+          setLoadingSections(prev => ({ ...prev, position: false }));
         })
-        .catch(() => {});
+        .catch(() => setLoadingSections(prev => ({ ...prev, position: false })));
 
       fetch(`/api/orders`)
         .then((res) => res.json())
         .then((orders) => {
           setMyOrders(orders.filter((o: any) => o.company_id === companyId && o.status === "pending"));
+          setLoadingSections(prev => ({ ...prev, orders: false, trades: false }));
         })
-        .catch(() => {});
+        .catch(() => setLoadingSections(prev => ({ ...prev, orders: false, trades: false })));
+    } else {
+      setLoadingSections(prev => ({ ...prev, position: false, orders: false, trades: false }));
     }
   };
 
@@ -94,8 +109,10 @@ export default function StockDetailPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         setOrderSuccess(orderType === "buy"
-          ? `Market buy executed! ${orderShares} share${orderShares > 1 ? "s" : ""} purchased.`
-          : `Sell order placed! ${orderShares} share${orderShares > 1 ? "s" : ""} listed at ${formatCoins(currentPrice)}.`);
+          ? (data.pendingShares > 0
+            ? data.message || `Bought ${data.filledShares || 0}, ${data.pendingShares} pending`
+            : `Market buy executed! ${orderShares} share${orderShares > 1 ? "s" : ""} purchased.`)
+          : `Sell order listed! ${orderShares} share${orderShares > 1 ? "s" : ""} at ${formatCoins(currentPrice)}.`);
         setTradeAnimType(orderType);
       } else {
         const priceCents = Math.round(parseFloat(orderPrice) * 100);
@@ -213,9 +230,12 @@ export default function StockDetailPage() {
               </button>
               <button
                 onClick={() => { setOrderType("sell"); setOrderPrice(""); }}
-                className={`flex-1 py-2.5 rounded-lg font-medium transition-colors ${orderType === "sell" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+                disabled={sharesOwned === 0}
+                className={`flex-1 py-2.5 rounded-lg font-medium transition-colors ${
+                  orderType === "sell" ? "bg-red-600 text-white" : sharesOwned === 0 ? "bg-gray-800 text-gray-600 cursor-not-allowed" : "bg-gray-800 text-gray-400 hover:text-white"
+                }`}
               >
-                Sell
+                Sell {sharesOwned === 0 ? "(0 shares)" : ""}
               </button>
             </div>
 
@@ -343,7 +363,16 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        {canTrade && myOrders.length > 0 && (
+        {canTrade && loadingSections.orders ? (
+          <div className="glass-card mb-6 border-yellow-500/30">
+            <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders</h3>
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </div>
+        ) : canTrade && myOrders.length > 0 && (
           <div className="glass-card mb-6 border-yellow-500/30">
             <h3 className="text-lg font-semibold text-white mb-4">My Pending Orders ({myOrders.length})</h3>
             <div className="space-y-2">
@@ -390,14 +419,28 @@ export default function StockDetailPage() {
         )}
 
         <div className="mb-6">
-          <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company.recent_transactions} />
+          {loadingSections.chart ? (
+            <div className="glass-card">
+              <div className="h-8 w-40 bg-gray-800 rounded animate-pulse mb-4" />
+              <div className="h-64 sm:h-80 bg-gray-800/50 rounded-lg animate-pulse" />
+            </div>
+          ) : (
+            <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company.recent_transactions} />
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {canTrade && (
             <div className="glass-card">
               <h3 className="text-lg font-semibold text-white mb-4">Your Position</h3>
-              {sharesOwned > 0 ? (
+              {loadingSections.position ? (
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="w-40 h-40 rounded-full bg-gray-800/50 animate-pulse" />
+                  <div className="grid grid-cols-2 gap-4 w-full">
+                    {[1,2,3,4].map(i => <div key={i} className="h-14 bg-gray-800/50 rounded-lg animate-pulse" />)}
+                  </div>
+                </div>
+              ) : sharesOwned > 0 ? (
                 <div className="flex flex-col items-center">
                   <svg width="160" height="160" viewBox="0 0 160 160">
                     {(() => {
@@ -461,7 +504,13 @@ export default function StockDetailPage() {
 
           <div className="glass-card">
             <h3 className="text-lg font-semibold text-white mb-4">{canTrade ? "My Trades" : "Recent Trades"}</h3>
-            {(!canTrade || (company as any).my_trades?.length === 0) && company.recent_transactions?.length === 0 ? (
+            {loadingSections.trades ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : (!canTrade || (company as any).my_trades?.length === 0) && company.recent_transactions?.length === 0 ? (
               <p className="text-gray-400 text-sm">No trades yet for this stock</p>
             ) : canTrade ? (
               (company as any).my_trades?.length === 0 ? (
