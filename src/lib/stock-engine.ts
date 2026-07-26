@@ -5,6 +5,20 @@ const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
 const MAX_PRICE_CHANGE_PERCENT = 0.25;
 
+async function isTradingOpen(db: any): Promise<boolean> {
+  try {
+    const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
+    if (!settings || (settings.trading_enabled === 1 && settings.trading_open_hour === 0 && settings.trading_close_hour === 24)) {
+      return true;
+    }
+    if (settings.trading_enabled === 0) return false;
+    const hour = (new Date().getUTCHours() + 10) % 24;
+    return hour >= settings.trading_open_hour && hour < settings.trading_close_hour;
+  } catch {
+    return true;
+  }
+}
+
 export async function awardXP(db: any, userId: number, amount: number) {
   try {
     const user = await db.prepare("SELECT xp FROM users WHERE id = ?").get(userId) as { xp: number } | undefined;
@@ -99,16 +113,9 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       }
     }
 
-    try {
-      const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").get() as any;
-      if (settings && (settings.trading_enabled === 0 || settings.trading_open_hour !== 0 || settings.trading_close_hour !== 24)) {
-        const hour = (new Date().getUTCHours() + 10) % 24;
-        const isOpen = settings.trading_enabled === 1 && hour >= settings.trading_open_hour && hour < settings.trading_close_hour;
-        if (!isOpen) {
-          return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price);
-        }
-      }
-    } catch {}
+    if (!(await isTradingOpen(db))) {
+      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price);
+    }
 
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND user_id != ? ORDER BY price_per_share ASC, created_at ASC"
@@ -252,6 +259,12 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 export async function executeSell(userId: number, companyId: number, shares: number) {
   const db = getDb();
 
+  if (!(await isTradingOpen(db))) {
+    const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+    const sellPrice = Math.max(5, Number(company?.share_price) || 5);
+    return await placeLimitOrder(userId, companyId, "sell", shares, sellPrice);
+  }
+
   const sellTransaction = await db.transaction(async () => {
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
       id: number; share_price: number; total_shares: number;
@@ -393,6 +406,8 @@ export async function cancelOrder(userId: number, orderId: number) {
 }
 
 export async function matchOrders(db: any, companyId: number) {
+  if (!(await isTradingOpen(db))) return;
+
   while (true) {
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC, created_at ASC"

@@ -119,6 +119,29 @@ CREATE TABLE IF NOT EXISTS password_resets (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS user_bank_accounts (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER UNIQUE NOT NULL,
+  balance INTEGER DEFAULT 0,
+  last_balance_update TIMESTAMPTZ DEFAULT NOW(),
+  last_company_pick TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_bank_accounts DISABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS user_bank_investments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  company_id INTEGER NOT NULL,
+  weight REAL DEFAULT 0,
+  entry_price INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, company_id)
+);
+
+ALTER TABLE user_bank_investments DISABLE ROW LEVEL SECURITY;
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_shares INTEGER;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS request_id TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 1;
@@ -137,6 +160,8 @@ ALTER TABLE comments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE comment_likes DISABLE ROW LEVEL SECURITY;
 ALTER TABLE kofi_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE password_resets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_bank_accounts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_bank_investments DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO bank_fund (id, balance) VALUES (1, 0) ON CONFLICT DO NOTHING;
 INSERT INTO settings (id, trading_enabled, trading_open_hour, trading_close_hour) VALUES (1, 1, 0, 24) ON CONFLICT DO NOTHING;
