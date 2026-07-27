@@ -19,9 +19,10 @@ interface BuySellModalProps {
   isAdmin?: boolean;
   onExecute: (companyId: number, shares: number) => Promise<any>;
   onClose: () => void;
+  onTradeComplete?: () => void;
 }
 
-export default function BuySellModal({ company, mode, userBalance, sharesOwned, isAdmin, onExecute, onClose }: BuySellModalProps) {
+export default function BuySellModal({ company, mode, userBalance, sharesOwned, isAdmin, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
   const [shares, setShares] = useState<string | number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -53,6 +54,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
         shares: numShares,
         price: company.share_price,
       });
+      onTradeComplete?.();
       if (result?.pendingShares > 0) {
         setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);
       } else if (result?.message) {

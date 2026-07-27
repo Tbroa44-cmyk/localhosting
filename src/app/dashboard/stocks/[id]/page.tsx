@@ -137,13 +137,21 @@ export default function StockDetailPage() {
         if (data.duplicate) {
           setOrderSuccess(data.message || "Order already placed");
         } else if (orderType === "buy") {
-          if (data.pendingShares > 0) {
-            setOrderSuccess(data.message || `Bought ${data.filledShares || 0}, ${data.pendingShares} pending`);
+          const filled = data.filledShares || 0;
+          const pending = data.pendingShares || 0;
+          if (pending > 0) {
+            setOrderSuccess(data.message || `Bought ${filled}, ${pending} pending`);
           } else {
             setOrderSuccess(`Market buy executed! ${shares} share${shares > 1 ? "s" : ""} purchased.`);
           }
+          if (filled > 0) {
+            setSharesOwned((prev) => prev + filled);
+            setUserBalance((prev) => prev - (filled * (company?.share_price || 0)));
+          }
         } else {
+          const sold = data.filledShares || shares;
           setOrderSuccess(data.message || `Sell order listed! ${shares} share${shares > 1 ? "s" : ""} on the market.`);
+          setSharesOwned((prev) => Math.max(0, prev - sold));
         }
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();

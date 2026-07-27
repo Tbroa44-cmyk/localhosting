@@ -16,9 +16,13 @@ export async function GET(request: NextRequest) {
       const oneDayAgo = now - 24 * 60 * 60 * 1000;
       const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-      const allHistory = await db.prepare(
-        "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
-      ).all(company.id) as any[];
+      const [allHistory, pendingSellRows, txCountRows] = await Promise.all([
+        db.prepare("SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(company.id) as Promise<any[]>,
+        db.prepare("SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(company.id) as Promise<any[]>,
+        db.prepare("SELECT id, type FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 500").all(company.id) as Promise<any[]>,
+      ]);
+
+      allHistory.reverse();
 
       const todayHistory = allHistory.filter((h: any) => Number(h.timestamp) >= oneDayAgo);
       const monthHistory = allHistory.filter((h: any) => Number(h.timestamp) >= oneMonthAgo);
@@ -37,15 +41,12 @@ export async function GET(request: NextRequest) {
 
       let buyCount = 0;
       let sellCount = 0;
-      try {
-        const buyRows = await db.prepare("SELECT id FROM transactions WHERE company_id = ? AND type = 'buy' ORDER BY created_at DESC LIMIT 1000").all(company.id) as any[];
-        buyCount = Array.isArray(buyRows) ? buyRows.length : 0;
-      } catch {}
-
-      try {
-        const sellRows = await db.prepare("SELECT id FROM transactions WHERE company_id = ? AND type = 'sell' ORDER BY created_at DESC LIMIT 1000").all(company.id) as any[];
-        sellCount = Array.isArray(sellRows) ? sellRows.length : 0;
-      } catch {}
+      if (Array.isArray(txCountRows)) {
+        for (const r of txCountRows) {
+          if (String(r.type).includes("buy")) buyCount++;
+          else sellCount++;
+        }
+      }
 
       let holderCount = 0;
       try {
@@ -53,9 +54,6 @@ export async function GET(request: NextRequest) {
         holderCount = Array.isArray(holderRows) ? holderRows.length : 0;
       } catch {}
 
-      const pendingSellRows = await db.prepare(
-        "SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'"
-      ).all(company.id) as any[];
       const shares_available = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
 
       const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);

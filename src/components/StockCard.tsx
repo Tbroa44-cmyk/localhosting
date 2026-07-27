@@ -153,6 +153,16 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {} }: St
           isAdmin={isAdmin}
           onExecute={handleExecute}
           onClose={() => setModalOpen(false)}
+          onTradeComplete={() => {
+            fetch("/api/portfolio")
+              .then((r) => r.json())
+              .then((data) => {
+                if (data.user) setUserBalance(data.user.balance || 0);
+                const holding = data.holdings?.find((h: any) => h.company_id === company.id);
+                setSharesOwned(holding?.shares_owned || 0);
+              })
+              .catch(() => {});
+          }}
         />
       )}
     </div>
