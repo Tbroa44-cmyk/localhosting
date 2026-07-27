@@ -85,6 +85,8 @@ export default function BankPage() {
       if (!res.ok) throw new Error(data.error);
       showToast(data.message, "success");
       setDepositAmount("");
+      if (data.walletBalance !== undefined) setWalletBalance(data.walletBalance);
+      if (data.bankBalance !== undefined && bankData) setBankData({ ...bankData, balance: data.bankBalance });
       fetchBank();
       fetchWallet();
     } catch (err: any) {
@@ -108,6 +110,8 @@ export default function BankPage() {
       if (!res.ok) throw new Error(data.error);
       showToast(data.message, "success");
       setWithdrawAmount("");
+      if (data.walletBalance !== undefined) setWalletBalance(data.walletBalance);
+      if (data.bankBalance !== undefined && bankData) setBankData({ ...bankData, balance: data.bankBalance });
       fetchBank();
       fetchWallet();
     } catch (err: any) {
@@ -237,27 +241,29 @@ export default function BankPage() {
                     <span className="text-sm font-normal text-gray-400 ml-2">({bankData.investments.length} companies)</span>
                   )}
                 </h3>
-                {bankData?.canOperate && (
-                  <>
-                    {(!bankData.investments || bankData.investments.length === 0) && (
-                      <button
-                        onClick={handleInvest}
-                        disabled={investing}
-                        className="btn-primary text-sm flex items-center gap-2"
-                      >
-                        {investing ? <><ButtonSpinner size={14} /> Picking...</> : "Pick Companies"}
-                      </button>
-                    )}
-                    {bankData.investments && bankData.investments.length > 0 && bankData.needsRotation && (
-                      <button
-                        onClick={handleInvest}
-                        disabled={investing}
-                        className="btn-primary text-sm flex items-center gap-2"
-                      >
-                        {investing ? <><ButtonSpinner size={14} /> Improving...</> : "Improve Selected Companies"}
-                      </button>
-                    )}
-                  </>
+                {bankData?.canOperate && bankData.investments && bankData.investments.length > 0 && !bankData.needsRotation && (
+                  <span className="text-sm text-green-400 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    {bankData.investments.length} companies actively investing in
+                  </span>
+                )}
+                {bankData?.canOperate && bankData.investments && bankData.investments.length > 0 && bankData.needsRotation && (
+                  <button
+                    onClick={handleInvest}
+                    disabled={investing}
+                    className="btn-primary text-sm flex items-center gap-2"
+                  >
+                    {investing ? <><ButtonSpinner size={14} /> Improving...</> : "Re-pick Companies"}
+                  </button>
+                )}
+                {bankData?.canOperate && (!bankData.investments || bankData.investments.length === 0) && (
+                  <button
+                    onClick={handleInvest}
+                    disabled={investing}
+                    className="btn-primary text-sm flex items-center gap-2"
+                  >
+                    {investing ? <><ButtonSpinner size={14} /> Picking...</> : "Pick Companies"}
+                  </button>
                 )}
               </div>
 

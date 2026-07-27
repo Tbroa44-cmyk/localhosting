@@ -307,10 +307,15 @@ function getSmartSellPrice(currentPrice: number, orderBook: { lowestSell: number
 
 async function pickBuyTarget(db: any, botId: number, balance: number, config: BotConfig, realUserActivity: Record<number, number>, rand: () => number): Promise<{ companyId: number; shares: number; price: number } | null> {
   const companies = await db.prepare(
-    "SELECT id, share_price, total_shares FROM companies WHERE total_shares > 0 AND share_price >= 5 ORDER BY share_price ASC LIMIT 6"
+    "SELECT id, share_price, total_shares FROM companies WHERE total_shares > 0 AND share_price >= 5 ORDER BY share_price ASC"
   ).all() as { id: number; share_price: number; total_shares: number }[];
 
   if (companies.length === 0) return null;
+
+  for (let i = companies.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [companies[i], companies[j]] = [companies[j], companies[i]];
+  }
 
   const existingHoldings = await db.prepare(
     "SELECT company_id, shares_owned FROM holdings WHERE user_id = ? AND shares_owned > 0"
@@ -736,9 +741,9 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
   companies.forEach((c, i) => { orderBooks[c.id] = obQueries[i]; });
 
   const shuffledBots = [...bots].sort(() => Math.random() - 0.5);
-  const maxTraders = Math.min(5, shuffledBots.length);
+  const maxTraders = Math.min(10, shuffledBots.length);
 
-  for (let bi = 0; bi < maxTraders && totalTrades < 8; bi++) {
+  for (let bi = 0; bi < maxTraders && totalTrades < 15; bi++) {
     const bot = shuffledBots[bi];
     const balance = allBalances[bot.id] ?? 0;
     const holdings = allHoldings[bot.id] || [];
@@ -787,6 +792,9 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
       }
     }
   }
+
+  const mmTrades = await marketMake(db, bots);
+  totalTrades += mmTrades;
 
   return {
     botsEnabled: true,

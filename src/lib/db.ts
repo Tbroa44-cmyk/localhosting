@@ -120,7 +120,7 @@ async function restFetch(path: string, options: RequestInit = {}): Promise<any> 
   if (options.body && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers, cache: "no-store" });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -30,25 +30,25 @@ export async function deposit(userId: number, amountCents: number) {
 
   const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number } | undefined;
   if (!user) throw new Error("User not found");
-  if (Number(user.balance) < amountCents) {
-    throw new Error(`Insufficient wallet balance. You have ${formatCoins(Number(user.balance))} but need ${formatCoins(amountCents)}`);
+  const currentBalance = Number(user.balance);
+  if (currentBalance < amountCents) {
+    throw new Error(`Insufficient wallet balance. You have ${formatCoins(currentBalance)} but need ${formatCoins(amountCents)}`);
   }
 
   const account = await getOrCreateBankAccount(db, userId);
+  const newWalletBalance = currentBalance - amountCents;
+  const newBankBalance = Number(account.balance) + amountCents;
 
-  await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(amountCents, userId);
-  await db.prepare("UPDATE user_bank_accounts SET balance = balance + ? WHERE id = ?").run(amountCents, account.id);
+  await db.prepare("UPDATE users SET balance = ? WHERE id = ?").run(newWalletBalance, userId);
+  await db.prepare("UPDATE user_bank_accounts SET balance = ? WHERE id = ?").run(newBankBalance, account.id);
 
   await db.prepare(
     "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount, created_at) VALUES (?, 0, 'bank_deposit', 0, 0, ?, ?)"
   ).run(userId, amountCents, new Date().toISOString());
 
-  const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-  const updatedAccount = await db.prepare("SELECT * FROM user_bank_accounts WHERE user_id = ?").get(userId);
-
   return {
-    walletBalance: updatedUser.balance,
-    bankBalance: updatedAccount.balance,
+    walletBalance: newWalletBalance,
+    bankBalance: newBankBalance,
     message: `Deposited ${formatCoins(amountCents)} into your bank`,
   };
 }
@@ -59,23 +59,26 @@ export async function withdraw(userId: number, amountCents: number) {
   if (amountCents <= 0) throw new Error("Invalid amount");
 
   const account = await getOrCreateBankAccount(db, userId);
-  if (Number(account.balance) < amountCents) {
-    throw new Error(`Insufficient bank balance. You have ${formatCoins(Number(account.balance))} but want to withdraw ${formatCoins(amountCents)}`);
+  const currentBankBalance = Number(account.balance);
+  if (currentBankBalance < amountCents) {
+    throw new Error(`Insufficient bank balance. You have ${formatCoins(currentBankBalance)} but want to withdraw ${formatCoins(amountCents)}`);
   }
 
-  await db.prepare("UPDATE user_bank_accounts SET balance = balance - ? WHERE id = ?").run(amountCents, account.id);
-  await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(amountCents, userId);
+  const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number } | undefined;
+  const currentWalletBalance = Number(user?.balance || 0);
+  const newBankBalance = currentBankBalance - amountCents;
+  const newWalletBalance = currentWalletBalance + amountCents;
+
+  await db.prepare("UPDATE user_bank_accounts SET balance = ? WHERE id = ?").run(newBankBalance, account.id);
+  await db.prepare("UPDATE users SET balance = ? WHERE id = ?").run(newWalletBalance, userId);
 
   await db.prepare(
     "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount, created_at) VALUES (?, 0, 'bank_withdraw', 0, 0, ?, ?)"
   ).run(userId, amountCents, new Date().toISOString());
 
-  const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-  const updatedAccount = await db.prepare("SELECT * FROM user_bank_accounts WHERE user_id = ?").get(userId);
-
   return {
-    walletBalance: updatedUser.balance,
-    bankBalance: updatedAccount.balance,
+    walletBalance: newWalletBalance,
+    bankBalance: newBankBalance,
     message: `Withdrew ${formatCoins(amountCents)} from your bank`,
   };
 }
