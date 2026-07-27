@@ -17,6 +17,21 @@ export default function Navbar() {
   const [navHidden, setNavHidden] = useState(false);
   const [navSolid, setNavSolid] = useState(false);
   const lastScrollY = useRef(0);
+  const [liveBalance, setLiveBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    function fetchBalance() {
+      fetch(`/api/user/balance?t=${Date.now()}`, { cache: "no-store" })
+        .then(r => r.json())
+        .then(data => { if (typeof data.balance === "number") setLiveBalance(data.balance); })
+        .catch(() => {});
+    }
+    fetchBalance();
+    const interval = setInterval(fetchBalance, 10000);
+    window.addEventListener("balance-changed", fetchBalance);
+    return () => { clearInterval(interval); window.removeEventListener("balance-changed", fetchBalance); };
+  }, [status]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -183,7 +198,7 @@ export default function Navbar() {
                 </span>
               )}
               <span className="text-green-400 font-semibold">
-                {formatCoins((session.user as any)?.balance || 0)}
+                {formatCoins(liveBalance !== null ? liveBalance : ((session.user as any)?.balance || 0))}
               </span>
               <button
                 onClick={handleLogout}
@@ -225,7 +240,7 @@ export default function Navbar() {
               <div className="flex items-center justify-between px-2 py-2">
                 <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
                 <span className="text-green-400 font-semibold text-sm">
-                  {formatCoins((session.user as any)?.balance || 0)}
+                  {formatCoins(liveBalance !== null ? liveBalance : ((session.user as any)?.balance || 0))}
                 </span>
               </div>
               <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Markets</Link>

@@ -85,6 +85,7 @@ export default function BankPage() {
       if (!res.ok) throw new Error(data.error);
       showToast(data.message, "success");
       setDepositAmount("");
+      window.dispatchEvent(new Event("balance-changed"));
       if (data.walletBalance !== undefined) setWalletBalance(data.walletBalance);
       if (data.bankBalance !== undefined && bankData) setBankData({ ...bankData, balance: data.bankBalance });
       fetchBank();
@@ -110,6 +111,7 @@ export default function BankPage() {
       if (!res.ok) throw new Error(data.error);
       showToast(data.message, "success");
       setWithdrawAmount("");
+      window.dispatchEvent(new Event("balance-changed"));
       if (data.walletBalance !== undefined) setWalletBalance(data.walletBalance);
       if (data.bankBalance !== undefined && bankData) setBankData({ ...bankData, balance: data.bankBalance });
       fetchBank();

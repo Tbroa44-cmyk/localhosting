@@ -46,6 +46,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
     try {
       const result = await onExecute(company.id, numShares);
       if (mode === "buy") { playBuyConfirm(); } else { playSellConfirm(); }
+      window.dispatchEvent(new Event("balance-changed"));
       onTradeComplete?.();
       if (result?.pendingShares > 0) {
         setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);

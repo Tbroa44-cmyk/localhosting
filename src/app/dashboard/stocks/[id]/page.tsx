@@ -164,7 +164,9 @@ export default function StockDetailPage() {
           }
           if (filled > 0) {
             setSharesOwned((prev) => prev + filled);
-            setUserBalance((prev) => prev - (filled * (company?.share_price || 0)));
+          }
+          if (typeof data.newBalance === "number" && data.newBalance >= 0) {
+            setUserBalance(data.newBalance);
           }
         } else {
           const sold = data.filledShares || shares;
@@ -178,7 +180,11 @@ export default function StockDetailPage() {
             setOrderSuccess(`Order placed, waiting for buyers.`);
           }
           setSharesOwned((prev) => Math.max(0, prev - sold));
+          if (typeof data.newBalance === "number" && data.newBalance >= 0) {
+            setUserBalance(data.newBalance);
+          }
         }
+        window.dispatchEvent(new Event("balance-changed"));
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
       } else {
@@ -195,6 +201,7 @@ export default function StockDetailPage() {
         setOrderSuccess(data.message || "Limit order placed!");
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
+        window.dispatchEvent(new Event("balance-changed"));
       }
       fetchData();
     } catch (err: any) {
@@ -218,6 +225,7 @@ export default function StockDetailPage() {
       const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      window.dispatchEvent(new Event("balance-changed"));
       fetchData();
     } catch (err: any) {
       showToast(err.message || "Failed to cancel order", "error");

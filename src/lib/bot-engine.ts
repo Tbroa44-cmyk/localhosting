@@ -423,7 +423,7 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
   const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(botId) as { balance: number } | undefined;
   if (!user || Number(user.balance) < totalCost) return false;
 
-  const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+  const company = await db.prepare("SELECT share_price, total_shares FROM companies WHERE id = ?").get(companyId) as { share_price: number; total_shares: number } | undefined;
   const currentPrice = company ? Number(company.share_price) : price;
 
   let filledShares = 0;
@@ -477,8 +477,7 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
     if (remaining > 0) {
       const autoPrice = Number(company?.share_price || price);
       const totalHeld = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?").get(companyId) as { total: number } | undefined;
-      const totalSharesComp = await db.prepare("SELECT total_shares FROM companies WHERE id = ?").get(companyId) as { total_shares: number } | undefined;
-      const avail = Math.max(0, (totalSharesComp?.total_shares || 0) - (totalHeld?.total || 0));
+      const avail = Math.max(0, (company?.total_shares || 0) - (totalHeld?.total || 0));
       const autoQty = Math.min(remaining, avail);
 
       if (autoQty > 0) {
@@ -506,7 +505,7 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
     }
 
     if (filledShares > 0) {
-      const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice);
+      const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice, filledShares, company?.total_shares);
       await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(cappedPrice, companyId);
       await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, cappedPrice, Date.now());
     }
@@ -522,7 +521,7 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
   const holding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(botId, companyId) as { id: number; shares_owned: number } | undefined;
   if (!holding || holding.shares_owned < shares) return false;
 
-  const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+  const company = await db.prepare("SELECT share_price, total_shares FROM companies WHERE id = ?").get(companyId) as { share_price: number; total_shares: number } | undefined;
   const currentPrice = company ? Number(company.share_price) : price;
 
   let filledShares = 0;
@@ -582,7 +581,7 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
     }
 
     if (filledShares > 0) {
-      const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice);
+      const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice, filledShares, company?.total_shares);
       await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(cappedPrice, companyId);
       await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, cappedPrice, Date.now());
     }
@@ -593,13 +592,19 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
   return true;
 }
 
-function applyPriceCapToCompany(currentPrice: number, tradePrice: number): number {
+function applyPriceCapToCompany(currentPrice: number, tradePrice: number, tradeShares?: number, totalShares?: number): number {
   if (currentPrice <= 0) return tradePrice;
   const change = tradePrice - currentPrice;
-  const changePercent = Math.abs(change) / currentPrice;
-  if (changePercent <= 0.25) return tradePrice;
+  if (change === 0) return tradePrice;
+  let maxChangePercent = 0.25;
+  if (tradeShares && totalShares && totalShares > 0) {
+    const supplyRatio = tradeShares / totalShares;
+    maxChangePercent = Math.min(0.75, Math.max(0.15, supplyRatio * 3));
+  }
+  const maxDelta = currentPrice * maxChangePercent;
+  if (Math.abs(change) <= maxDelta) return tradePrice;
   const direction = change > 0 ? 1 : -1;
-  return Math.max(5, Math.round(currentPrice + direction * currentPrice * 0.25));
+  return Math.max(5, Math.round(currentPrice + direction * maxDelta));
 }
 async function marketMake(db: any, bots: { id: number; name: string; config: BotConfig }[]): Promise<number> {
   let trades = 0;
@@ -782,9 +787,9 @@ async function botToBotMatch(db: any, bots: { id: number; name: string; config: 
       sellOrder.shares = Number(sellOrder.shares) - fillQty;
       trades++;
 
-      const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+      const company = await db.prepare("SELECT share_price, total_shares FROM companies WHERE id = ?").get(companyId) as { share_price: number; total_shares: number } | undefined;
       if (company) {
-        const cappedPrice = applyPriceCapToCompany(Number(company.share_price), fillPrice);
+        const cappedPrice = applyPriceCapToCompany(Number(company.share_price), fillPrice, fillQty, company.total_shares);
         await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(cappedPrice, companyId);
         await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, cappedPrice, Date.now());
       }

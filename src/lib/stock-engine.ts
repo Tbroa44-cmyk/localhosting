@@ -4,7 +4,9 @@ import { isTradingOpen as isTradingOpenCore } from "@/lib/trading-hours";
 
 const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
-const MAX_PRICE_CHANGE_PERCENT = 0.25;
+const MIN_PRICE_CHANGE_CAP = 0.15;
+const MAX_PRICE_CHANGE_CAP = 0.75;
+const MIN_SELL_FLOOR = 1;
 
 async function isTradingOpen(db: any): Promise<boolean> {
   return isTradingOpenCore(db);
@@ -27,18 +29,31 @@ export function calculateBuyPrice(currentPrice: number, shares: number): number 
   return Math.round(currentPrice + priceIncrease);
 }
 
-export function calculateSellPrice(currentPrice: number, shares: number): number {
+export function calculateSellPrice(currentPrice: number, shares: number, totalShares?: number): number {
+  if (totalShares && totalShares > 0) {
+    const supplyRatio = shares / totalShares;
+    const impact = Math.min(supplyRatio * 4, 0.85);
+    return Math.max(MIN_SELL_FLOOR, Math.round(currentPrice * (1 - impact)));
+  }
   const priceDecrease = currentPrice * PRICE_CHANGE_PERCENT * shares;
-  return Math.max(100, Math.round(currentPrice - priceDecrease));
+  return Math.max(MIN_SELL_FLOOR, Math.round(currentPrice - priceDecrease));
 }
 
-function applyPriceCap(currentPrice: number, newPrice: number): number {
+function getDynamicCap(tradeShares?: number, totalShares?: number): number {
+  if (!tradeShares || !totalShares || totalShares <= 0) return MIN_PRICE_CHANGE_CAP;
+  const supplyRatio = tradeShares / totalShares;
+  return Math.min(MAX_PRICE_CHANGE_CAP, Math.max(MIN_PRICE_CHANGE_CAP, supplyRatio * 3));
+}
+
+function applyPriceCap(currentPrice: number, newPrice: number, tradeShares?: number, totalShares?: number): number {
   if (currentPrice <= 0) return newPrice;
   const change = newPrice - currentPrice;
-  const changePercent = Math.abs(change) / currentPrice;
-  if (changePercent <= MAX_PRICE_CHANGE_PERCENT) return newPrice;
+  if (change === 0) return newPrice;
+  const maxChange = getDynamicCap(tradeShares, totalShares);
+  const maxDelta = currentPrice * maxChange;
+  if (Math.abs(change) <= maxDelta) return newPrice;
   const direction = change > 0 ? 1 : -1;
-  return Math.round(currentPrice + direction * currentPrice * MAX_PRICE_CHANGE_PERCENT);
+  return Math.round(currentPrice + direction * maxDelta);
 }
 
 async function recordPriceHistory(db: any, companyId: number, price: number) {
@@ -49,10 +64,11 @@ async function recordPriceHistory(db: any, companyId: number, price: number) {
   }
 }
 
-export async function setPriceFromTrade(db: any, companyId: number, tradePrice: number): Promise<number> {
-  const row = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+export async function setPriceFromTrade(db: any, companyId: number, tradePrice: number, tradeShares?: number): Promise<number> {
+  const row = await db.prepare("SELECT share_price, total_shares FROM companies WHERE id = ?").get(companyId) as { share_price: number; total_shares: number } | undefined;
   const currentPrice = row ? Number(row.share_price) : 0;
-  const cappedPrice = applyPriceCap(currentPrice, tradePrice);
+  const totalShares = row ? Number(row.total_shares) : undefined;
+  const cappedPrice = applyPriceCap(currentPrice, tradePrice, tradeShares, totalShares);
   await updateCompanyPrice(companyId, cappedPrice);
   return cappedPrice;
 }
@@ -98,9 +114,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 
     if (!isAdmin) {
       const buyerBalance = Number(user.balance) || 0;
-      const maxCostAtCurrentPrice = company.share_price * shares;
-      if (buyerBalance < maxCostAtCurrentPrice) {
-        throw new Error(`Insufficient balance. You need ${formatCoins(maxCostAtCurrentPrice)} but have ${formatCoins(buyerBalance)}`);
+      if (buyerBalance < company.share_price) {
+        throw new Error(`Insufficient balance. You need at least ${formatCoins(company.share_price)} but have ${formatCoins(buyerBalance)}`);
       }
     }
 
@@ -159,7 +174,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       lastFillPrice = fillPrice;
     }
 
-    const afterFillPrice = await setPriceFromTrade(db, companyId, lastFillPrice);
+    const filledFromSells = shares - remaining;
+    const afterFillPrice = await setPriceFromTrade(db, companyId, lastFillPrice, filledFromSells > 0 ? filledFromSells : undefined);
     await recordPriceHistory(db, companyId, afterFillPrice);
     company.share_price = afterFillPrice;
 
@@ -184,7 +200,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         totalCost += autoFillCost;
         remaining -= autoFillQty;
 
-        const newAutoPrice = await setPriceFromTrade(db, companyId, calculateBuyPrice(company.share_price, autoFillQty));
+        const newAutoPrice = await setPriceFromTrade(db, companyId, calculateBuyPrice(company.share_price, autoFillQty), autoFillQty);
         await db.prepare(
           "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
         ).run(userId, companyId, autoFillQty, company.share_price, autoFillCost);
@@ -227,7 +243,11 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     }
 
     if (!isAdmin && totalCost > 0) {
-      await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(totalCost, userId);
+      const deductResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(totalCost, userId, totalCost);
+      if (deductResult.changes === 0) {
+        const currentBal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+        throw new Error(`Insufficient balance. Need ${formatCoins(totalCost)}, have ${formatCoins(currentBal?.balance || 0)}`);
+      }
     }
 
     if (filledShares > 0) {
@@ -273,8 +293,8 @@ export async function executeSell(userId: number, companyId: number, shares: num
     const grossRevenue = company.share_price * shares;
     const taxAmount = Math.round(grossRevenue * SELL_TAX_PERCENT);
     const totalRevenue = grossRevenue - taxAmount;
-    const rawNewPrice = calculateSellPrice(company.share_price, shares);
-    const newPrice = applyPriceCap(company.share_price, rawNewPrice);
+    const rawNewPrice = calculateSellPrice(company.share_price, shares, company.total_shares);
+    const newPrice = applyPriceCap(company.share_price, rawNewPrice, shares, company.total_shares);
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number; is_admin: any };
     const isAdmin = !!user.is_admin;
@@ -339,12 +359,13 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
 
     if (type === "buy") {
       const totalCost = priceCents * shares;
-      if (!isAdmin && user.balance < totalCost) {
-        throw new Error(`Insufficient balance. Need ${formatCoins(totalCost)}, have ${formatCoins(user.balance)}`);
-      }
 
       if (!isAdmin) {
-        await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(totalCost, userId);
+        const deductResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(totalCost, userId, totalCost);
+        if (deductResult.changes === 0) {
+          const currentBal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+          throw new Error(`Insufficient balance. Need ${formatCoins(totalCost)}, have ${formatCoins(currentBal?.balance || 0)}`);
+        }
       }
     }
 
@@ -477,7 +498,7 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
     await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
   }
 
-  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, fillPrice);
+  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, fillPrice, fillQty);
   await recordPriceHistory(db, buyOrder.company_id, newPrice);
 
   await awardXP(db, buyOrder.user_id, fillQty * 1);

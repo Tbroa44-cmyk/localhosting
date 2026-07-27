@@ -136,7 +136,7 @@ export default function PortfolioPage() {
     setCancelOrderId(null);
     playCancel();
     fetch(`/api/orders/${orderId}`, { method: "DELETE" })
-      .then(() => fetchPortfolio())
+      .then(() => { window.dispatchEvent(new Event("balance-changed")); fetchPortfolio(); })
       .catch((err) => console.error(err));
   }
 
