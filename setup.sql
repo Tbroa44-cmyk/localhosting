@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS settings (
   trading_close_hour INTEGER DEFAULT 24,
   emergency_close INTEGER DEFAULT 0,
   emergency_message TEXT DEFAULT 'Markets under maintenance',
-  trading_days TEXT DEFAULT '1,2,3,4,5,6,7'
+  trading_days TEXT DEFAULT '1,2,3,4,5,6,7',
+  bots_enabled INTEGER DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -162,6 +163,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS emergency_close INTEGER DEFAULT 0;
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS emergency_message TEXT DEFAULT 'Markets under maintenance';
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS trading_days TEXT DEFAULT '1,2,3,4,5,6,7';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS bots_enabled INTEGER DEFAULT 1;
 
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE companies DISABLE ROW LEVEL SECURITY;

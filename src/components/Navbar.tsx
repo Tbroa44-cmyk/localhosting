@@ -51,7 +51,11 @@ export default function Navbar() {
 
   useEffect(() => {
     fetchTradingStatus();
-    const interval = setInterval(fetchTradingStatus, 60000);
+    triggerBotTick();
+    const interval = setInterval(() => {
+      fetchTradingStatus();
+      triggerBotTick();
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -60,6 +64,10 @@ export default function Navbar() {
       .then(r => r.json())
       .then(setTradingStatus)
       .catch(() => {});
+  }
+
+  function triggerBotTick() {
+    fetch(`/api/bot/tick?t=${Date.now()}`, { method: "POST" }).catch(() => {});
   }
 
   function getTimeUntilChange(): string {

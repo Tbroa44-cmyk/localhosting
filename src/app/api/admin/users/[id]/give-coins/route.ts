@@ -28,13 +28,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (user.is_admin) {
-      return NextResponse.json({ error: "Cannot give coins to admin" }, { status: 400 });
-    }
-
     await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(amountCents, userId);
 
-    return NextResponse.json({ success: true, newBalance: user.balance + amountCents });
+    return NextResponse.json({ success: true, newBalance: Number(user.balance) + amountCents });
   } catch (error) {
     console.error("Give coins error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -46,6 +46,7 @@ interface TradingSettings {
   emergency_close: number;
   emergency_message: string;
   trading_days: string;
+  bots_enabled: number;
 }
 
 interface CustomDateRange {
@@ -74,7 +75,7 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(false);
 
-  const [tradingSettings, setTradingSettings] = useState<TradingSettings>({ trading_enabled: 1, trading_open_hour: 0, trading_close_hour: 24, emergency_close: 0, emergency_message: "Markets under maintenance", trading_days: "1,2,3,4,5,6,7" });
+  const [tradingSettings, setTradingSettings] = useState<TradingSettings>({ trading_enabled: 1, trading_open_hour: 0, trading_close_hour: 24, emergency_close: 0, emergency_message: "Markets under maintenance", trading_days: "1,2,3,4,5,6,7", bots_enabled: 1 });
   const [savingTrading, setSavingTrading] = useState(false);
 
   const [customDates, setCustomDates] = useState<CustomDateRange[]>([]);
@@ -133,6 +134,7 @@ export default function AdminPage() {
           emergency_close: data.emergency_close ?? 0,
           emergency_message: data.emergency_message ?? "Markets under maintenance",
           trading_days: data.trading_days ?? "1,2,3,4,5,6,7",
+          bots_enabled: data.bots_enabled ?? 1,
         });
       })
       .catch(console.error);
@@ -842,6 +844,42 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Bot Activity */}
+            <div className="glass-card border-cyan-500/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-white font-semibold">Bot Activity</h3>
+                  <p className="text-gray-400 text-sm mt-1">AI bots simulate trading activity to make the market feel alive</p>
+                  <p className="text-gray-500 text-xs mt-1">3 bots: BotAlpha (conservative), BotBeta (balanced), BotCharlie (aggressive)</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={async () => {
+                      const newEnabled = tradingSettings.bots_enabled ? 0 : 1;
+                      const newSettings = { ...tradingSettings, bots_enabled: newEnabled };
+                      setTradingSettings(newSettings);
+                      await fetch("/api/admin/settings", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(newSettings),
+                      });
+                      showToast(newEnabled ? "Bots enabled" : "Bots disabled", "success");
+                    }}
+                    className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${
+                      tradingSettings.bots_enabled ? "bg-cyan-600" : "bg-gray-700"
+                    }`}
+                  >
+                    <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform duration-300 ${
+                      tradingSettings.bots_enabled ? "translate-x-7" : "translate-x-0.5"
+                    }`} />
+                  </button>
+                  <span className={`text-sm font-medium ${tradingSettings.bots_enabled ? "text-cyan-400" : "text-gray-500"}`}>
+                    {tradingSettings.bots_enabled ? "ON" : "OFF"}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Trading Hours */}
