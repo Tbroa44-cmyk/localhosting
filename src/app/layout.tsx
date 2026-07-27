@@ -3,6 +3,7 @@ import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import PageTransition from "@/components/PageTransition";
 import ToastContainer from "@/components/Toast";
+import TradeNotificationContainer from "@/components/TradeNotification";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
@@ -19,6 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <AuthProvider session={session}>
           <PageTransition>{children}</PageTransition>
           <ToastContainer />
+          <TradeNotificationContainer />
         </AuthProvider>
       </body>
     </html>

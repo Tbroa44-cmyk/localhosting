@@ -239,3 +239,18 @@ body {
   pointer-events: none;
   z-index: 10;
 }
+
+@keyframes notifSlideIn {
+  0% { transform: translateX(120%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes notifSlideOut {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+
+@keyframes notifCountdown {
+  0% { width: 100%; }
+  100% { width: 0%; }
+}

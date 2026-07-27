@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatCoins, formatCoinsRaw } from "@/lib/format";
 import ButtonSpinner from "./ButtonSpinner";
 import { playClick, playBuyConfirm, playSellConfirm } from "@/lib/sounds";
+import { showTradeNotification } from "./TradeNotification";
 
 interface BuySellModalProps {
   company: {
@@ -25,6 +26,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [confirming, setConfirming] = useState(false);
 
   const numShares = Number(shares) || 0;
   const totalCost = company.share_price * numShares;
@@ -44,6 +46,13 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
     try {
       const result = await onExecute(company.id, numShares);
       if (mode === "buy") { playBuyConfirm(); } else { playSellConfirm(); }
+      showTradeNotification({
+        stockName: company.name,
+        ticker: company.ticker,
+        action: mode,
+        shares: numShares,
+        price: company.share_price,
+      });
       if (result?.pendingShares > 0) {
         setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);
       } else if (result?.message) {
@@ -143,7 +152,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
       {success && <p className="text-green-400 text-sm mb-4">{success}</p>}
 
       <button
-        onClick={() => { playClick(); handleSubmit(); }}
+        onClick={() => { playClick(); if (!confirming) { setConfirming(true); } else { handleSubmit(); } }}
         disabled={loading || !canAfford || !hasShares}
         className={mode === "buy" ? "btn-success w-full flex items-center justify-center gap-2" : "btn-danger w-full flex items-center justify-center gap-2"}
       >
@@ -153,6 +162,8 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
         ? "Not enough shares"
         : !canAfford
         ? "Insufficient balance"
+        : confirming
+        ? `Confirm ${mode === "buy" ? "Buy" : "Sell"} ${numShares} share${numShares > 1 ? "s" : ""}?`
         : `${mode === "buy" ? "Buy" : "Sell"} ${numShares} share${numShares > 1 ? "s" : ""}`}
       </button>
     </div>

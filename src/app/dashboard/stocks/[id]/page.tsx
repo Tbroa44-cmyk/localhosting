@@ -14,6 +14,8 @@ import { formatCoins } from "@/lib/format";
 import PageBackground from "@/components/PageBackground";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { playClick, playBuyConfirm, playSellConfirm, playCancel, playOrderConfirmed, playOrderProgress } from "@/lib/sounds";
+import ConfirmModal from "@/components/ConfirmModal";
+import { showTradeNotification } from "@/components/TradeNotification";
 
 interface Company {
   id: number;
@@ -51,6 +53,7 @@ export default function StockDetailPage() {
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const prevOrdersRef = useRef<any[]>([]);
   const prevTradesRef = useRef<any[]>([]);
+  const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
 
   const companyId = Number(params.id);
   const canTrade = status === "authenticated";
@@ -144,6 +147,7 @@ export default function StockDetailPage() {
         }
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
+        showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: orderType, shares, price: company?.share_price || 0 });
       } else {
         const priceCents = Math.round(parseFloat(orderPrice) * 100);
         if (isNaN(priceCents) || priceCents <= 0) throw new Error("Enter a valid price");
@@ -158,6 +162,7 @@ export default function StockDetailPage() {
         setOrderSuccess(data.message || "Limit order placed!");
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
+        showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: orderType, shares, price: company?.share_price || 0 });
       }
       fetchData();
     } catch (err: any) {
@@ -168,7 +173,13 @@ export default function StockDetailPage() {
   }
 
   async function handleCancelOrder(orderId: number) {
-    if (!confirm("Cancel this order? This cannot be undone.")) return;
+    setCancelOrderId(orderId);
+  }
+
+  async function confirmCancelOrder() {
+    if (cancelOrderId === null) return;
+    const orderId = cancelOrderId;
+    setCancelOrderId(null);
     try {
       playCancel();
       setTradeAnimType("cancel");
@@ -613,6 +624,16 @@ export default function StockDetailPage() {
 
         <CommentsSection companyId={companyId} isLoggedIn={!!session} />
       </div>
+      <ConfirmModal
+        open={cancelOrderId !== null}
+        title="Cancel Order"
+        message="Cancel this order? This cannot be undone."
+        confirmText="Cancel Order"
+        cancelText="Keep Order"
+        danger
+        onConfirm={confirmCancelOrder}
+        onCancel={() => setCancelOrderId(null)}
+      />
     </div>
   );
 }

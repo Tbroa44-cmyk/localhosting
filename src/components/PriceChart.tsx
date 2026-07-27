@@ -75,6 +75,13 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
   return result;
 }
 
+interface BucketData {
+  buys: number;
+  sells: number;
+  buyTotalPrice: number;
+  sellTotalPrice: number;
+}
+
 function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter) {
   const now = Date.now();
   const option = FILTER_OPTIONS.find((f) => f.key === filter);
@@ -115,29 +122,29 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
   }
 
   if (filtered.length === 0) {
-    return { labels: ["No data"], buys: [0], sells: [0], confirmedBuys: [0], confirmedSells: [0], rawBuys: [0], rawSells: [0] };
+    return { labels: ["No data"], buys: [0], sells: [0], buyAvgPrices: [0], sellAvgPrices: [0] };
   }
 
   const minTime = Math.min(...filtered.map((t) => new Date(t.created_at).getTime()));
   const maxTime = Math.max(...filtered.map((t) => new Date(t.created_at).getTime()));
 
-  const buckets = new Map<number, { buys: number; sells: number; confirmedBuys: number; confirmedSells: number }>();
+  const buckets = new Map<number, BucketData>();
 
   for (const tx of filtered) {
     const txTime = new Date(tx.created_at).getTime();
     const bucketStart = Math.floor((txTime - minTime) / bucketSize) * bucketSize + minTime;
     if (!buckets.has(bucketStart)) {
-      buckets.set(bucketStart, { buys: 0, sells: 0, confirmedBuys: 0, confirmedSells: 0 });
+      buckets.set(bucketStart, { buys: 0, sells: 0, buyTotalPrice: 0, sellTotalPrice: 0 });
     }
     const bucket = buckets.get(bucketStart)!;
     const shares = Number(tx.shares) || 1;
-    const isConfirmed = tx.status === "confirmed";
+    const price = Number(tx.price_per_share) || 0;
     if (String(tx.type).toLowerCase().includes("buy")) {
       bucket.buys += shares;
-      if (isConfirmed) bucket.confirmedBuys += shares;
+      bucket.buyTotalPrice += shares * price;
     } else {
       bucket.sells += shares;
-      if (isConfirmed) bucket.confirmedSells += shares;
+      bucket.sellTotalPrice += shares * price;
     }
   }
 
@@ -147,10 +154,8 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
     labels: sortedBuckets.map(([ts]) => formatLabel(ts)),
     buys: sortedBuckets.map(([, b]) => b.buys),
     sells: sortedBuckets.map(([, b]) => b.sells),
-    confirmedBuys: sortedBuckets.map(([, b]) => b.confirmedBuys),
-    confirmedSells: sortedBuckets.map(([, b]) => b.confirmedSells),
-    rawBuys: sortedBuckets.map(([, b]) => b.buys),
-    rawSells: sortedBuckets.map(([, b]) => b.sells),
+    buyAvgPrices: sortedBuckets.map(([, b]) => b.buys > 0 ? b.buyTotalPrice / b.buys : 0),
+    sellAvgPrices: sortedBuckets.map(([, b]) => b.sells > 0 ? b.sellTotalPrice / b.sells : 0),
   };
 }
 
@@ -182,6 +187,11 @@ export default function PriceChart({
     }
     return interpolateGaps(data, now, currentPrice);
   }, [priceHistory, filter, currentPrice]);
+
+  const groupedTrades = useMemo(() => {
+    if (!transactions || transactions.length === 0) return null;
+    return groupTransactionsByTime(transactions, filter);
+  }, [transactions, filter]);
 
   const priceChartData = useMemo(() => {
     if (filteredData.length === 0) {
@@ -224,44 +234,34 @@ export default function PriceChart({
   }, [filteredData, filter]);
 
   const tradeChartData = useMemo(() => {
-    if (!transactions || transactions.length === 0) {
+    if (!groupedTrades) {
       return {
         labels: ["No trades"],
         datasets: [
-          { data: [0], backgroundColor: "rgba(34, 197, 94, 0.7)", borderRadius: 4 },
-          { data: [0], backgroundColor: "rgba(239, 68, 68, 0.7)", borderRadius: 4 },
+          { label: "Buys", data: [0], backgroundColor: "rgba(34, 197, 94, 0.7)", borderRadius: 4 },
+          { label: "Sells", data: [0], backgroundColor: "rgba(239, 68, 68, 0.7)", borderRadius: 4 },
         ],
       };
     }
 
-    const grouped = groupTransactionsByTime(transactions, filter);
-
     return {
-      labels: grouped.labels,
+      labels: groupedTrades.labels,
       datasets: [
         {
           label: "Buys",
-          data: grouped.buys,
+          data: groupedTrades.buys,
           backgroundColor: "rgba(34, 197, 94, 0.7)",
           borderRadius: 4,
         },
         {
-          label: "Sells (confirmed)",
-          data: grouped.confirmedSells,
-          backgroundColor: "rgba(239, 68, 68, 0.8)",
+          label: "Sells",
+          data: groupedTrades.sells,
+          backgroundColor: "rgba(239, 68, 68, 0.7)",
           borderRadius: 4,
-        },
-        {
-          label: "Sells (pending)",
-          data: grouped.rawSells.map((s, i) => Math.max(0, s - grouped.confirmedSells[i])),
-          backgroundColor: "rgba(239, 68, 68, 0.35)",
-          borderRadius: 4,
-          borderWidth: 1,
-          borderColor: "rgba(239, 68, 68, 0.5)",
         },
       ],
     };
-  }, [transactions, filter]);
+  }, [groupedTrades]);
 
   const yScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 1 };
@@ -329,11 +329,36 @@ export default function PriceChart({
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(0,0,0,0.8)",
-          titleColor: "#fff",
-          bodyColor: "#fff",
+          backgroundColor: "rgba(17,24,39,0.95)",
+          titleColor: "#f3f4f6",
+          bodyColor: "#d1d5db",
           borderColor: "rgba(255,255,255,0.1)",
           borderWidth: 1,
+          padding: 12,
+          cornerRadius: 8,
+          bodySpacing: 6,
+          titleFont: { size: 13, weight: "bold" as const },
+          bodyFont: { size: 12 },
+          callbacks: {
+            title: (items: any[]) => {
+              if (!items.length) return "";
+              return items[0].label || "";
+            },
+            label: (ctx: any) => {
+              const idx = ctx.dataIndex;
+              const dsIdx = ctx.datasetIndex;
+              const shares = ctx.parsed.y;
+              if (shares === 0) return;
+              const avgPrice = dsIdx === 0
+                ? groupedTrades?.buyAvgPrices[idx]
+                : groupedTrades?.sellAvgPrices[idx];
+              const label = dsIdx === 0 ? "Bought" : "Sold";
+              if (avgPrice && avgPrice > 0) {
+                return `${shares} share${shares !== 1 ? "s" : ""} ${label} @ avg ${formatCoins(Math.round(avgPrice * 100))}`;
+              }
+              return `${shares} share${shares !== 1 ? "s" : ""} ${label}`;
+            },
+          },
         },
       },
       scales: {
@@ -360,7 +385,7 @@ export default function PriceChart({
         mode: "index" as const,
       },
     }),
-    []
+    [groupedTrades]
   );
 
   const displayPrice = filteredData.length > 0 ? filteredData[filteredData.length - 1].price / 100 : 0;
@@ -371,8 +396,7 @@ export default function PriceChart({
   const chartKey = `${filter}-${viewMode}`;
 
   const totalBuys = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
-  const totalConfirmedSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
-  const totalPendingSells = tradeChartData.datasets[2]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
 
   return (
     <div className="glass-card">
@@ -393,13 +417,7 @@ export default function PriceChart({
               <>
                 <span className="text-sm text-green-400 font-medium">{totalBuys} bought</span>
                 <span className="text-gray-600">·</span>
-                <span className="text-sm text-red-400 font-medium">{totalConfirmedSells} sold</span>
-                {totalPendingSells > 0 && (
-                  <>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-sm text-red-300/50 font-medium">{totalPendingSells} pending sell</span>
-                  </>
-                )}
+                <span className="text-sm text-red-400 font-medium">{totalSells} sold</span>
               </>
             )}
           </div>
@@ -458,15 +476,9 @@ export default function PriceChart({
             <span className="text-gray-400">Buys ({totalBuys})</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.8)" }} />
-            <span className="text-gray-400">Sells ({totalConfirmedSells})</span>
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
+            <span className="text-gray-400">Sells ({totalSells})</span>
           </div>
-          {totalPendingSells > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm border border-red-500/50" style={{ backgroundColor: "rgba(239, 68, 68, 0.35)" }} />
-              <span className="text-gray-400">Pending ({totalPendingSells})</span>
-            </div>
-          )}
         </div>
       )}
     </div>

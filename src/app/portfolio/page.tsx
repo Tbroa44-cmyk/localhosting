@@ -20,6 +20,7 @@ import { formatCoins } from "@/lib/format";
 import PageBackground from "@/components/PageBackground";
 import { playCancel, playClick } from "@/lib/sounds";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import ConfirmModal from "@/components/ConfirmModal";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
@@ -83,6 +84,7 @@ export default function PortfolioPage() {
   const [earningsFilter, setEarningsFilter] = useState<TimeFilter>("7d");
   const [portfolioLoaded, setPortfolioLoaded] = useState(false);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -124,15 +126,18 @@ export default function PortfolioPage() {
       .catch(() => setOrdersLoaded(true));
   }
 
-  async function cancelOrder(orderId: number) {
-    if (!confirm("Cancel this order? This cannot be undone.")) return;
-    try {
-      playCancel();
-      await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
-      fetchPortfolio();
-    } catch (err) {
-      console.error(err);
-    }
+  function cancelOrder(orderId: number) {
+    setCancelOrderId(orderId);
+  }
+
+  function confirmCancelOrder() {
+    if (cancelOrderId === null) return;
+    const orderId = cancelOrderId;
+    setCancelOrderId(null);
+    playCancel();
+    fetch(`/api/orders/${orderId}`, { method: "DELETE" })
+      .then(() => fetchPortfolio())
+      .catch((err) => console.error(err));
   }
 
   const userBalance = apiBalance ?? ((session?.user as any)?.balance || 0);
@@ -552,6 +557,16 @@ export default function PortfolioPage() {
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={cancelOrderId !== null}
+        title="Cancel Order"
+        message="Cancel this order? This cannot be undone."
+        confirmText="Cancel Order"
+        cancelText="Keep Order"
+        danger
+        onConfirm={confirmCancelOrder}
+        onCancel={() => setCancelOrderId(null)}
+      />
     </div>
   );
 }
