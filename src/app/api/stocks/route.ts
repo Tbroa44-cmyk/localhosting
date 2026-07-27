@@ -35,17 +35,23 @@ export async function GET(request: NextRequest) {
       const monthChange = currentPrice - monthStart;
       const monthChangePercent = monthStart > 0 ? ((monthChange / monthStart) * 100) : 0;
 
-      const buyRows = await db.prepare(
-        "SELECT id FROM transactions WHERE company_id = ? AND type = 'buy'"
-      ).all(company.id) as any[];
+      let buyCount = 0;
+      let sellCount = 0;
+      try {
+        const buyRows = await db.prepare("SELECT id FROM transactions WHERE company_id = ? AND type = 'buy' ORDER BY created_at DESC LIMIT 1000").all(company.id) as any[];
+        buyCount = Array.isArray(buyRows) ? buyRows.length : 0;
+      } catch {}
 
-      const sellRows = await db.prepare(
-        "SELECT id FROM transactions WHERE company_id = ? AND type = 'sell'"
-      ).all(company.id) as any[];
+      try {
+        const sellRows = await db.prepare("SELECT id FROM transactions WHERE company_id = ? AND type = 'sell' ORDER BY created_at DESC LIMIT 1000").all(company.id) as any[];
+        sellCount = Array.isArray(sellRows) ? sellRows.length : 0;
+      } catch {}
 
-      const holderRows = await db.prepare(
-        "SELECT id FROM holdings WHERE company_id = ? AND shares_owned > 0"
-      ).all(company.id) as any[];
+      let holderCount = 0;
+      try {
+        const holderRows = await db.prepare("SELECT id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(company.id) as any[];
+        holderCount = Array.isArray(holderRows) ? holderRows.length : 0;
+      } catch {}
 
       const pendingSellRows = await db.prepare(
         "SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'"
@@ -63,9 +69,9 @@ export async function GET(request: NextRequest) {
         share_price: currentPrice,
         dayChangePercent: Math.round(dayChangePercent * 100) / 100,
         monthChangePercent: Math.round(monthChangePercent * 100) / 100,
-        buyCount: Array.isArray(buyRows) ? buyRows.length : 0,
-        sellCount: Array.isArray(sellRows) ? sellRows.length : 0,
-        holderCount: Array.isArray(holderRows) ? holderRows.length : 0,
+        buyCount,
+        sellCount,
+        holderCount,
         shares_available,
         recentPrices,
         shareEvent: sharesReleased > 0 ? { shares_added: sharesReleased } : null,

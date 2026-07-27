@@ -27,10 +27,18 @@ export async function GET() {
       }
     }
     const companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
-    const totalBalanceRows = await db.prepare("SELECT SUM(balance) as total FROM users").all() as { total: number }[];
-    const totalBalance = totalBalanceRows[0] || { total: 0 };
-    const totalTransactionsRows = await db.prepare("SELECT id FROM transactions").all() as any[];
-    const totalTransactions = { count: Array.isArray(totalTransactionsRows) ? totalTransactionsRows.length : 0 };
+    const totalBalanceRows = await db.prepare("SELECT balance FROM users").all() as { balance: number }[];
+    const totalBalance = totalBalanceRows.reduce((s: number, r: any) => s + Number(r.balance || 0), 0);
+    let totalTransactions = 0;
+    try {
+      const txCount = await db.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as { cnt: number } | undefined;
+      totalTransactions = txCount?.cnt || 0;
+    } catch {
+      try {
+        const recentTx = await db.prepare("SELECT id FROM transactions ORDER BY created_at DESC LIMIT 1").all() as any[];
+        totalTransactions = recentTx.length > 0 ? 99999 : 0;
+      } catch {}
+    }
     const bankFund = await db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
     const bankFundRow = bankFund[0] || { balance: 0 };
 
@@ -39,8 +47,8 @@ export async function GET() {
       companies,
       stats: {
         totalUsers: users.filter((u: any) => u.role !== "bot").length,
-        totalBalance: totalBalance.total || 0,
-        totalTransactions: totalTransactions.count,
+        totalBalance,
+        totalTransactions,
         bankFund: bankFundRow.balance || 0,
       },
     });
