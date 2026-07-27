@@ -4,7 +4,6 @@ import { useState } from "react";
 import { formatCoins, formatCoinsRaw } from "@/lib/format";
 import ButtonSpinner from "./ButtonSpinner";
 import { playClick, playBuyConfirm, playSellConfirm } from "@/lib/sounds";
-import { showTradeNotification } from "./TradeNotification";
 
 interface BuySellModalProps {
   company: {
@@ -47,13 +46,6 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
     try {
       const result = await onExecute(company.id, numShares);
       if (mode === "buy") { playBuyConfirm(); } else { playSellConfirm(); }
-      showTradeNotification({
-        stockName: company.name,
-        ticker: company.ticker,
-        action: mode,
-        shares: numShares,
-        price: company.share_price,
-      });
       onTradeComplete?.();
       if (result?.pendingShares > 0) {
         setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);

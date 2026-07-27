@@ -22,25 +22,39 @@ export async function GET() {
         users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, role, created_at FROM users ORDER BY created_at DESC").all() as any[];
         for (const u of users) { u.ban_count = 0; u.banned_until = null; }
       } catch {
-        users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
-        for (const u of users) { u.allowed = 0; u.ban_count = 0; u.banned_until = null; }
+        try {
+          users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
+          for (const u of users) { u.allowed = 0; u.ban_count = 0; u.banned_until = null; }
+        } catch (e: any) {
+          console.error("Failed to fetch users:", e?.message);
+        }
       }
     }
-    const companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
-    const totalBalanceRows = await db.prepare("SELECT balance FROM users").all() as { balance: number }[];
-    const totalBalance = totalBalanceRows.reduce((s: number, r: any) => s + Number(r.balance || 0), 0);
+
+    let companies: any[] = [];
+    try {
+      companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
+    } catch (e: any) {
+      console.error("Failed to fetch companies:", e?.message);
+    }
+
+    let totalBalance = 0;
+    try {
+      const rows = await db.prepare("SELECT balance FROM users").all() as { balance: number }[];
+      totalBalance = (Array.isArray(rows) ? rows : []).reduce((s, r) => s + Number(r.balance || 0), 0);
+    } catch {}
+
     let totalTransactions = 0;
     try {
-      const txCount = await db.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as { cnt: number } | undefined;
-      totalTransactions = txCount?.cnt || 0;
-    } catch {
-      try {
-        const recentTx = await db.prepare("SELECT id FROM transactions ORDER BY created_at DESC LIMIT 1").all() as any[];
-        totalTransactions = recentTx.length > 0 ? 99999 : 0;
-      } catch {}
-    }
-    const bankFund = await db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
-    const bankFundRow = bankFund[0] || { balance: 0 };
+      const rows = await db.prepare("SELECT id FROM transactions ORDER BY created_at DESC LIMIT 200").all() as any[];
+      totalTransactions = Array.isArray(rows) ? rows.length : 0;
+    } catch {}
+
+    let bankFundBalance = 0;
+    try {
+      const rows = await db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
+      bankFundBalance = rows[0]?.balance || 0;
+    } catch {}
 
     return NextResponse.json({
       users,
@@ -49,7 +63,7 @@ export async function GET() {
         totalUsers: users.filter((u: any) => u.role !== "bot").length,
         totalBalance,
         totalTransactions,
-        bankFund: bankFundRow.balance || 0,
+        bankFund: bankFundBalance,
       },
     });
   } catch (error) {

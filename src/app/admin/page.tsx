@@ -438,8 +438,8 @@ export default function AdminPage() {
             <p className="text-gray-400 text-sm mt-1">Manage companies, users, and the market</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${stats.totalUsers > 0 ? "bg-green-400" : "bg-gray-500"}`} />
-            <span className="text-xs text-gray-400">Live</span>
+            <div className={`w-2.5 h-2.5 rounded-full ${users.length > 0 || companies.length > 0 ? "bg-green-400" : "bg-yellow-400 animate-pulse"}`} />
+            <span className="text-xs text-gray-400">{users.length > 0 || companies.length > 0 ? "Live" : "Connecting..."}</span>
           </div>
         </div>
 

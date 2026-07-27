@@ -285,6 +285,28 @@ export default function WalletPage() {
             </div>
           </div>
         </div>
+
+        <div className="glass-card mt-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Server Info</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <div className="text-gray-500 mb-1">Website</div>
+              <div className="text-white font-medium">stockgame.uk</div>
+            </div>
+            <div>
+              <div className="text-gray-500 mb-1">Version</div>
+              <div className="text-white font-medium">v1.4.0</div>
+            </div>
+            <div>
+              <div className="text-gray-500 mb-1">Platform</div>
+              <div className="text-white font-medium">Next.js + Supabase</div>
+            </div>
+            <div>
+              <div className="text-gray-500 mb-1">Hosted on</div>
+              <div className="text-white font-medium">Vercel</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -88,8 +88,23 @@ export default function StockDetailPage() {
               const curr = pending.find((p: any) => p.id === prev.id);
               if (!curr) {
                 playOrderConfirmed();
+                showTradeNotification({
+                  stockName: company?.name || "",
+                  ticker: company?.ticker || "",
+                  action: prev.type,
+                  shares: prev.original_shares || prev.shares,
+                  price: prev.price_per_share,
+                });
               } else if (curr.shares < prev.shares) {
                 playOrderProgress();
+                const filledNow = (prev.original_shares || prev.shares) - curr.shares;
+                showTradeNotification({
+                  stockName: company?.name || "",
+                  ticker: company?.ticker || "",
+                  action: prev.type,
+                  shares: filledNow,
+                  price: prev.price_per_share,
+                });
               }
             }
           }
@@ -141,8 +156,11 @@ export default function StockDetailPage() {
           const pending = data.pendingShares || 0;
           if (pending > 0) {
             setOrderSuccess(data.message || `Bought ${filled}, ${pending} pending`);
+          } else if (filled > 0) {
+            setOrderSuccess(`Market buy executed! ${filled} share${filled > 1 ? "s" : ""} purchased.`);
+            showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "buy", shares: filled, price: company?.share_price || 0 });
           } else {
-            setOrderSuccess(`Market buy executed! ${shares} share${shares > 1 ? "s" : ""} purchased.`);
+            setOrderSuccess(`Order placed, waiting for sellers.`);
           }
           if (filled > 0) {
             setSharesOwned((prev) => prev + filled);
@@ -150,12 +168,19 @@ export default function StockDetailPage() {
           }
         } else {
           const sold = data.filledShares || shares;
-          setOrderSuccess(data.message || `Sell order listed! ${shares} share${shares > 1 ? "s" : ""} on the market.`);
+          const pending = data.pendingShares || 0;
+          if (pending > 0) {
+            setOrderSuccess(data.message || `Listed ${sold} share${sold > 1 ? "s" : ""}, ${pending} pending.`);
+          } else if (sold > 0) {
+            setOrderSuccess(`Sell order listed! ${sold} share${sold > 1 ? "s" : ""} on the market.`);
+            showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "sell", shares: sold, price: company?.share_price || 0 });
+          } else {
+            setOrderSuccess(`Order placed, waiting for buyers.`);
+          }
           setSharesOwned((prev) => Math.max(0, prev - sold));
         }
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
-        showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: orderType, shares, price: company?.share_price || 0 });
       } else {
         const priceCents = Math.round(parseFloat(orderPrice) * 100);
         if (isNaN(priceCents) || priceCents <= 0) throw new Error("Enter a valid price");
@@ -170,7 +195,6 @@ export default function StockDetailPage() {
         setOrderSuccess(data.message || "Limit order placed!");
         setTradeAnimType(orderType);
         if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
-        showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: orderType, shares, price: company?.share_price || 0 });
       }
       fetchData();
     } catch (err: any) {
