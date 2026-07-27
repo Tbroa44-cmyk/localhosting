@@ -305,7 +305,7 @@ function getSmartSellPrice(currentPrice: number, orderBook: { lowestSell: number
 
 async function pickBuyTarget(db: any, botId: number, balance: number, config: BotConfig, realUserActivity: Record<number, number>, rand: () => number): Promise<{ companyId: number; shares: number; price: number } | null> {
   const companies = await db.prepare(
-    "SELECT id, share_price, total_shares FROM companies WHERE total_shares > 0 AND share_price >= 5"
+    "SELECT id, share_price, total_shares FROM companies WHERE total_shares > 0 AND share_price >= 5 ORDER BY share_price ASC LIMIT 6"
   ).all() as { id: number; share_price: number; total_shares: number }[];
 
   if (companies.length === 0) return null;
@@ -698,12 +698,14 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
   tickCounter++;
   let totalTrades = 0;
 
-  for (const bot of bots) {
-    const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(bot.id) as { balance: number } | undefined;
-    if (user && Number(user.balance) < 500) {
-      const topUp = BOT_INITIAL_CASH - Number(user.balance);
-      if (topUp > 0) await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(topUp, bot.id);
-    }
+  const botIds = bots.map((b) => b.id);
+  const placeholders = botIds.map(() => "?").join(",");
+  const botUsers = await db.prepare(
+    `SELECT id, balance FROM users WHERE id IN (${placeholders}) AND balance < 500`
+  ).all(...botIds) as { id: number; balance: number }[];
+  for (const bu of botUsers) {
+    const topUp = BOT_INITIAL_CASH - Number(bu.balance);
+    if (topUp > 0) await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(topUp, bu.id);
   }
 
   const realUserActivity = await getRealUserActivity(db);
