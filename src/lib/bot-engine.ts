@@ -1,8 +1,8 @@
 import getDb from "@/lib/db";
 import { isTradingOpen } from "@/lib/trading-hours";
 
-const BOT_INITIAL_CASH = 2000;
-const BOT_COOLDOWN_MS = 15000;
+const BOT_INITIAL_CASH = 5000;
+const BOT_COOLDOWN_MS = 10000;
 const MAX_BOTS = 25;
 
 const BOT_ADJECTIVES = [
@@ -22,9 +22,9 @@ interface BotConfig {
 }
 
 const BOT_CONFIGS: BotConfig[] = [
-  { riskLevel: "conservative", tradesPerHour: 12, maxSharesPerTrade: 3, buyBias: 0.45, sellBias: 0.35, stopLossPct: 0.12, takeProfitPct: 0.25 },
-  { riskLevel: "balanced", tradesPerHour: 18, maxSharesPerTrade: 4, buyBias: 0.50, sellBias: 0.40, stopLossPct: 0.08, takeProfitPct: 0.18 },
-  { riskLevel: "aggressive", tradesPerHour: 24, maxSharesPerTrade: 5, buyBias: 0.55, sellBias: 0.45, stopLossPct: 0.06, takeProfitPct: 0.12 },
+  { riskLevel: "conservative", tradesPerHour: 20, maxSharesPerTrade: 5, buyBias: 0.50, sellBias: 0.45, stopLossPct: 0.15, takeProfitPct: 0.30 },
+  { riskLevel: "balanced", tradesPerHour: 30, maxSharesPerTrade: 6, buyBias: 0.55, sellBias: 0.50, stopLossPct: 0.10, takeProfitPct: 0.22 },
+  { riskLevel: "aggressive", tradesPerHour: 40, maxSharesPerTrade: 8, buyBias: 0.60, sellBias: 0.55, stopLossPct: 0.08, takeProfitPct: 0.15 },
 ];
 
 let lastBotTickTime: Record<number, number> = {};
@@ -119,7 +119,7 @@ async function seedBotShares(db: any, botId: number, botIndex: number) {
     seeded.add(idx);
 
     const company = companies[idx];
-    const shares = 2 + (botIndex % 5);
+    const shares = 5 + (botIndex % 8);
     const price = Number(company.share_price);
     const cost = price * shares;
 
@@ -610,13 +610,13 @@ async function marketMake(db: any, bots: { id: number; name: string; config: Bot
     const price = Number(company.share_price);
 
     if (orderBook.pendingBuyShares === 0 && orderBook.pendingSellShares === 0) {
-      const botIdx = Math.floor(Math.random() * Math.min(5, bots.length));
+      const botIdx = Math.floor(Math.random() * Math.min(8, bots.length));
       const bot = bots[botIdx];
       const rand = seededRandom(Date.now() + company.id * 100 + botIdx);
 
-      const buyPrice = Math.max(5, Math.floor(price * (0.95 - rand() * 0.03)));
-      const sellPrice = Math.floor(price * (1.02 + rand() * 0.03));
-      const shares = 1 + Math.floor(rand() * 2);
+      const buyPrice = Math.max(5, Math.floor(price * (0.96 - rand() * 0.02)));
+      const sellPrice = Math.floor(price * (1.01 + rand() * 0.02));
+      const shares = 2 + Math.floor(rand() * 3);
 
       const botUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(bot.id) as { balance: number } | undefined;
       if (botUser && Number(botUser.balance) >= buyPrice * shares) {
@@ -636,10 +636,11 @@ async function marketMake(db: any, bots: { id: number; name: string; config: Bot
         const botIdx = Math.floor(Math.random() * bots.length);
         const bot = bots[botIdx];
         const botUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(bot.id) as { balance: number } | undefined;
-        const buyPrice = Math.max(5, orderBook.lowestSell - Math.floor(Math.random() * 3) - 1);
-        if (botUser && Number(botUser.balance) >= buyPrice * 2) {
-          await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(buyPrice, bot.id);
-          await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', 1, 1, ?, 'pending', ?)").run(bot.id, company.id, buyPrice, new Date().toISOString());
+        const buyPrice = Math.max(5, orderBook.lowestSell - Math.floor(Math.random() * 3));
+        if (botUser && Number(botUser.balance) >= buyPrice * 3) {
+          const buyShares = 1 + Math.floor(Math.random() * 3);
+          await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(buyPrice * buyShares, bot.id);
+          await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?)").run(bot.id, company.id, buyShares, buyShares, buyPrice, new Date().toISOString());
           trades++;
         }
       }
@@ -650,14 +651,15 @@ async function marketMake(db: any, bots: { id: number; name: string; config: Bot
         const holding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(bot.id, company.id) as { id: number; shares_owned: number } | undefined;
         if (holding && holding.shares_owned > 0) {
           const sellPrice = orderBook.highestBuy + Math.floor(Math.random() * 3) + 1;
-          await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', 1, 1, ?, 'pending', ?)").run(bot.id, company.id, sellPrice, new Date().toISOString());
+          const sellShares = 1 + Math.floor(Math.random() * 2);
+          await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(bot.id, company.id, Math.min(sellShares, holding.shares_owned), Math.min(sellShares, holding.shares_owned), sellPrice, new Date().toISOString());
           trades++;
         }
       }
 
       if (orderBook.lowestSell > 0 && orderBook.highestBuy > 0) {
         const spread = orderBook.lowestSell - orderBook.highestBuy;
-        if (spread > 3) {
+        if (spread > 2) {
           const botIdx = Math.floor(Math.random() * bots.length);
           const bot = bots[botIdx];
           const midPrice = Math.floor((orderBook.lowestSell + orderBook.highestBuy) / 2);
@@ -688,6 +690,110 @@ async function marketMake(db: any, bots: { id: number; name: string; config: Bot
   return trades;
 }
 
+async function botToBotMatch(db: any, bots: { id: number; name: string; config: BotConfig }[]): Promise<number> {
+  let trades = 0;
+  const botIds = bots.map(b => b.id);
+  if (botIds.length === 0) return 0;
+  const placeholders = botIds.map(() => "?").join(",");
+
+  const pendingBuys = await db.prepare(
+    `SELECT id, user_id, company_id, shares, price_per_share FROM orders WHERE type = 'buy' AND status = 'pending' AND user_id IN (${placeholders}) ORDER BY price_per_share DESC`
+  ).all(...botIds) as any[];
+
+  const pendingSells = await db.prepare(
+    `SELECT id, user_id, company_id, shares, price_per_share FROM orders WHERE type = 'sell' AND status = 'pending' AND user_id IN (${placeholders}) ORDER BY price_per_share ASC`
+  ).all(...botIds) as any[];
+
+  if (pendingBuys.length === 0 || pendingSells.length === 0) return 0;
+
+  const sellsByCompany: Record<number, any[]> = {};
+  for (const s of pendingSells) {
+    const cid = Number(s.company_id);
+    if (!sellsByCompany[cid]) sellsByCompany[cid] = [];
+    sellsByCompany[cid].push(s);
+  }
+
+  for (const buyOrder of pendingBuys) {
+    if (trades >= 20) break;
+    const companyId = Number(buyOrder.company_id);
+    const buyPrice = Number(buyOrder.price_per_share);
+    const buyShares = Number(buyOrder.shares);
+    const buyBotId = Number(buyOrder.user_id);
+
+    const sells = sellsByCompany[companyId];
+    if (!sells || sells.length === 0) continue;
+
+    const matchingSells = sells.filter(s => {
+      const sellPrice = Number(s.price_per_share);
+      return sellPrice <= buyPrice && Number(s.user_id) !== buyBotId && Number(s.shares) > 0;
+    });
+
+    if (matchingSells.length === 0) continue;
+
+    let remaining = buyShares;
+    for (const sellOrder of matchingSells) {
+      if (remaining <= 0) break;
+      if (trades >= 20) break;
+
+      const fillQty = Math.min(remaining, Number(sellOrder.shares));
+      const fillPrice = Number(sellOrder.price_per_share);
+      const grossCost = fillPrice * fillQty;
+      const taxAmount = Math.round(grossCost * 0.03);
+      const sellerRevenue = grossCost - taxAmount;
+
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
+      await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(grossCost, buyBotId);
+
+      const sellerHolding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, companyId) as { id: number; shares_owned: number } | undefined;
+      if (sellerHolding) {
+        if (sellerHolding.shares_owned <= fillQty) {
+          await db.prepare("DELETE FROM holdings WHERE id = ?").run(sellerHolding.id);
+        } else {
+          await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(fillQty, sellerHolding.id);
+        }
+      }
+
+      const buyerHolding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(buyBotId, companyId) as { id: number; shares_owned: number } | undefined;
+      if (buyerHolding) {
+        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(fillQty, buyerHolding.id);
+      } else {
+        await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(buyBotId, companyId, fillQty);
+      }
+
+      if (fillQty >= Number(sellOrder.shares)) {
+        await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(sellOrder.id);
+      } else {
+        await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
+      }
+
+      if (fillQty >= remaining) {
+        await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(buyOrder.id);
+      } else {
+        await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, buyOrder.id);
+      }
+
+      await db.prepare("INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)").run(sellOrder.user_id, companyId, fillQty, fillPrice, grossCost);
+      await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, 'filled', ?)").run(sellOrder.user_id, companyId, fillQty, fillPrice, new Date().toISOString());
+
+      await db.prepare("INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)").run(buyBotId, companyId, fillQty, fillPrice, grossCost);
+      await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)").run(buyBotId, companyId, fillQty, fillPrice, new Date().toISOString());
+
+      remaining -= fillQty;
+      sellOrder.shares = Number(sellOrder.shares) - fillQty;
+      trades++;
+
+      const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+      if (company) {
+        const cappedPrice = applyPriceCapToCompany(Number(company.share_price), fillPrice);
+        await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(cappedPrice, companyId);
+        await db.prepare("INSERT INTO price_history (company_id, price, timestamp) VALUES (?, ?, ?)").run(companyId, cappedPrice, Date.now());
+      }
+    }
+  }
+
+  return trades;
+}
+
 export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecuted: number; message: string }> {
   const db = getDb();
 
@@ -711,14 +817,14 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
     `SELECT id, balance FROM users WHERE id IN (${placeholders})`
   ).all(...botIds) as { id: number; balance: number }[];
 
-  const brokeIds = botUserRows.filter((u) => Number(u.balance) < 500).map((u) => u.id);
+  const brokeIds = botUserRows.filter((u) => Number(u.balance) < 1000).map((u) => u.id);
   if (brokeIds.length > 0) {
     const bp = brokeIds.map(() => "?").join(",");
     await db.prepare(
-      `UPDATE users SET balance = ${BOT_INITIAL_CASH} WHERE id IN (${bp}) AND balance < 500`
+      `UPDATE users SET balance = ${BOT_INITIAL_CASH} WHERE id IN (${bp}) AND balance < 1000`
     ).all(...brokeIds);
     for (const bu of botUserRows) {
-      if (Number(bu.balance) < 500) bu.balance = BOT_INITIAL_CASH;
+      if (Number(bu.balance) < 1000) bu.balance = BOT_INITIAL_CASH;
     }
   }
 
@@ -740,45 +846,60 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
   const orderBooks: Record<number, any> = {};
   companies.forEach((c, i) => { orderBooks[c.id] = obQueries[i]; });
 
-  const shuffledBots = [...bots].sort(() => Math.random() - 0.5);
-  const maxTraders = Math.min(10, shuffledBots.length);
+  const mmTrades = await marketMake(db, bots);
+  totalTrades += mmTrades;
 
-  for (let bi = 0; bi < maxTraders && totalTrades < 15; bi++) {
+  const matchTrades = await botToBotMatch(db, bots);
+  totalTrades += matchTrades;
+
+  const shuffledBots = [...bots].sort(() => Math.random() - 0.5);
+  const maxTraders = Math.min(25, shuffledBots.length);
+
+  for (let bi = 0; bi < maxTraders && totalTrades < 40; bi++) {
     const bot = shuffledBots[bi];
     const balance = allBalances[bot.id] ?? 0;
     const holdings = allHoldings[bot.id] || [];
     const hasStocks = holdings.length > 0;
 
-    if (hasStocks) {
+    if (hasStocks && Math.random() < 0.55) {
       const pick = holdings[Math.floor(Math.random() * holdings.length)];
       const ob = orderBooks[pick.company_id];
+      const company = companies.find((c) => c.id === pick.company_id);
+      const currentPrice = company ? Number(company.share_price) : 0;
+
+      let sellPrice: number;
       if (ob && ob.highestBuy > 0) {
-        const company = companies.find((c) => c.id === pick.company_id);
-        const currentPrice = company ? Number(company.share_price) : 0;
-        const sellPrice = Math.min(ob.highestBuy + 1, currentPrice + 2);
-        if (sellPrice >= 5) {
-          const shares = Math.max(1, Math.floor(Math.random() * Math.min(pick.shares_owned, 3)) + 1);
-          const ok = await placeBotSellOrder(db, bot.id, pick.company_id, Math.min(shares, pick.shares_owned), sellPrice);
-          if (ok) { totalTrades++; allBalances[bot.id] = balance; continue; }
-        }
+        sellPrice = Math.max(5, ob.highestBuy + Math.floor(Math.random() * 3));
+      } else {
+        sellPrice = Math.max(5, Math.floor(currentPrice * (1 + Math.random() * 0.04)));
+      }
+      const shares = Math.max(1, Math.floor(Math.random() * Math.min(pick.shares_owned, bot.config.maxSharesPerTrade)) + 1);
+      const ok = await placeBotSellOrder(db, bot.id, pick.company_id, Math.min(shares, pick.shares_owned), sellPrice);
+      if (ok) {
+        totalTrades++;
+        const reloaded = await db.prepare("SELECT balance FROM users WHERE id = ?").get(bot.id) as { balance: number } | undefined;
+        if (reloaded) allBalances[bot.id] = Number(reloaded.balance);
+        continue;
       }
     }
 
-    if (balance >= 10) {
+    if (balance >= 10 && Math.random() < 0.6) {
       const affordable = companies.filter((c) => {
         const ob = orderBooks[c.id];
-        if (ob && ob.lowestSell > 0 && ob.lowestSell <= balance * 0.5) return true;
-        return Number(c.share_price) <= balance * 0.5;
+        if (ob && ob.lowestSell > 0 && ob.lowestSell <= balance * 0.6) return true;
+        return Number(c.share_price) <= balance * 0.6;
       });
       if (affordable.length > 0) {
         const pick = affordable[Math.floor(Math.random() * affordable.length)];
         const ob = orderBooks[pick.id];
         const currentPrice = Number(pick.share_price);
         let buyPrice: number;
-        if (ob && ob.highestBuy > 0) {
-          buyPrice = Math.min(ob.lowestSell > 0 ? ob.lowestSell - 1 : currentPrice - 1, ob.highestBuy + 2);
+        if (ob && ob.lowestSell > 0) {
+          buyPrice = Math.min(ob.lowestSell + Math.floor(Math.random() * 3), ob.lowestSell + 2);
+        } else if (ob && ob.highestBuy > 0) {
+          buyPrice = Math.max(ob.highestBuy + 1, currentPrice - Math.floor(Math.random() * 5));
         } else {
-          buyPrice = Math.max(5, Math.floor(currentPrice * (0.92 + Math.random() * 0.05)));
+          buyPrice = Math.max(5, Math.floor(currentPrice * (0.95 + Math.random() * 0.08)));
         }
         buyPrice = Math.max(5, buyPrice);
         const shares = Math.max(1, Math.min(bot.config.maxSharesPerTrade, Math.floor(balance * 0.4 / buyPrice)));
@@ -792,9 +913,6 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
       }
     }
   }
-
-  const mmTrades = await marketMake(db, bots);
-  totalTrades += mmTrades;
 
   return {
     botsEnabled: true,
