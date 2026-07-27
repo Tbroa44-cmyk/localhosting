@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import { showToast } from "@/components/Toast";
 import { formatCoins } from "@/lib/format";
 import PageBackground from "@/components/PageBackground";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { playClick, playBuyConfirm, playSellConfirm, playCancel, playOrderConfirmed, playOrderProgress } from "@/lib/sounds";
 
 interface Company {
   id: number;
@@ -48,6 +49,8 @@ export default function StockDetailPage() {
   const [companyLoaded, setCompanyLoaded] = useState(false);
   const [positionLoaded, setPositionLoaded] = useState(false);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const prevOrdersRef = useRef<any[]>([]);
+  const prevTradesRef = useRef<any[]>([]);
 
   const companyId = Number(params.id);
   const canTrade = status === "authenticated";
@@ -75,7 +78,20 @@ export default function StockDetailPage() {
       fetch(`/api/orders`)
         .then((res) => res.json())
         .then((orders) => {
-          setMyOrders(orders.filter((o: any) => o.company_id === companyId && o.status === "pending"));
+          const pending = orders.filter((o: any) => o.company_id === companyId && o.status === "pending");
+          const prevPending = prevOrdersRef.current;
+          if (prevPending.length > 0) {
+            for (const prev of prevPending) {
+              const curr = pending.find((p: any) => p.id === prev.id);
+              if (!curr) {
+                playOrderConfirmed();
+              } else if (curr.shares < prev.shares) {
+                playOrderProgress();
+              }
+            }
+          }
+          prevOrdersRef.current = pending;
+          setMyOrders(pending);
           setOrdersLoaded(true);
         })
         .catch(() => setOrdersLoaded(true));
@@ -96,6 +112,7 @@ export default function StockDetailPage() {
     setOrderError("");
     setOrderSuccess("");
     setOrderLoading(true);
+    playClick();
 
     const shares = Number(orderShares);
     if (!shares || shares <= 0 || !Number.isInteger(shares)) {
@@ -126,6 +143,7 @@ export default function StockDetailPage() {
           setOrderSuccess(data.message || `Sell order listed! ${shares} share${shares > 1 ? "s" : ""} on the market.`);
         }
         setTradeAnimType(orderType);
+        if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
       } else {
         const priceCents = Math.round(parseFloat(orderPrice) * 100);
         if (isNaN(priceCents) || priceCents <= 0) throw new Error("Enter a valid price");
@@ -139,6 +157,7 @@ export default function StockDetailPage() {
         if (!res.ok) throw new Error(data.error);
         setOrderSuccess(data.message || "Limit order placed!");
         setTradeAnimType(orderType);
+        if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
       }
       fetchData();
     } catch (err: any) {
@@ -151,6 +170,7 @@ export default function StockDetailPage() {
   async function handleCancelOrder(orderId: number) {
     if (!confirm("Cancel this order? This cannot be undone.")) return;
     try {
+      playCancel();
       setTradeAnimType("cancel");
       const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
       const data = await res.json();
@@ -234,13 +254,13 @@ export default function StockDetailPage() {
 
             <div className="flex gap-2 mb-4">
               <button
-                onClick={() => { setOrderType("buy"); setOrderPrice(""); }}
+                onClick={() => { playClick(); setOrderType("buy"); setOrderPrice(""); }}
                 className={`flex-1 py-2.5 rounded-lg font-medium transition-colors ${orderType === "buy" ? "bg-green-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
               >
                 Buy
               </button>
               <button
-                onClick={() => { setOrderType("sell"); setOrderPrice(""); }}
+                onClick={() => { playClick(); setOrderType("sell"); setOrderPrice(""); }}
                 disabled={sharesOwned === 0}
                 className={`flex-1 py-2.5 rounded-lg font-medium transition-colors ${
                   orderType === "sell" ? "bg-red-600 text-white" : sharesOwned === 0 ? "bg-gray-800 text-gray-600 cursor-not-allowed" : "bg-gray-800 text-gray-400 hover:text-white"
@@ -252,13 +272,13 @@ export default function StockDetailPage() {
 
             <div className="flex gap-2 mb-4">
               <button
-                onClick={() => setOrderMode("market")}
+                onClick={() => { playClick(); setOrderMode("market"); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${orderMode === "market" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
               >
                 Market Order ({orderType === "buy" ? "instant" : "at market price"})
               </button>
               <button
-                onClick={() => setOrderMode("limit")}
+                onClick={() => { playClick(); setOrderMode("limit"); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${orderMode === "limit" ? "bg-purple-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
               >
                 Limit Order (set price)

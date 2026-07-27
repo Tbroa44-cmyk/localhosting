@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCoins, formatCoinsRaw } from "@/lib/format";
 import ButtonSpinner from "./ButtonSpinner";
+import { playClick, playBuyConfirm, playSellConfirm } from "@/lib/sounds";
 
 interface BuySellModalProps {
   company: {
@@ -42,6 +43,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
     setSuccess("");
     try {
       const result = await onExecute(company.id, numShares);
+      if (mode === "buy") { playBuyConfirm(); } else { playSellConfirm(); }
       if (result?.pendingShares > 0) {
         setSuccess(`Order placed! ${result.filledShares || 0} shares bought, ${result.pendingShares} shares pending (waiting for sellers).`);
       } else if (result?.message) {
@@ -141,7 +143,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
       {success && <p className="text-green-400 text-sm mb-4">{success}</p>}
 
       <button
-        onClick={handleSubmit}
+        onClick={() => { playClick(); handleSubmit(); }}
         disabled={loading || !canAfford || !hasShares}
         className={mode === "buy" ? "btn-success w-full flex items-center justify-center gap-2" : "btn-danger w-full flex items-center justify-center gap-2"}
       >

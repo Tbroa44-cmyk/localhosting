@@ -16,10 +16,10 @@ export async function GET() {
 
     let users: any[] = [];
     try {
-      users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, ban_count, banned_until, created_at FROM users ORDER BY created_at DESC").all() as any[];
+      users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, role, ban_count, banned_until, created_at FROM users ORDER BY created_at DESC").all() as any[];
     } catch {
       try {
-        users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, created_at FROM users ORDER BY created_at DESC").all() as any[];
+        users = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, role, created_at FROM users ORDER BY created_at DESC").all() as any[];
         for (const u of users) { u.ban_count = 0; u.banned_until = null; }
       } catch {
         users = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
@@ -38,7 +38,7 @@ export async function GET() {
       users,
       companies,
       stats: {
-        totalUsers: users.length,
+        totalUsers: users.filter((u: any) => u.role !== "bot").length,
         totalBalance: totalBalance.total || 0,
         totalTransactions: totalTransactions.count,
         bankFund: bankFundRow.balance || 0,

@@ -246,10 +246,18 @@ export default function PriceChart({
           borderRadius: 4,
         },
         {
-          label: "Sells",
-          data: grouped.sells,
-          backgroundColor: "rgba(239, 68, 68, 0.7)",
+          label: "Sells (confirmed)",
+          data: grouped.confirmedSells,
+          backgroundColor: "rgba(239, 68, 68, 0.8)",
           borderRadius: 4,
+        },
+        {
+          label: "Sells (pending)",
+          data: grouped.rawSells.map((s, i) => Math.max(0, s - grouped.confirmedSells[i])),
+          backgroundColor: "rgba(239, 68, 68, 0.35)",
+          borderRadius: 4,
+          borderWidth: 1,
+          borderColor: "rgba(239, 68, 68, 0.5)",
         },
       ],
     };
@@ -363,7 +371,8 @@ export default function PriceChart({
   const chartKey = `${filter}-${viewMode}`;
 
   const totalBuys = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
-  const totalSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalConfirmedSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalPendingSells = tradeChartData.datasets[2]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
 
   return (
     <div className="glass-card">
@@ -384,7 +393,13 @@ export default function PriceChart({
               <>
                 <span className="text-sm text-green-400 font-medium">{totalBuys} bought</span>
                 <span className="text-gray-600">·</span>
-                <span className="text-sm text-red-400 font-medium">{totalSells} sold</span>
+                <span className="text-sm text-red-400 font-medium">{totalConfirmedSells} sold</span>
+                {totalPendingSells > 0 && (
+                  <>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-sm text-red-300/50 font-medium">{totalPendingSells} pending sell</span>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -437,15 +452,21 @@ export default function PriceChart({
         )}
       </div>
       {viewMode === "trades" && tradeChartData.labels.length > 1 && (
-        <div className="flex items-center justify-center gap-6 mt-2 text-xs">
+        <div className="flex items-center justify-center gap-4 mt-2 text-xs flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(34, 197, 94, 0.7)" }} />
             <span className="text-gray-400">Buys ({totalBuys})</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
-            <span className="text-gray-400">Sells ({totalSells})</span>
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.8)" }} />
+            <span className="text-gray-400">Sells ({totalConfirmedSells})</span>
           </div>
+          {totalPendingSells > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm border border-red-500/50" style={{ backgroundColor: "rgba(239, 68, 68, 0.35)" }} />
+              <span className="text-gray-400">Pending ({totalPendingSells})</span>
+            </div>
+          )}
         </div>
       )}
     </div>

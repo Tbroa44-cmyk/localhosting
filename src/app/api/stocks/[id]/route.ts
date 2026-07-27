@@ -99,6 +99,31 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       "SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 50"
     ).all(id);
 
+    for (const tx of recentTransactions as any[]) {
+      tx.status = "confirmed";
+    }
+
+    const pendingSells = await db.prepare(
+      "SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY created_at DESC LIMIT 25"
+    ).all(id);
+
+    for (const o of pendingSells as any[]) {
+      recentTransactions.push({
+        type: o.type,
+        shares: o.shares,
+        price_per_share: o.price_per_share,
+        total_amount: o.shares * o.price_per_share,
+        created_at: o.created_at,
+        status: "pending",
+      });
+    }
+
+    (recentTransactions as any[]).sort((a: any, b: any) => {
+      const aTime = a.created_at || "";
+      const bTime = b.created_at || "";
+      return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+    });
+
     return NextResponse.json({
       ...company,
       price_history: priceHistory,

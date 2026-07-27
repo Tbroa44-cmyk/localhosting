@@ -16,6 +16,7 @@ interface User {
   balance: number;
   is_admin: number;
   allowed: number;
+  role?: string;
   ban_count: number;
   banned_until: string | null;
   created_at: string;
@@ -384,6 +385,7 @@ export default function AdminPage() {
   }
 
   const filteredUsers = users.filter((u) => {
+    if (u.role === "bot") return false;
     if (userSearch) {
       const q = userSearch.toLowerCase();
       if (!u.username.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
@@ -688,7 +690,7 @@ export default function AdminPage() {
                 onChange={(e) => setUserBanFilter(e.target.value as any)}
                 className="input-field w-auto sm:w-44"
               >
-                <option value="all">All Users ({users.length})</option>
+                <option value="all">All Users ({users.filter((u) => u.role !== "bot").length})</option>
                 <option value="active">Active Only</option>
                 <option value="banned">Banned Only</option>
               </select>

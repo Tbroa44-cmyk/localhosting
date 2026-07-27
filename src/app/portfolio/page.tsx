@@ -18,6 +18,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import Link from "next/link";
 import { formatCoins } from "@/lib/format";
 import PageBackground from "@/components/PageBackground";
+import { playCancel, playClick } from "@/lib/sounds";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
@@ -126,6 +127,7 @@ export default function PortfolioPage() {
   async function cancelOrder(orderId: number) {
     if (!confirm("Cancel this order? This cannot be undone.")) return;
     try {
+      playCancel();
       await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
       fetchPortfolio();
     } catch (err) {

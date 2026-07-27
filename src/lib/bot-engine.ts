@@ -88,10 +88,12 @@ async function ensureBotUsers(db: any): Promise<{ id: number; name: string; conf
     if (!bot) {
       const bcryptHash = "$2a$10$LKjhN4bK5hGF5q6R8x9Z0uY7x3v2mK8nJ4pQ2wS6dF0gH1jL3kM5n";
       const result = await db.prepare(
-        "INSERT INTO users (username, email, password, balance, is_admin, allowed, xp, level) VALUES (?, ?, ?, ?, 0, 0, 0, 1)"
+        "INSERT INTO users (username, email, password, balance, is_admin, allowed, role, xp, level) VALUES (?, ?, ?, ?, 0, 0, 'bot', 0, 1)"
       ).run(name, email, bcryptHash, BOT_INITIAL_CASH);
       bot = { id: result.lastInsertRowid as number };
       await seedBotShares(db, bot.id, i);
+    } else {
+      try { await db.prepare("UPDATE users SET role = 'bot' WHERE id = ? AND (role IS NULL OR role != 'bot')").run(bot.id); } catch {}
     }
 
     bots.push({ id: bot.id, name, config: BOT_CONFIGS[i % BOT_CONFIGS.length] });
