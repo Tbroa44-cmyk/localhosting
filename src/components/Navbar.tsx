@@ -172,14 +172,8 @@ export default function Navbar() {
             <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors">
               Markets
             </Link>
-            <Link href="/portfolio" className="text-gray-300 hover:text-white transition-colors">
-              Portfolio
-            </Link>
-            <Link href="/wallet" className="text-gray-300 hover:text-white transition-colors">
-              Wallet
-            </Link>
-            <Link href="/bank" className="text-gray-300 hover:text-white transition-colors">
-              Bank
+            <Link href="/account" className="text-gray-300 hover:text-white transition-colors">
+              My Account
             </Link>
             {(session.user as any)?.isAdmin && (
               <Link href="/admin" className="text-yellow-400 hover:text-yellow-300 transition-colors font-medium">
@@ -244,9 +238,7 @@ export default function Navbar() {
                 </span>
               </div>
               <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Markets</Link>
-              <Link href="/portfolio" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Portfolio</Link>
-              <Link href="/wallet" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Wallet</Link>
-              <Link href="/bank" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Bank</Link>
+              <Link href="/account" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">My Account</Link>
               {(session.user as any)?.isAdmin && (
                 <Link href="/admin" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-yellow-400 hover:text-yellow-300 hover:bg-white/5 rounded-lg transition-colors font-medium">Admin Panel</Link>
               )}

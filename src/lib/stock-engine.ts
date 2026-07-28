@@ -175,7 +175,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     }
 
     const filledFromSells = shares - remaining;
-    const afterFillPrice = await setPriceFromTrade(db, companyId, lastFillPrice, filledFromSells > 0 ? filledFromSells : undefined);
+    const buyImpactPrice = filledFromSells > 0 ? calculateBuyPrice(company.share_price, filledFromSells) : company.share_price;
+    const afterFillPrice = await setPriceFromTrade(db, companyId, buyImpactPrice, filledFromSells > 0 ? filledFromSells : undefined);
     await recordPriceHistory(db, companyId, afterFillPrice);
     company.share_price = afterFillPrice;
 
@@ -498,7 +499,10 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
     await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
   }
 
-  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, fillPrice, fillQty);
+  const row = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(buyOrder.company_id) as { share_price: number } | undefined;
+  const currentCompanyPrice = Number(row?.share_price) || fillPrice;
+  const buyPressurePrice = calculateBuyPrice(currentCompanyPrice, fillQty);
+  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, buyPressurePrice, fillQty);
   await recordPriceHistory(db, buyOrder.company_id, newPrice);
 
   await awardXP(db, buyOrder.user_id, fillQty * 1);

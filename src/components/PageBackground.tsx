@@ -1,4 +1,4 @@
-export default function PageBackground({ variant = "default" }: { variant?: "default" | "market" | "stock" | "portfolio" | "wallet" }) {
+export default function PageBackground({ variant = "default" }: { variant?: "default" | "market" | "stock" | "portfolio" | "wallet" | "account" }) {
   const configs: Record<string, { orbs: { color: string; size: string; pos: string }[]; shapes: number }> = {
     default: {
       orbs: [
@@ -35,6 +35,14 @@ export default function PageBackground({ variant = "default" }: { variant?: "def
         { color: "emerald", size: "w-56 h-56", pos: "bottom-[18%] left-[12%]" },
       ],
       shapes: 5,
+    },
+    account: {
+      orbs: [
+        { color: "blue", size: "w-80 h-80", pos: "top-[10%] left-[15%]" },
+        { color: "purple", size: "w-60 h-60", pos: "bottom-[15%] right-[10%]" },
+        { color: "cyan", size: "w-48 h-48", pos: "top-[50%] right-[30%]" },
+      ],
+      shapes: 7,
     },
   };
 
