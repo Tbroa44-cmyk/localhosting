@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25").all(id, userId),
         db.prepare("SELECT id, type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC").all(id, userId),
         db.prepare("SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20").all(id, userId),
-        db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 50").all(id),
+        db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id),
         db.prepare("SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY created_at DESC LIMIT 25").all(id),
       ]);
 
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       }
     } else {
       const [recentTx, pendingSells] = await Promise.all([
-        db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 50").all(id),
+        db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id),
         db.prepare("SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY created_at DESC LIMIT 25").all(id),
       ]);
       for (const tx of recentTx as any[]) { tx.status = "confirmed"; recentTransactions.push(tx); }
