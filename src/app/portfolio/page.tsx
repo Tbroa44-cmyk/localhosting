@@ -372,7 +372,7 @@ export default function PortfolioPage() {
             <div className="glass-card">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Shares Total Value</h2>
+                  <h2 className="text-lg font-semibold text-white">Portfolio Value</h2>
                   {earningsChart && (
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xl font-bold text-white">{formatCoins(earningsChart.current * 100)}</span>
