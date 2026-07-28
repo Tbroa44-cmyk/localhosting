@@ -86,7 +86,7 @@ export default function Navbar() {
   }
 
   function getTimeUntilChange(): string {
-    if (!tradingStatus) return "";
+    if (!tradingStatus) return "...";
     if (tradingStatus.emergencyClose) return "maintenance";
     if (tradingStatus.nextChange) return tradingStatus.nextChange;
     const now = new Date();
@@ -116,8 +116,9 @@ export default function Navbar() {
     }, 350);
   }
 
-  const isOpen = tradingStatus?.isOpen ?? true;
+  const isOpen = tradingStatus?.isOpen;
   const isEmergency = tradingStatus?.emergencyClose ?? false;
+  const isLoaded = tradingStatus !== null;
 
   return (
     <nav
@@ -135,17 +136,30 @@ export default function Navbar() {
             stockgame.uk
           </Link>
           <div className={`flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-            isEmergency
-              ? "bg-red-500/10 border-red-500/30 text-red-400"
-              : isOpen
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
+            !isLoaded
+              ? "bg-gray-500/10 border-gray-500/30 text-gray-400"
+              : isEmergency
+                ? "bg-red-500/10 border-red-500/30 text-red-400"
+                : isOpen
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
           }`}>
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isEmergency ? "bg-red-400" : isOpen ? "bg-amber-400" : "bg-indigo-400"}`} />
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${isEmergency ? "bg-red-500" : isOpen ? "bg-amber-500" : "bg-indigo-500"}`} />
+              {!isLoaded ? (
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-500 animate-pulse" />
+              ) : (
+                <>
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isEmergency ? "bg-red-400" : isOpen ? "bg-amber-400" : "bg-indigo-400"}`} />
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${isEmergency ? "bg-red-500" : isOpen ? "bg-amber-500" : "bg-indigo-500"}`} />
+                </>
+              )}
             </span>
-            {isEmergency ? (
+            {!isLoaded ? (
+              <span className="flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="32"><animate attributeName="stroke-dashoffset" values="32;0" dur="1.5s" repeatCount="indefinite" /></circle></svg>
+                Fetching
+              </span>
+            ) : isEmergency ? (
               <span className="flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M1 1h22v22H1z" fill="none"/><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2"/></svg>
                 Maintenance

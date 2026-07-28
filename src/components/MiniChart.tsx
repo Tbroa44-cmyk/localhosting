@@ -35,7 +35,9 @@ export default function MiniChart({ prices, height = 40 }: { prices: number[]; h
   const color = isUp ? "#22c55e" : "#ef4444";
   const fillColor = isUp ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)";
 
-  if (prices.length < 2) return null;
+  if (prices.length < 2) {
+    return <div style={{ height }} className="w-full" />;
+  }
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height }} preserveAspectRatio="none">

@@ -9,6 +9,14 @@ import PageBackground from "@/components/PageBackground";
 
 type SortKey = "name" | "price-asc" | "price-desc" | "day-asc" | "day-desc" | "month-asc" | "month-desc" | "holders" | "buyers" | "sellers";
 
+function takeTop(list: any[], sortFn: (a: any, b: any) => number, used: Set<number>, count: number): any[] {
+  return [...list]
+    .filter(c => !used.has(c.id))
+    .sort(sortFn)
+    .slice(0, count)
+    .map(c => { used.add(c.id); return c; });
+}
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [companies, setCompanies] = useState<any[]>([]);
@@ -117,35 +125,14 @@ export default function DashboardPage() {
     return list;
   }, [companies, search, sortBy]);
 
-  const topGainers = useMemo(() =>
-    [...companies].sort((a, b) => (b.dayChangePercent || 0) - (a.dayChangePercent || 0)).slice(0, 6),
-    [companies]
-  );
-
-  const topLosers = useMemo(() =>
-    [...companies].sort((a, b) => (a.dayChangePercent || 0) - (b.dayChangePercent || 0)).slice(0, 6),
-    [companies]
-  );
-
-  const mostHeld = useMemo(() =>
-    [...companies].sort((a, b) => (b.holderCount || 0) - (a.holderCount || 0)).slice(0, 6),
-    [companies]
-  );
-
-  const mostTradedBuy = useMemo(() =>
-    [...companies].sort((a, b) => (b.buyCount || 0) - (a.buyCount || 0)).slice(0, 6),
-    [companies]
-  );
-
-  const mostTradedSell = useMemo(() =>
-    [...companies].sort((a, b) => (b.sellCount || 0) - (a.sellCount || 0)).slice(0, 6),
-    [companies]
-  );
-
-  const priciest = useMemo(() =>
-    [...companies].sort((a, b) => b.share_price - a.share_price).slice(0, 6),
-    [companies]
-  );
+  const sections = useMemo(() => {
+    const used = new Set<number>();
+    return {
+      topGainers: takeTop(companies, (a, b) => (b.dayChangePercent || 0) - (a.dayChangePercent || 0), used, 6),
+      topLosers: takeTop(companies, (a, b) => (a.dayChangePercent || 0) - (b.dayChangePercent || 0), used, 6),
+      mostHeld: takeTop(companies, (a, b) => (b.holderCount || 0) - (a.holderCount || 0), used, 6),
+    };
+  }, [companies]);
 
   const isFiltering = search.trim().length > 0 || sortBy !== "name";
 
@@ -188,7 +175,6 @@ export default function DashboardPage() {
         <h1 className="text-2xl md:text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>
         </h1>
-        <p className="text-gray-400">{companies.length} companies available for trading</p>
       </div>
 
       <div className="mb-8">
@@ -233,12 +219,9 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={topGainers} isLoggedIn={!!session} userHoldings={userHoldings} />
-          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={topLosers} isLoggedIn={!!session} userHoldings={userHoldings} />
-          <Section title="Most Held" subtitle="Companies with the most shareholders" items={mostHeld} isLoggedIn={!!session} userHoldings={userHoldings} />
-          <Section title="Most Bought" subtitle="Highest number of buy orders" items={mostTradedBuy} isLoggedIn={!!session} userHoldings={userHoldings} />
-          <Section title="Most Sold" subtitle="Highest number of sell orders" items={mostTradedSell} isLoggedIn={!!session} userHoldings={userHoldings} />
-          <Section title="Highest Price" subtitle="Most expensive stocks" items={priciest} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={sections.topGainers} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={sections.topLosers} isLoggedIn={!!session} userHoldings={userHoldings} />
+          <Section title="Most Held" subtitle="Companies with the most shareholders" items={sections.mostHeld} isLoggedIn={!!session} userHoldings={userHoldings} />
 
           <div className="mt-10 mb-6">
             <h2 className="text-2xl font-bold text-white mb-1">All Companies</h2>
