@@ -60,6 +60,19 @@ function formatMs(ms: number): string {
   return `${mins}m`;
 }
 
+function safeMsUntilTarget(target: { year: number; month: number; day: number; hour: number; minute: number }): number {
+  let ms = getMsUntilTarget(target);
+  if (ms <= 0) {
+    const next = addDays(target, 1);
+    ms = getMsUntilTarget({ ...next, hour: target.hour, minute: target.minute });
+  }
+  if (ms <= 0) {
+    const next2 = addDays(target, 2);
+    ms = getMsUntilTarget({ ...next2, hour: target.hour, minute: target.minute });
+  }
+  return Math.max(ms, 60000);
+}
+
 export async function getTradingInfo(db?: any): Promise<TradingStatus> {
   try {
     const database = db || getDb();
@@ -80,7 +93,6 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
     const tradingDays = parseTradingDays(settings.trading_days);
     const now = getAESTDate();
 
-    // Check custom date ranges
     let customRanges: any[] = [];
     try {
       customRanges = await database.prepare("SELECT * FROM custom_date_ranges WHERE enabled = 1").all() as any[];
@@ -99,11 +111,9 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
     // 2. Check if in an active custom date range (market closed during these dates)
     for (const range of customRanges) {
       if (todayStr >= range.start_date && todayStr <= range.end_date) {
-        // Currently in a custom range - find when it ends
         const endParts = range.end_date.split("-").map(Number);
-        const target = { year: endParts[0], month: endParts[1] - 1, day: endParts[2], hour: closeHour, minute: 0 };
-        const msUntil = getMsUntilTarget(target);
-        const nextDate = addDays({ year: endParts[0], month: endParts[1] - 1, day: endParts[2] }, 1);
+        const target = { year: endParts[0], month: endParts[1] - 1, day: endParts[2], hour: openHour, minute: 0 };
+        const msUntil = safeMsUntilTarget(target);
         return {
           isOpen: false, message: range.label || `Markets closed: ${range.start_date} to ${range.end_date}`,
           openHour, closeHour, emergencyClose: false, emergencyMessage,
@@ -112,15 +122,8 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
       }
     }
 
-    // Check if a custom range is coming up soon
-    const upcomingRanges = customRanges
-      .filter(r => r.start_date > todayStr)
-      .sort((a: any, b: any) => a.start_date.localeCompare(b.start_date));
-    const nextCustomRange = upcomingRanges[0];
-
     // 3. Check if today is a trading day
     if (!tradingDays.includes(now.dayOfWeek)) {
-      // Find next trading day
       let daysAhead = 0;
       for (let i = 1; i <= 7; i++) {
         const nextDate = addDays(now, i);
@@ -130,8 +133,9 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
           break;
         }
       }
+      if (daysAhead === 0) daysAhead = 1;
       const target = addDays(now, daysAhead);
-      const targetMs = getMsUntilTarget({ ...target, hour: openHour, minute: 0 });
+      const targetMs = safeMsUntilTarget({ ...target, hour: openHour, minute: 0 });
       return {
         isOpen: false, message: "Markets closed today", openHour, closeHour,
         emergencyClose: false, emergencyMessage,
@@ -139,7 +143,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
       };
     }
 
-    // 4. Default 24/7 check (all days enabled + 0-24 hours)
+    // 4. Default 24/7 check
     if (tradingEnabled === 1 && openHour === 0 && closeHour === 24 && tradingDays.length === 7) {
       return {
         isOpen: true, message: "Markets open 24/7", openHour, closeHour,
@@ -159,18 +163,14 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
     const isOpen = now.hour >= openHour && now.hour < closeHour;
 
     if (isOpen) {
-      const targetMs = getMsUntilTarget({ ...now, hour: closeHour, minute: 0 });
+      const targetMs = safeMsUntilTarget({ ...now, hour: closeHour, minute: 0 });
       return {
         isOpen: true, message: `Markets open ${openHour}:00 - ${closeHour}:00`,
         openHour, closeHour, emergencyClose: false, emergencyMessage,
         nextChange: `closes in ${formatMs(targetMs)}`, nextChangeMs: targetMs,
       };
     } else {
-      let targetMs = getMsUntilTarget({ ...now, hour: openHour, minute: 0 });
-      if (targetMs <= 0) {
-        const tomorrow = addDays(now, 1);
-        targetMs = getMsUntilTarget({ ...tomorrow, hour: openHour, minute: 0 });
-      }
+      const targetMs = safeMsUntilTarget({ ...now, hour: openHour, minute: 0 });
       return {
         isOpen: false, message: `Markets closed. Opens at ${openHour}:00`,
         openHour, closeHour, emergencyClose: false, emergencyMessage,

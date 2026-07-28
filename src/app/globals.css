@@ -240,6 +240,30 @@ body {
   z-index: 10;
 }
 
+@keyframes stockCardEnter {
+  0% { opacity: 0; transform: translateY(12px) scale(0.97); }
+  60% { opacity: 1; transform: translateY(-2px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.stock-card-enter {
+  animation: stockCardEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 @keyframes notifSlideIn {
   0% { transform: translateX(120%); opacity: 0; }
   100% { transform: translateX(0); opacity: 1; }

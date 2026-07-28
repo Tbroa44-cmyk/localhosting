@@ -1,24 +1,65 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import StockCard from "@/components/StockCard";
 import Navbar from "@/components/Navbar";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import MarketLoader from "@/components/MarketLoader";
 import PageBackground from "@/components/PageBackground";
 
 type SortKey = "name" | "price-asc" | "price-desc" | "day-asc" | "day-desc" | "month-asc" | "month-desc" | "holders" | "buyers" | "sellers";
 
+const BATCH_SIZE = 6;
+
+function SkeletonCard({ index }: { index: number }) {
+  const delay = Math.min(index * 40, 300);
+  return (
+    <div
+      className="glass-card overflow-hidden animate-pulse"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-lg bg-gray-700/50" />
+          <div>
+            <div className="h-4 w-16 bg-gray-700/50 rounded mb-2" />
+            <div className="h-3 w-24 bg-gray-700/30 rounded" />
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="h-6 w-16 bg-gray-700/50 rounded mb-2 ml-auto" />
+          <div className="h-4 w-12 bg-gray-700/30 rounded ml-auto" />
+        </div>
+      </div>
+      <div className="h-[60px] bg-gray-700/30 rounded mb-4" />
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="text-center"><div className="h-4 bg-gray-700/40 rounded mb-1 mx-auto w-8" /><div className="h-3 bg-gray-700/20 rounded mx-auto w-12" /></div>
+        <div className="text-center"><div className="h-4 bg-gray-700/40 rounded mb-1 mx-auto w-8" /><div className="h-3 bg-gray-700/20 rounded mx-auto w-12" /></div>
+        <div className="text-center"><div className="h-4 bg-gray-700/40 rounded mb-1 mx-auto w-8" /><div className="h-3 bg-gray-700/20 rounded mx-auto w-12" /></div>
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1 h-10 bg-gray-700/40 rounded-lg" />
+        <div className="flex-1 h-10 bg-gray-700/30 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
-  const [companies, setCompanies] = useState<any[]>([]);
+  const [basicCompanies, setBasicCompanies] = useState<any[]>([]);
+  const [enrichedData, setEnrichedData] = useState<Map<number, any>>(new Map());
+  const [enrichedCount, setEnrichedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [isBanned, setIsBanned] = useState(false);
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
   const [userHoldings, setUserHoldings] = useState<Record<number, number>>({});
+  const enrichingRef = useRef(false);
+
+  const totalCompanies = basicCompanies.length;
+  const allLoaded = enrichedCount >= totalCompanies && totalCompanies > 0;
 
   function loadHoldings() {
     fetch("/api/portfolio").then(r => r.json()).then(data => {
@@ -32,21 +73,83 @@ export default function DashboardPage() {
     }).catch(() => {});
   }
 
+  const enrichBatch = useCallback(async (ids: number[]) => {
+    if (ids.length === 0) return;
+    try {
+      const res = await fetch("/api/stocks/enrich-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setEnrichedData(prev => {
+          const next = new Map(prev);
+          for (const item of data) {
+            next.set(item.id, item);
+          }
+          return next;
+        });
+        setEnrichedCount(prev => prev + data.length);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    function loadStocks() {
-      fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
-        .then((r) => r.json())
-        .then((data) => {
-          setCompanies(Array.isArray(data) ? data : []);
-          setLoading(false);
-        })
-        .catch(() => { setCompanies([]); setLoading(false); });
+    let cancelled = false;
+
+    async function loadProgressively() {
+      setLoading(true);
+
+      const [holdingsPromise, basicPromise] = [
+        fetch("/api/portfolio").then(r => r.json()).catch(() => null),
+        fetch("/api/stocks/basic", { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } }).then(r => r.json()).catch(() => []),
+      ];
+
+      const [holdingsData, basicData] = await Promise.all([holdingsPromise, basicPromise]);
+
+      if (cancelled) return;
+
+      if (holdingsData && Array.isArray(holdingsData.holdings)) {
+        const map: Record<number, number> = {};
+        for (const h of holdingsData.holdings) {
+          map[h.company_id] = h.shares_owned;
+        }
+        setUserHoldings(map);
+      }
+
+      const companies = Array.isArray(basicData) ? basicData : [];
+      setBasicCompanies(companies);
+      setLoading(false);
+
+      if (companies.length === 0) return;
+
+      const ids = companies.map((c: any) => c.id);
+      const batches: number[][] = [];
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        batches.push(ids.slice(i, i + BATCH_SIZE));
+      }
+
+      for (const batch of batches) {
+        if (cancelled) break;
+        await enrichBatch(batch);
+        if (cancelled) break;
+        await new Promise(r => setTimeout(r, 50));
+      }
     }
-    loadStocks();
-    const interval = setInterval(loadStocks, 15000);
+
+    loadProgressively();
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadProgressively();
+        if (status === "authenticated") loadHoldings();
+      }
+    }, 15000);
+
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        loadStocks();
+        loadProgressively();
         if (status === "authenticated") loadHoldings();
       }
     };
@@ -61,14 +164,23 @@ export default function DashboardPage() {
       if (params.get("banned") === "1") setIsBanned(true);
     }).catch(() => {});
 
-    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   useEffect(() => {
-    if (status === "authenticated") {
-      loadHoldings();
-    }
+    if (status === "authenticated") loadHoldings();
   }, [status]);
+
+  const companies = useMemo(() => {
+    return basicCompanies.map(bc => {
+      const enriched = enrichedData.get(bc.id);
+      return enriched ? { ...bc, ...enriched } : bc;
+    });
+  }, [basicCompanies, enrichedData]);
 
   const filtered = useMemo(() => {
     let list = [...companies];
@@ -166,7 +278,14 @@ export default function DashboardPage() {
         <h1 className="text-2xl md:text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>
         </h1>
-        <p className="text-gray-400">{companies.length} companies available for trading</p>
+        <p className="text-gray-400">
+          {totalCompanies} companies available for trading
+          {!allLoaded && (
+            <span className="text-blue-400 text-sm ml-2">
+              ({enrichedCount}/{totalCompanies} loaded)
+            </span>
+          )}
+        </p>
       </div>
 
       <div className="mb-8">
@@ -204,8 +323,8 @@ export default function DashboardPage() {
           <h2 className="text-2xl font-bold text-white mb-1">Results</h2>
           <p className="text-gray-400 text-sm mb-4">{filtered.length} companies found</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((company) => (
-              <StockCard key={company.id} company={company} isLoggedIn={!!session} userHoldings={userHoldings} />
+            {filtered.map((company, i) => (
+              <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={!!session} userHoldings={userHoldings} />
             ))}
           </div>
         </div>
@@ -222,14 +341,35 @@ export default function DashboardPage() {
             <h2 className="text-2xl font-bold text-white mb-1">All Companies</h2>
             <p className="text-gray-400 text-sm mb-4">{filtered.length} companies</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map((company) => (
-                <StockCard key={company.id} company={company} isLoggedIn={!!session} userHoldings={userHoldings} />
+              {filtered.map((company, i) => (
+                <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={!!session} userHoldings={userHoldings} />
               ))}
             </div>
           </div>
         </>
       )}
       </div>
+    </div>
+  );
+}
+
+function AnimatedCard({ company, index, isLoggedIn, userHoldings }: { company: any; index: number; isLoggedIn: boolean; userHoldings: Record<number, number> }) {
+  const isEnriched = !!(company.recentPrices || company.dayChangePercent || company.holderCount);
+  const [ready, setReady] = useState(isEnriched);
+
+  useEffect(() => {
+    if (isEnriched && !ready) {
+      setReady(true);
+    }
+  }, [isEnriched, ready]);
+
+  if (!ready) {
+    return <SkeletonCard index={index} />;
+  }
+
+  return (
+    <div className="stock-card-enter" style={{ animationDelay: `${Math.min(index * 40, 300)}ms` }}>
+      <StockCard company={company} isLoggedIn={isLoggedIn} userHoldings={userHoldings} />
     </div>
   );
 }
@@ -242,8 +382,8 @@ function Section({ title, subtitle, items, isLoggedIn, userHoldings }: { title: 
       <h2 className="text-xl font-bold text-white mb-1">{title}</h2>
       <p className="text-gray-400 text-sm mb-3">{subtitle}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map((company) => (
-          <StockCard key={company.id} company={company} isLoggedIn={isLoggedIn} userHoldings={userHoldings} />
+        {items.map((company, i) => (
+          <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={isLoggedIn} userHoldings={userHoldings} />
         ))}
       </div>
     </div>
