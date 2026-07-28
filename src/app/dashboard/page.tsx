@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import StockCard from "@/components/StockCard";
 import Navbar from "@/components/Navbar";
@@ -9,15 +9,9 @@ import PageBackground from "@/components/PageBackground";
 
 type SortKey = "name" | "price-asc" | "price-desc" | "day-asc" | "day-desc" | "month-asc" | "month-desc" | "holders" | "buyers" | "sellers";
 
-const BATCH_SIZE = 6;
-
 function SkeletonCard({ index }: { index: number }) {
-  const delay = Math.min(index * 40, 300);
   return (
-    <div
-      className="glass-card overflow-hidden animate-pulse"
-      style={{ animationDelay: `${delay}ms` }}
-    >
+    <div className="glass-card overflow-hidden animate-pulse" style={{ animationDelay: `${Math.min(index * 40, 300)}ms` }}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-gray-700/50" />
@@ -47,19 +41,15 @@ function SkeletonCard({ index }: { index: number }) {
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
-  const [basicCompanies, setBasicCompanies] = useState<any[]>([]);
-  const [enrichedData, setEnrichedData] = useState<Map<number, any>>(new Map());
-  const [enrichedCount, setEnrichedCount] = useState(0);
+  const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [isBanned, setIsBanned] = useState(false);
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
   const [userHoldings, setUserHoldings] = useState<Record<number, number>>({});
-  const enrichingRef = useRef(false);
-
-  const totalCompanies = basicCompanies.length;
-  const allLoaded = enrichedCount >= totalCompanies && totalCompanies > 0;
+  const [cardsRevealed, setCardsRevealed] = useState(false);
+  const prevCountRef = useRef(0);
 
   function loadHoldings() {
     fetch("/api/portfolio").then(r => r.json()).then(data => {
@@ -73,83 +63,26 @@ export default function DashboardPage() {
     }).catch(() => {});
   }
 
-  const enrichBatch = useCallback(async (ids: number[]) => {
-    if (ids.length === 0) return;
-    try {
-      const res = await fetch("/api/stocks/enrich-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setEnrichedData(prev => {
-          const next = new Map(prev);
-          for (const item of data) {
-            next.set(item.id, item);
-          }
-          return next;
-        });
-        setEnrichedCount(prev => prev + data.length);
-      }
-    } catch {}
-  }, []);
-
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadProgressively() {
-      setLoading(true);
-
-      const [holdingsPromise, basicPromise] = [
-        fetch("/api/portfolio").then(r => r.json()).catch(() => null),
-        fetch("/api/stocks/basic", { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } }).then(r => r.json()).catch(() => []),
-      ];
-
-      const [holdingsData, basicData] = await Promise.all([holdingsPromise, basicPromise]);
-
-      if (cancelled) return;
-
-      if (holdingsData && Array.isArray(holdingsData.holdings)) {
-        const map: Record<number, number> = {};
-        for (const h of holdingsData.holdings) {
-          map[h.company_id] = h.shares_owned;
-        }
-        setUserHoldings(map);
-      }
-
-      const companies = Array.isArray(basicData) ? basicData : [];
-      setBasicCompanies(companies);
-      setLoading(false);
-
-      if (companies.length === 0) return;
-
-      const ids = companies.map((c: any) => c.id);
-      const batches: number[][] = [];
-      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-        batches.push(ids.slice(i, i + BATCH_SIZE));
-      }
-
-      for (const batch of batches) {
-        if (cancelled) break;
-        await enrichBatch(batch);
-        if (cancelled) break;
-        await new Promise(r => setTimeout(r, 50));
-      }
+    function loadStocks() {
+      fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+        .then((r) => r.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : [];
+          const isNewLoad = companies.length === 0;
+          setCompanies(list);
+          setLoading(false);
+          if (isNewLoad && list.length > 0) {
+            setCardsRevealed(true);
+          }
+        })
+        .catch(() => { setCompanies([]); setLoading(false); });
     }
-
-    loadProgressively();
-
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadProgressively();
-        if (status === "authenticated") loadHoldings();
-      }
-    }, 15000);
-
+    loadStocks();
+    const interval = setInterval(loadStocks, 15000);
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        loadProgressively();
+        loadStocks();
         if (status === "authenticated") loadHoldings();
       }
     };
@@ -164,23 +97,12 @@ export default function DashboardPage() {
       if (params.get("banned") === "1") setIsBanned(true);
     }).catch(() => {});
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   useEffect(() => {
     if (status === "authenticated") loadHoldings();
   }, [status]);
-
-  const companies = useMemo(() => {
-    return basicCompanies.map(bc => {
-      const enriched = enrichedData.get(bc.id);
-      return enriched ? { ...bc, ...enriched } : bc;
-    });
-  }, [basicCompanies, enrichedData]);
 
   const filtered = useMemo(() => {
     let list = [...companies];
@@ -245,8 +167,17 @@ export default function DashboardPage() {
         <PageBackground variant="market" />
         <Navbar />
         <div className="max-w-7xl mx-auto px-6 py-12">
-          <div className="flex items-center justify-center h-64">
-            <MarketLoader text="Loading markets..." />
+          <div className="mb-8">
+            <div className="h-10 w-48 bg-gray-700/40 rounded-lg animate-pulse mb-2" />
+            <div className="h-5 w-64 bg-gray-700/30 rounded animate-pulse" />
+          </div>
+          <div className="mb-8">
+            <div className="h-14 w-full bg-gray-700/30 rounded-xl animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 18 }).map((_, i) => (
+              <SkeletonCard key={i} index={i} />
+            ))}
           </div>
         </div>
       </div>
@@ -278,14 +209,7 @@ export default function DashboardPage() {
         <h1 className="text-2xl md:text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>
         </h1>
-        <p className="text-gray-400">
-          {totalCompanies} companies available for trading
-          {!allLoaded && (
-            <span className="text-blue-400 text-sm ml-2">
-              ({enrichedCount}/{totalCompanies} loaded)
-            </span>
-          )}
-        </p>
+        <p className="text-gray-400">{companies.length} companies available for trading</p>
       </div>
 
       <div className="mb-8">
@@ -354,21 +278,8 @@ export default function DashboardPage() {
 }
 
 function AnimatedCard({ company, index, isLoggedIn, userHoldings }: { company: any; index: number; isLoggedIn: boolean; userHoldings: Record<number, number> }) {
-  const isEnriched = !!(company.recentPrices || company.dayChangePercent || company.holderCount);
-  const [ready, setReady] = useState(isEnriched);
-
-  useEffect(() => {
-    if (isEnriched && !ready) {
-      setReady(true);
-    }
-  }, [isEnriched, ready]);
-
-  if (!ready) {
-    return <SkeletonCard index={index} />;
-  }
-
   return (
-    <div className="stock-card-enter" style={{ animationDelay: `${Math.min(index * 40, 300)}ms` }}>
+    <div className="stock-card-enter" style={{ animationDelay: `${Math.min(index * 50, 400)}ms` }}>
       <StockCard company={company} isLoggedIn={isLoggedIn} userHoldings={userHoldings} />
     </div>
   );
