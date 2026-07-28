@@ -5,20 +5,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import getDb from "@/lib/db";
-import { getBankStatus } from "@/lib/bank-engine";
+import { refreshUserBank } from "@/lib/bank-engine";
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
     const userId = (session.user as any).id;
-
-    const status = await getBankStatus(userId);
-    return NextResponse.json(status);
+    const db = getDb();
+    await refreshUserBank(db, userId);
+    return NextResponse.json({ ok: true });
   } catch (error: any) {
-    console.error("Bank status error:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }

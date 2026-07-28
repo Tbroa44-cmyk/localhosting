@@ -120,13 +120,8 @@ export default function AccountPage() {
 
   async function fetchAccountData() {
     try {
-      const [portfolioRes, userRes] = await Promise.all([
-        fetch("/api/portfolio"),
-        fetch("/api/user/balance"),
-      ]);
-
+      const portfolioRes = await fetch(`/api/portfolio?t=${Date.now()}`, { cache: "no-store" });
       const portfolioData = await portfolioRes.json();
-      const userData = await userRes.json();
 
       if (portfolioData.user) {
         const user = portfolioData.user;

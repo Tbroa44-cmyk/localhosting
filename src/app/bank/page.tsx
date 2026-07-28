@@ -56,20 +56,27 @@ export default function BankPage() {
 
   const fetchWallet = useCallback(async () => {
     try {
-      const res = await fetch(`/api/portfolio?t=${Date.now()}`);
+      const res = await fetch(`/api/user/balance?t=${Date.now()}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
-        setWalletBalance(data.user?.balance || 0);
+        setWalletBalance(data.balance || 0);
       }
     } catch {}
   }, []);
 
   useEffect(() => {
     if (status !== "authenticated") return;
-    Promise.all([fetchBank(), fetchWallet()]).then(() => setLoading(false));
-    const interval = setInterval(() => { fetchBank(); fetchWallet(); }, 15000);
-    return () => clearInterval(interval);
-  }, [status, fetchBank, fetchWallet]);
+    fetchBank().then(() => setLoading(false));
+    fetch("/api/user/balance?t=" + Date.now(), { cache: "no-store" })
+      .then(r => r.json())
+      .then(data => { if (typeof data.balance === "number") setWalletBalance(data.balance); })
+      .catch(() => {});
+    const interval = setInterval(() => { fetchBank(); }, 15000);
+    const refreshInterval = setInterval(() => {
+      fetch("/api/bank/refresh", { method: "POST" }).then(() => fetchBank()).catch(() => {});
+    }, 3600000);
+    return () => { clearInterval(interval); clearInterval(refreshInterval); };
+  }, [status, fetchBank]);
 
   async function handleDeposit() {
     const cents = Math.round(parseFloat(depositAmount) * 100);

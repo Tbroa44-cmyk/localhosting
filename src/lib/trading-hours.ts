@@ -166,7 +166,11 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
         nextChange: `closes in ${formatMs(targetMs)}`, nextChangeMs: targetMs,
       };
     } else {
-      const targetMs = getMsUntilTarget({ ...now, hour: openHour, minute: 0 });
+      let targetMs = getMsUntilTarget({ ...now, hour: openHour, minute: 0 });
+      if (targetMs <= 0) {
+        const tomorrow = addDays(now, 1);
+        targetMs = getMsUntilTarget({ ...tomorrow, hour: openHour, minute: 0 });
+      }
       return {
         isOpen: false, message: `Markets closed. Opens at ${openHour}:00`,
         openHour, closeHour, emergencyClose: false, emergencyMessage,

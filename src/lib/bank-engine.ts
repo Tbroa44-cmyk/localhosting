@@ -39,7 +39,12 @@ export async function deposit(userId: number, amountCents: number) {
   const newWalletBalance = currentBalance - amountCents;
   const newBankBalance = Number(account.balance) + amountCents;
 
-  await db.prepare("UPDATE users SET balance = ? WHERE id = ?").run(newWalletBalance, userId);
+  const walletResult = await db.prepare("UPDATE users SET balance = ? WHERE id = ?").run(newWalletBalance, userId);
+
+  if (!walletResult || walletResult.changes === 0) {
+    throw new Error("Failed to deduct from wallet - please try again");
+  }
+
   await db.prepare("UPDATE user_bank_accounts SET balance = ? WHERE id = ?").run(newBankBalance, account.id);
 
   await db.prepare(
@@ -135,16 +140,26 @@ export async function scoreCompanies(db: any): Promise<{ companyId: number; scor
     "SELECT id, share_price, total_shares FROM companies WHERE total_shares > 0"
   ).all() as any[];
 
+  if (companies.length === 0) return [];
+
+  const historyResults = await Promise.all(
+    companies.map(c =>
+      db.prepare("SELECT price FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 48").all(c.id) as any[]
+    )
+  );
+
+  const txResults = await Promise.all(
+    companies.map(c =>
+      db.prepare("SELECT type FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 100").all(c.id) as any[]
+    )
+  );
+
   const scored: { companyId: number; score: number }[] = [];
 
-  for (const company of companies) {
-    const priceHistory = await db.prepare(
-      "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 48"
-    ).all(company.id) as { price: number; timestamp: number }[];
-
-    const transactions = await db.prepare(
-      "SELECT type, shares, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 100"
-    ).all(company.id) as any[];
+  for (let i = 0; i < companies.length; i++) {
+    const company = companies[i];
+    const priceHistory = historyResults[i];
+    const transactions = txResults[i];
 
     let score = 0;
     const currentPrice = Number(company.share_price);
@@ -206,21 +221,25 @@ export async function pickCompaniesForUser(db: any, userId: number) {
     return { message: "No companies available to invest in", investments: [] };
   }
 
+  const companyPrices = await Promise.all(
+    picks.map(p => db.prepare("SELECT share_price FROM companies WHERE id = ?").get(p.companyId) as { share_price: number })
+  );
+
   const totalScore = picks.reduce((sum, p) => sum + Math.max(0.01, p.score + 10), 0);
 
   const investments = [];
-  for (const pick of picks) {
-    const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(pick.companyId) as { share_price: number };
+  for (let i = 0; i < picks.length; i++) {
+    const pick = picks[i];
     const weight = Math.max(0.01, pick.score + 10) / totalScore;
 
     await db.prepare(
       "INSERT INTO user_bank_investments (user_id, company_id, weight, entry_price) VALUES (?, ?, ?, ?)"
-    ).run(userId, pick.companyId, weight, company.share_price);
+    ).run(userId, pick.companyId, weight, companyPrices[i].share_price);
 
     investments.push({
       companyId: pick.companyId,
       weight,
-      entryPrice: company.share_price,
+      entryPrice: companyPrices[i].share_price,
       score: pick.score,
     });
   }

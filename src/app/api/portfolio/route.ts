@@ -16,73 +16,64 @@ export async function GET(request: NextRequest) {
     }
     const db = getDb();
 
-    const allUserHoldings = await db.prepare(
-      "SELECT company_id, shares_owned FROM holdings WHERE user_id = ?"
-    ).all(userId) as any[];
+    const [allUserHoldings, allCompanies, rawTransactions, user] = await Promise.all([
+      db.prepare("SELECT company_id, shares_owned FROM holdings WHERE user_id = ?").all(userId),
+      db.prepare("SELECT id, name, ticker, share_price, total_shares FROM companies").all(),
+      db.prepare("SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 25").all(userId),
+      db.prepare("SELECT id, username, email, balance, xp, level, created_at FROM users WHERE id = ?").get(userId),
+    ]) as any[];
+
+    const companyMap: Record<number, any> = {};
+    for (const c of allCompanies) {
+      companyMap[Number(c.id)] = c;
+    }
 
     const rawHoldingsMap: Record<number, number> = {};
     for (const h of allUserHoldings) {
       const cid = Number(h.company_id);
       rawHoldingsMap[cid] = (rawHoldingsMap[cid] || 0) + Number(h.shares_owned || 0);
     }
-    const rawHoldings = Object.entries(rawHoldingsMap).map(([company_id, shares_owned]) => ({
-      company_id: Number(company_id),
-      shares_owned,
-    }));
 
-    const holdings: any[] = [];
+    const companyIds = Object.keys(rawHoldingsMap).map(Number);
+    const priceHistoryResults = await Promise.all(
+      companyIds.map(cid =>
+        db.prepare("SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC").all(cid)
+      )
+    ) as any[][];
+
     const priceHistories: Record<number, { price: number; timestamp: number }[]> = {};
-    const seenCompanies = new Set<number>();
+    const holdings: any[] = [];
 
-    for (const h of rawHoldings) {
-      if (seenCompanies.has(h.company_id)) continue;
-      seenCompanies.add(h.company_id);
-
-      const company = await db.prepare(
-        "SELECT name, ticker, share_price, total_shares FROM companies WHERE id = ?"
-      ).get(h.company_id) as any;
-
+    for (let i = 0; i < companyIds.length; i++) {
+      const cid = companyIds[i];
+      const shares = rawHoldingsMap[cid];
+      const company = companyMap[cid];
       const share_price = company ? Number(company.share_price) || 0 : 0;
-      const shares_owned = Number(h.shares_owned) || 0;
 
       holdings.push({
-        shares_owned,
-        company_id: h.company_id,
+        shares_owned: shares,
+        company_id: cid,
         company_name: company?.name || "Unknown",
         ticker: company?.ticker || "???",
         share_price,
         total_shares: company?.total_shares || 0,
       });
 
-      priceHistories[h.company_id] = await db.prepare(
-        "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC"
-      ).all(h.company_id) as { price: number; timestamp: number }[];
+      priceHistories[cid] = priceHistoryResults[i];
     }
 
     const totalValue = holdings.reduce(
-      (sum: number, h: any) => sum + Number(h.share_price) * Number(h.shares_owned),
-      0
+      (sum: number, h: any) => sum + Number(h.share_price) * Number(h.shares_owned), 0
     );
 
-    console.log("[Portfolio] holdings:", JSON.stringify(holdings), "totalValue:", totalValue);
-
-    const rawTransactions = await db.prepare(
-      "SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 25"
-    ).all(userId) as any[];
-
-    const transactions = [];
-    for (const t of rawTransactions) {
-      const company = await db.prepare(
-        "SELECT name, ticker FROM companies WHERE id = ?"
-      ).get(t.company_id) as any;
-      transactions.push({
+    const transactions = rawTransactions.map((t: any) => {
+      const company = companyMap[Number(t.company_id)];
+      return {
         ...t,
         company_name: company?.name || "Unknown",
         ticker: company?.ticker || "???",
-      });
-    }
-
-    const user = await db.prepare("SELECT id, username, email, balance, xp, level, created_at FROM users WHERE id = ?").get(userId) as any;
+      };
+    });
 
     return NextResponse.json({ holdings, totalValue, transactions, user, priceHistories });
   } catch (error) {
