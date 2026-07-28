@@ -6,11 +6,7 @@ const BOT_INITIAL_CASH = 5000;
 const BOT_COOLDOWN_MS = 10000;
 const MAX_BOTS = 25;
 
-const BOT_ADJECTIVES = [
-  "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
-  "India", "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
-  "Quebec", "Romeo", "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "Xray", "Yankee",
-];
+const BOT_NUMBERS = Array.from({ length: 25 }, (_, i) => String(i + 1));
 
 interface BotConfig {
   riskLevel: "conservative" | "balanced" | "aggressive";
@@ -73,7 +69,7 @@ async function ensureBotUsers(db: any): Promise<{ id: number; name: string; conf
   if (cached.length >= MAX_BOTS) {
     const bots = [];
     for (let i = 0; i < MAX_BOTS; i++) {
-      bots.push({ id: cached[i], name: `Bot${BOT_ADJECTIVES[i]}`, config: BOT_CONFIGS[i % BOT_CONFIGS.length] });
+      bots.push({ id: cached[i], name: `Bot${BOT_NUMBERS[i]}`, config: BOT_CONFIGS[i % BOT_CONFIGS.length] });
     }
     return bots;
   }
@@ -81,20 +77,20 @@ async function ensureBotUsers(db: any): Promise<{ id: number; name: string; conf
   const bots: { id: number; name: string; config: BotConfig }[] = [];
 
   for (let i = 0; i < MAX_BOTS; i++) {
-    const name = `Bot${BOT_ADJECTIVES[i]}`;
-    const email = `bot_${BOT_ADJECTIVES[i].toLowerCase()}@stockgame.uk`;
+    const name = `Bot${BOT_NUMBERS[i]}`;
+    const email = `bot${BOT_NUMBERS[i]}@stockgame.uk`;
 
     let bot = await db.prepare("SELECT id FROM users WHERE email = ?").get(email) as { id: number } | undefined;
 
     if (!bot) {
       const bcryptHash = "$2a$10$LKjhN4bK5hGF5q6R8x9Z0uY7x3v2mK8nJ4pQ2wS6dF0gH1jL3kM5n";
       const result = await db.prepare(
-        "INSERT INTO users (username, email, password, balance, is_admin, allowed, role, xp, level) VALUES (?, ?, ?, ?, 0, 0, 'bot', 0, 1)"
+        "INSERT INTO users (username, email, password, balance, is_admin, allowed, role, xp, level) VALUES (?, ?, ?, ?, 0, 0, 'Bot', 0, 1)"
       ).run(name, email, bcryptHash, BOT_INITIAL_CASH);
       bot = { id: result.lastInsertRowid as number };
       await seedBotShares(db, bot.id, i);
     } else {
-      try { await db.prepare("UPDATE users SET role = 'bot' WHERE id = ? AND (role IS NULL OR role != 'bot')").run(bot.id); } catch {}
+      try { await db.prepare("UPDATE users SET role = 'Bot' WHERE id = ? AND (role IS NULL OR role != 'Bot')").run(bot.id); } catch {}
     }
 
     bots.push({ id: bot.id, name, config: BOT_CONFIGS[i % BOT_CONFIGS.length] });

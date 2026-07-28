@@ -58,7 +58,7 @@ export async function GET() {
       users,
       companies,
       stats: {
-        totalUsers: users.filter((u: any) => u.role !== "bot").length,
+        totalUsers: users.filter((u: any) => u.role !== "Bot").length,
         totalBalance,
         totalTransactions,
         bankFund: bankFundBalance,

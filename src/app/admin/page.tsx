@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { formatCoins } from "@/lib/format";
 import Navbar from "@/components/Navbar";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ConfirmModal from "@/components/ConfirmModal";
+import BanModal from "@/components/BanModal";
 import { showToast } from "@/components/Toast";
 
 interface User {
@@ -104,9 +105,8 @@ export default function AdminPage() {
   const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
 
   const [userSearch, setUserSearch] = useState("");
-  const [userBanFilter, setUserBanFilter] = useState<"all" | "banned" | "active">("all");
-  const [banModalUserId, setBanModalUserId] = useState<number | null>(null);
-  const [banDuration, setBanDuration] = useState<number>(0);
+  const [userBanFilter, setUserBanFilter] = useState<"all" | "players" | "banned" | "bots">("all");
+  const [banModalUser, setBanModalUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -264,26 +264,23 @@ export default function AdminPage() {
     }
   }
 
-  async function handleBanUser(userId: number) {
-    openConfirm("Ban User", banDuration === 0 ? "Ban this user indefinitely?" : `Ban this user for ${banDuration} day${banDuration > 1 ? "s" : ""}?`, true, async () => {
-      try {
-        const res = await fetch(`/api/admin/users/${userId}/ban`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ days: banDuration }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast(data.message || "User banned", "success");
-          setBanDuration(0);
-          fetchAdminData();
-        } else {
-          showToast(data.error || "Failed", "error");
-        }
-      } catch {
-        showToast("Error banning user", "error");
+  async function handleBanUser(userId: number, days: number) {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/ban`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "User banned", "success");
+        fetchAdminData();
+      } else {
+        showToast(data.error || "Failed", "error");
       }
-    });
+    } catch {
+      showToast("Error banning user", "error");
+    }
   }
 
   async function handleUnbanUser(userId: number) {
@@ -394,14 +391,17 @@ export default function AdminPage() {
     });
   }
 
+  const isBot = (u: User) => u.role === "Bot";
+
   const filteredUsers = users.filter((u) => {
-    if (u.role === "bot") return false;
+    if (userBanFilter === "bots") return isBot(u);
+    if (isBot(u)) return false;
     if (userSearch) {
       const q = userSearch.toLowerCase();
       if (!u.username.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
     }
     if (userBanFilter === "banned" && u.allowed !== 1) return false;
-    if (userBanFilter === "active" && u.allowed === 1) return false;
+    if (userBanFilter === "players" && u.allowed === 1) return false;
     return true;
   });
 
@@ -439,6 +439,17 @@ export default function AdminPage() {
         confirmText={confirmDanger ? "Delete" : "Confirm"}
         onConfirm={() => { setConfirmOpen(false); confirmAction(); }}
         onCancel={() => setConfirmOpen(false)}
+      />
+      <BanModal
+        open={banModalUser !== null}
+        username={banModalUser?.username || ""}
+        onConfirm={(days) => {
+          if (banModalUser) {
+            handleBanUser(banModalUser.id, days);
+            setBanModalUser(null);
+          }
+        }}
+        onCancel={() => setBanModalUser(null)}
       />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -479,62 +490,33 @@ export default function AdminPage() {
 
         {activeTab === "overview" && (
           <div className="space-y-6">
-            {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="relative overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-950/40 to-gray-950/60 p-5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-8 translate-x-8" />
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" /></svg>
-                    <span className="text-xs text-blue-300/80 font-medium uppercase tracking-wider">Users</span>
-                  </div>
-                  <div className="text-3xl font-bold text-white">{stats.totalUsers}</div>
-                </div>
+              <div className="glass-card">
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Users</div>
+                <div className="text-3xl font-bold text-white">{stats.totalUsers}</div>
               </div>
-
-              <div className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/40 to-gray-950/60 p-5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -translate-y-8 translate-x-8" />
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    <span className="text-xs text-emerald-300/80 font-medium uppercase tracking-wider">Coins in Circulation</span>
-                  </div>
-                  <div className="text-3xl font-bold text-emerald-400">{formatCoins(stats.totalBalance)}</div>
-                </div>
+              <div className="glass-card">
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Coins in Circulation</div>
+                <div className="text-3xl font-bold text-emerald-400">{formatCoins(stats.totalBalance)}</div>
               </div>
-
-              <div className="relative overflow-hidden rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-950/40 to-gray-950/60 p-5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 rounded-full -translate-y-8 translate-x-8" />
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-                    <span className="text-xs text-violet-300/80 font-medium uppercase tracking-wider">Transactions</span>
-                  </div>
-                  <div className="text-3xl font-bold text-violet-400">{stats.totalTransactions}</div>
-                </div>
+              <div className="glass-card">
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Transactions</div>
+                <div className="text-3xl font-bold text-violet-400">{stats.totalTransactions}</div>
               </div>
-
-              <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-950/40 to-gray-950/60 p-5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -translate-y-8 translate-x-8" />
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                    <span className="text-xs text-amber-300/80 font-medium uppercase tracking-wider">Bank Fund (3% Tax)</span>
-                  </div>
-                  <div className="text-3xl font-bold text-amber-400">{formatCoins(stats.bankFund)}</div>
-                </div>
+              <div className="glass-card">
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Bank Fund (3% Tax)</div>
+                <div className="text-3xl font-bold text-amber-400">{formatCoins(stats.bankFund)}</div>
               </div>
             </div>
 
-            {/* Danger Zone */}
-            <div className="rounded-xl border border-red-500/20 bg-gradient-to-br from-red-950/20 to-gray-950/40 p-5">
+            <div className="glass-card border-red-500/20">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
                     <h3 className="text-red-300 font-semibold">Danger Zone</h3>
                   </div>
-                  <p className="text-gray-400 text-sm">Reset the entire market — deletes all holdings and resets all prices</p>
+                  <p className="text-gray-400 text-sm mt-1">Reset the entire market — deletes all holdings and resets all prices</p>
                 </div>
                 <button
                   onClick={handleResetMarket}
@@ -550,24 +532,16 @@ export default function AdminPage() {
 
         {activeTab === "companies" && (
           <div className="space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                Companies
-                <span className="text-sm font-normal text-gray-500">({companies.length})</span>
-              </h2>
+              <h2 className="text-lg font-semibold text-white">Companies ({companies.length})</h2>
               <button onClick={() => setShowNewForm(!showNewForm)} className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm">
                 {showNewForm ? "Cancel" : "+ New Company"}
               </button>
             </div>
 
-            {/* New Company Form */}
             {showNewForm && (
-              <form onSubmit={handleCreateCompany} className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/20 to-gray-950/40 p-5 space-y-4">
-                <h3 className="text-white font-medium flex items-center gap-2">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                  New Company
-                </h3>
+              <form onSubmit={handleCreateCompany} className="glass-card border-emerald-500/20 space-y-4">
+                <h3 className="text-white font-medium">New Company</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-gray-400 mb-1 block">Company Name</label>
@@ -594,14 +568,12 @@ export default function AdminPage() {
               </form>
             )}
 
-            {/* Company List */}
             <div className="space-y-3">
               {companies.map((c) => {
                 const sharesIncreased = c.initial_shares && c.total_shares > c.initial_shares;
                 return (
-                  <div key={c.id} className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-950/40 p-4 hover:border-gray-700 transition-colors">
+                  <div key={c.id} className="glass-card">
                     {editingCompany?.id === c.id ? (
-                      /* Edit Mode */
                       <form onSubmit={handleUpdateCompany} className="space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-1 rounded">{c.ticker}</span>
@@ -640,7 +612,6 @@ export default function AdminPage() {
                         </div>
                       </form>
                     ) : (
-                      /* View Mode */
                       <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -681,36 +652,24 @@ export default function AdminPage() {
 
         {activeTab === "users" && (
           <div className="space-y-4">
-            {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1 relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-                <input type="text" placeholder="Search by username or email..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="input-field pl-10" />
+                <input type="text" placeholder="Search..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="input-field pl-10" />
               </div>
               <select value={userBanFilter} onChange={(e) => setUserBanFilter(e.target.value as any)} className="input-field w-auto sm:w-44">
-                <option value="all">All Users ({users.filter((u) => u.role !== "bot").length})</option>
-                <option value="active">Active Only</option>
+                <option value="all">All Players ({users.filter((u) => !isBot(u)).length})</option>
+                <option value="players">Active Players</option>
                 <option value="banned">Banned Only</option>
+                <option value="bots">Bots ({users.filter((u) => isBot(u)).length})</option>
               </select>
-              <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
-                <span className="text-xs text-gray-400">Ban duration:</span>
-                <select value={banDuration} onChange={(e) => setBanDuration(Number(e.target.value))} className="bg-transparent text-white text-sm outline-none">
-                  <option value={0}>Indefinite</option>
-                  <option value={1}>1 day</option>
-                  <option value={3}>3 days</option>
-                  <option value={7}>7 days</option>
-                  <option value={14}>14 days</option>
-                  <option value={30}>30 days</option>
-                </select>
-              </div>
             </div>
 
-            {/* Users Table */}
-            <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-950/40 overflow-hidden">
+            <div className="glass-card overflow-hidden !p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-800 bg-gray-900/40">
+                    <tr className="border-b border-gray-800">
                       <th className="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">User</th>
                       <th className="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden sm:table-cell">Email</th>
                       <th className="text-right py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Balance</th>
@@ -738,12 +697,19 @@ export default function AdminPage() {
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                               ADMIN
                             </span>
+                          ) : isBot(u) ? (
+                            <span className="inline-flex items-center gap-1 text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded text-xs font-medium">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                              BOT
+                            </span>
                           ) : (
                             <span className="text-gray-500 text-xs">Player</span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {u.is_admin ? null : u.allowed === 1 ? (
+                          {u.is_admin ? null : isBot(u) ? (
+                            <span className="text-cyan-400/60 text-xs">—</span>
+                          ) : u.allowed === 1 ? (
                             <div className="flex flex-col items-center gap-0.5">
                               <span className="text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-xs font-medium">Banned</span>
                               {u.banned_until ? <span className="text-[10px] text-gray-500">until {new Date(u.banned_until).toLocaleDateString()}</span> : <span className="text-[10px] text-gray-500">indefinite</span>}
@@ -752,17 +718,17 @@ export default function AdminPage() {
                             <span className="text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded text-xs font-medium">Active</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-center text-gray-400 text-sm">{u.is_admin ? null : (u.ban_count || 0)}</td>
+                        <td className="py-3 px-4 text-center text-gray-400 text-sm">{u.is_admin || isBot(u) ? null : (u.ban_count || 0)}</td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {!u.is_admin && (
+                            {!u.is_admin && !isBot(u) && (
                               u.allowed === 1 ? (
                                 <button onClick={() => handleUnbanUser(u.id)} className="text-emerald-400 hover:text-emerald-300 text-xs font-medium transition-colors">Unban</button>
                               ) : (
-                                <button onClick={() => handleBanUser(u.id)} className="text-red-400 hover:text-red-300 text-xs font-medium transition-colors">Ban</button>
+                                <button onClick={() => setBanModalUser(u)} className="text-red-400 hover:text-red-300 text-xs font-medium transition-colors">Ban</button>
                               )
                             )}
-                            {giveCoinsUserId === u.id ? (
+                            {!isBot(u) && (giveCoinsUserId === u.id ? (
                               <div className="flex items-center gap-1">
                                 <input type="number" step="0.01" min="0.01" value={giveCoinsAmount} onChange={(e) => setGiveCoinsAmount(e.target.value)} placeholder="c" className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs" />
                                 <button onClick={() => handleGiveCoins(u.id)} disabled={givingCoins} className="text-emerald-400 hover:text-emerald-300 text-xs font-bold transition-colors">{givingCoins ? "..." : "Give"}</button>
@@ -770,7 +736,7 @@ export default function AdminPage() {
                               </div>
                             ) : (
                               <button onClick={() => { setGiveCoinsUserId(u.id); setGiveCoinsAmount(""); }} className="text-gray-400 hover:text-emerald-400 text-xs font-medium transition-colors">+ Coins</button>
-                            )}
+                            ))}
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right text-gray-500 text-xs hidden md:table-cell">{new Date(u.created_at).toLocaleDateString()}</td>
@@ -800,8 +766,7 @@ export default function AdminPage() {
 
         {activeTab === "settings" && (
           <div className="space-y-6">
-            {/* Emergency Close */}
-            <div className={`rounded-xl border p-5 ${tradingSettings.emergency_close ? "border-red-500/30 bg-gradient-to-br from-red-950/20 to-gray-950/40" : "border-orange-500/20 bg-gradient-to-br from-orange-950/10 to-gray-950/40"}`}>
+            <div className={`glass-card ${tradingSettings.emergency_close ? "border-red-500/30" : "border-orange-500/20"}`}>
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -833,16 +798,15 @@ export default function AdminPage() {
               )}
             </div>
 
-            {/* Bot Activity */}
-            <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/10 to-gray-950/40 p-5">
+            <div className="glass-card border-cyan-500/20">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                     <h3 className="text-white font-semibold">Bot Activity</h3>
                   </div>
-                  <p className="text-gray-400 text-sm">AI bots simulate trading activity to make the market feel alive</p>
-                  <p className="text-gray-500 text-xs mt-1">25 bots (BotAlpha–BotYankee) with 5000c starting cash each</p>
+                  <p className="text-gray-400 text-sm">25 AI bots (Bot1–Bot25) simulate trading activity</p>
+                  <p className="text-gray-500 text-xs mt-1">5000c starting cash each</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button
@@ -862,8 +826,7 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Trading Hours */}
-            <div className="rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-950/10 to-gray-950/40 p-5">
+            <div className="glass-card border-purple-500/20">
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <h3 className="text-white font-semibold">Trading Hours</h3>
@@ -889,13 +852,12 @@ export default function AdminPage() {
               <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save Trading Hours"}</button>
             </div>
 
-            {/* Trading Days */}
-            <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-950/10 to-gray-950/40 p-5">
+            <div className="glass-card border-blue-500/20">
               <div className="flex items-center gap-2 mb-2">
                 <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 <h3 className="text-white font-semibold">Trading Days</h3>
               </div>
-              <p className="text-gray-400 text-xs mb-4">Select which days the market can be open. Unchecked days force-close regardless of hours.</p>
+              <p className="text-gray-400 text-xs mb-4">Select which days the market can be open.</p>
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
                   { label: "Mon", value: 1 },
@@ -927,13 +889,12 @@ export default function AdminPage() {
               <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save Trading Days"}</button>
             </div>
 
-            {/* Custom Date Ranges */}
-            <div className="rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-950/10 to-gray-950/40 p-5">
+            <div className="glass-card border-amber-500/20">
               <div className="flex items-center gap-2 mb-2">
                 <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10v4M8 10v4M12 10v4M10 2v4M14 2v4" /></svg>
                 <h3 className="text-white font-semibold">Custom Date Ranges</h3>
               </div>
-              <p className="text-gray-400 text-xs mb-4">Set specific date ranges when the market should be closed. Higher priority than trading days/hours.</p>
+              <p className="text-gray-400 text-xs mb-4">Set specific date ranges when the market should be closed.</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div>
