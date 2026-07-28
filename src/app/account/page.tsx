@@ -209,7 +209,7 @@ export default function AccountPage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 p-6">
             <div className="flex items-center gap-6">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center text-3xl font-bold text-white shrink-0">
-                {user.username.charAt(0).toUpperCase()}
+                {(user.username || "?").charAt(0).toUpperCase()}
               </div>
               <div>
                 <div className="flex items-center gap-3 mb-1">

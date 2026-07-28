@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+    const user = await db.prepare("SELECT id, username, email, balance, xp, level, created_at FROM users WHERE id = ?").get(userId) as any;
 
     return NextResponse.json({ holdings, totalValue, transactions, user, priceHistories });
   } catch (error) {
