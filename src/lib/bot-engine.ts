@@ -479,12 +479,7 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
 
       if (autoQty > 0) {
         const autoCost = autoPrice * autoQty;
-        const existingH = await db.prepare("SELECT id FROM holdings WHERE user_id = ? AND company_id = ?").get(botId, companyId) as { id: number } | undefined;
-        if (existingH) {
-          await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(autoQty, existingH.id);
-        } else {
-          await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(botId, companyId, autoQty);
-        }
+        await addShares(db, botId, companyId, autoQty, "bot_auto_buy");
         await db.prepare("INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)").run(botId, companyId, autoQty, autoPrice, autoCost);
         await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)").run(botId, companyId, autoQty, autoPrice, new Date().toISOString());
         remaining -= autoQty;
@@ -573,11 +568,7 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
       await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botId, companyId, remaining, remaining, price, new Date().toISOString());
     }
 
-    if (holding.shares_owned <= shares) {
-      await db.prepare("DELETE FROM holdings WHERE id = ?").run(holding.id);
-    } else {
-      await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(shares, holding.id);
-    }
+    await removeShares(db, botId, companyId, shares, "bot_sell_fill");
 
     if (filledShares > 0) {
       const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice, filledShares, company?.total_shares);
@@ -748,21 +739,13 @@ async function botToBotMatch(db: any, bots: { id: number; name: string; config: 
       await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
       await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(grossCost, buyBotId);
 
-      const sellerHolding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, companyId) as { id: number; shares_owned: number } | undefined;
-      if (sellerHolding) {
-        if (sellerHolding.shares_owned <= fillQty) {
-          await db.prepare("DELETE FROM holdings WHERE id = ?").run(sellerHolding.id);
-        } else {
-          await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(fillQty, sellerHolding.id);
-        }
+      try {
+        await removeShares(db, sellOrder.user_id, companyId, fillQty, "bot_match_sell", sellOrder.id);
+      } catch (e: any) {
+        console.error(`botToBotMatch seller holding error:`, e?.message || e);
       }
 
-      const buyerHolding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(buyBotId, companyId) as { id: number; shares_owned: number } | undefined;
-      if (buyerHolding) {
-        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(fillQty, buyerHolding.id);
-      } else {
-        await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(buyBotId, companyId, fillQty);
-      }
+      await addShares(db, buyBotId, companyId, fillQty, "bot_match_buy", buyOrder.id);
 
       if (fillQty >= Number(sellOrder.shares)) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(sellOrder.id);
