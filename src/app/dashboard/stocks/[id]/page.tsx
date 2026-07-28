@@ -16,6 +16,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { playClick, playBuyConfirm, playSellConfirm, playCancel, playOrderConfirmed, playOrderProgress } from "@/lib/sounds";
 import ConfirmModal from "@/components/ConfirmModal";
 import { showTradeNotification } from "@/components/TradeNotification";
+import InvestmentChart from "@/components/InvestmentChart";
 
 interface Company {
   id: number;
@@ -54,6 +55,7 @@ export default function StockDetailPage() {
   const prevOrdersRef = useRef<any[]>([]);
   const prevTradesRef = useRef<any[]>([]);
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+  const [showInvestment, setShowInvestment] = useState(false);
 
   const companyId = Number(params.id);
   const canTrade = status === "authenticated";
@@ -514,6 +516,30 @@ export default function StockDetailPage() {
           ) : (
             <div className="animate-fade-up">
               <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company!.recent_transactions} />
+              {canTrade && (
+                <button
+                  onClick={() => setShowInvestment(!showInvestment)}
+                  className="w-full mt-2 py-3 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 rounded-xl text-sm text-gray-300 hover:text-white transition-all flex items-center justify-center gap-2 group"
+                >
+                  <svg
+                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    className={`transition-transform duration-300 ${showInvestment ? "rotate-180" : ""}`}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                  {showInvestment ? "Hide" : "Show"} Your Investment
+                </button>
+              )}
+              {showInvestment && (
+                <div className="glass-card mt-2 animate-fade-up">
+                  <h3 className="text-lg font-semibold text-white mb-4">Your Investment</h3>
+                  <InvestmentChart
+                    trades={(company as any).my_trades || []}
+                    priceHistory={priceHistory}
+                    currentPrice={currentPrice}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

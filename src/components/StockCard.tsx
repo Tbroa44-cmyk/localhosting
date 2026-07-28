@@ -11,9 +11,10 @@ interface StockCardProps {
   company: any;
   isLoggedIn: boolean;
   userHoldings?: Record<number, number>;
+  isMarketOpen?: boolean;
 }
 
-export default function StockCard({ company, isLoggedIn, userHoldings = {} }: StockCardProps) {
+export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMarketOpen = true }: StockCardProps) {
   const router = useRouter();
   const [exiting, setExiting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -115,29 +116,39 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {} }: St
       </div>
 
       {!modalOpen && isLoggedIn && (
-        <div className="flex gap-2">
+        isMarketOpen ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setModalType("buy"); setModalOpen(true); }}
+              className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium transition-colors"
+            >
+              Buy
+            </button>
+            {sharesOwned > 0 ? (
+              <button
+                onClick={() => { setModalType("sell"); setModalOpen(true); }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
+              >
+                Sell
+              </button>
+            ) : (
+              <button
+                disabled
+                className="flex-1 py-2.5 bg-gray-800 text-gray-600 rounded-lg text-sm font-medium cursor-not-allowed"
+              >
+                Sell (0)
+              </button>
+            )}
+          </div>
+        ) : (
           <button
-            onClick={() => { setModalType("buy"); setModalOpen(true); }}
-            className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium transition-colors"
+            onClick={() => { setExiting(true); setTimeout(() => router.push(`/dashboard/stocks/${company.id}`), 340); }}
+            className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
           >
-            Buy
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            Market Closed
           </button>
-          {sharesOwned > 0 ? (
-            <button
-              onClick={() => { setModalType("sell"); setModalOpen(true); }}
-              className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
-            >
-              Sell
-            </button>
-          ) : (
-            <button
-              disabled
-              className="flex-1 py-2.5 bg-gray-800 text-gray-600 rounded-lg text-sm font-medium cursor-not-allowed"
-            >
-              Sell (0)
-            </button>
-          )}
-        </div>
+        )
       )}
 
       {!modalOpen && !isLoggedIn && (
