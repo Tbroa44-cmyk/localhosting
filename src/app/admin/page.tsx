@@ -61,6 +61,16 @@ interface CustomDateRange {
 
 type Tab = "overview" | "companies" | "users" | "settings";
 
+const TabIcon = ({ tab, active }: { tab: Tab; active: boolean }) => {
+  const cls = `w-4 h-4 ${active ? "text-white" : "text-gray-400"}`;
+  switch (tab) {
+    case "overview": return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>;
+    case "companies": return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>;
+    case "users": return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
+    case "settings": return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+  }
+};
+
 export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -411,11 +421,11 @@ export default function AdminPage() {
     );
   }
 
-  const tabs: { key: Tab; label: string; icon: string }[] = [
-    { key: "overview", label: "Overview", icon: "📊" },
-    { key: "companies", label: "Companies", icon: "🏢" },
-    { key: "users", label: "Users", icon: "👥" },
-    { key: "settings", label: "Settings", icon: "⚙️" },
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "overview", label: "Overview" },
+    { key: "companies", label: "Companies" },
+    { key: "users", label: "Users" },
+    { key: "settings", label: "Settings" },
   ];
 
   return (
@@ -432,29 +442,36 @@ export default function AdminPage() {
       />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
-            <p className="text-gray-400 text-sm mt-1">Manage companies, users, and the market</p>
+            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+              <svg className="w-7 h-7 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              Admin Panel
+            </h1>
+            <p className="text-gray-400 text-sm mt-1 ml-10">Manage companies, users, and the market</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${users.length > 0 || companies.length > 0 ? "bg-green-400" : "bg-yellow-400 animate-pulse"}`} />
-            <span className="text-xs text-gray-400">{users.length > 0 || companies.length > 0 ? "Live" : "Connecting..."}</span>
+          <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
+            <div className={`w-2 h-2 rounded-full ${users.length > 0 || companies.length > 0 ? "bg-green-400" : "bg-yellow-400 animate-pulse"}`} />
+            <span className="text-xs text-gray-400">{users.length > 0 || companies.length > 0 ? "Connected" : "Connecting..."}</span>
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="flex gap-1 mb-8 bg-gray-900/50 border border-gray-800 rounded-xl p-1">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center justify-center gap-2 flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.key
-                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/20"
                   : "text-gray-400 hover:text-white hover:bg-gray-800"
               }`}
             >
-              <span className="mr-1.5">{tab.icon}</span>
+              <TabIcon tab={tab.key} active={activeTab === tab.key} />
               {tab.label}
             </button>
           ))}
@@ -462,37 +479,69 @@ export default function AdminPage() {
 
         {activeTab === "overview" && (
           <div className="space-y-6">
+            {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="glass-card text-center group hover:border-blue-500/30 transition-colors">
-                <div className="text-sm text-gray-400 mb-1">Users</div>
-                <div className="text-3xl font-bold text-white group-hover:text-blue-400 transition-colors">{stats.totalUsers}</div>
+              <div className="relative overflow-hidden rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-950/40 to-gray-950/60 p-5">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-8 translate-x-8" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" /></svg>
+                    <span className="text-xs text-blue-300/80 font-medium uppercase tracking-wider">Users</span>
+                  </div>
+                  <div className="text-3xl font-bold text-white">{stats.totalUsers}</div>
+                </div>
               </div>
-              <div className="glass-card text-center group hover:border-blue-500/30 transition-colors">
-                <div className="text-sm text-gray-400 mb-1">Coins in Circulation</div>
-                <div className="text-3xl font-bold text-blue-400">{formatCoins(stats.totalBalance)}</div>
+
+              <div className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/40 to-gray-950/60 p-5">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -translate-y-8 translate-x-8" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span className="text-xs text-emerald-300/80 font-medium uppercase tracking-wider">Coins in Circulation</span>
+                  </div>
+                  <div className="text-3xl font-bold text-emerald-400">{formatCoins(stats.totalBalance)}</div>
+                </div>
               </div>
-              <div className="glass-card text-center group hover:border-green-500/30 transition-colors">
-                <div className="text-sm text-gray-400 mb-1">Transactions</div>
-                <div className="text-3xl font-bold text-green-400">{stats.totalTransactions}</div>
+
+              <div className="relative overflow-hidden rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-950/40 to-gray-950/60 p-5">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 rounded-full -translate-y-8 translate-x-8" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                    <span className="text-xs text-violet-300/80 font-medium uppercase tracking-wider">Transactions</span>
+                  </div>
+                  <div className="text-3xl font-bold text-violet-400">{stats.totalTransactions}</div>
+                </div>
               </div>
-              <div className="glass-card text-center group hover:border-yellow-500/30 transition-colors">
-                <div className="text-sm text-gray-400 mb-1">Bank Fund (3% Tax)</div>
-                <div className="text-3xl font-bold text-yellow-400">{formatCoins(stats.bankFund)}</div>
+
+              <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-950/40 to-gray-950/60 p-5">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -translate-y-8 translate-x-8" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    <span className="text-xs text-amber-300/80 font-medium uppercase tracking-wider">Bank Fund (3% Tax)</span>
+                  </div>
+                  <div className="text-3xl font-bold text-amber-400">{formatCoins(stats.bankFund)}</div>
+                </div>
               </div>
             </div>
 
-            <div className="glass-card border-red-500/20">
-              <div className="flex items-center justify-between">
+            {/* Danger Zone */}
+            <div className="rounded-xl border border-red-500/20 bg-gradient-to-br from-red-950/20 to-gray-950/40 p-5">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <h3 className="text-white font-semibold">Danger Zone</h3>
-                  <p className="text-gray-400 text-sm mt-1">Reset the entire market to initial state</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                    <h3 className="text-red-300 font-semibold">Danger Zone</h3>
+                  </div>
+                  <p className="text-gray-400 text-sm">Reset the entire market — deletes all holdings and resets all prices</p>
                 </div>
                 <button
                   onClick={handleResetMarket}
                   disabled={resetting}
-                  className="bg-red-600/90 hover:bg-red-700 text-white font-medium py-2.5 px-5 rounded-lg transition-colors disabled:opacity-50 text-sm"
+                  className="bg-red-600/80 hover:bg-red-600 text-white font-medium py-2 px-5 rounded-lg transition-colors disabled:opacity-50 text-sm shrink-0"
                 >
-                  {resetting ? "Resetting..." : "Reset All Holdings & Prices"}
+                  {resetting ? "Resetting..." : "Reset Holdings & Prices"}
                 </button>
               </div>
             </div>
@@ -501,27 +550,35 @@ export default function AdminPage() {
 
         {activeTab === "companies" && (
           <div className="space-y-4">
+            {/* Header */}
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Companies ({companies.length})</h2>
-              <button onClick={() => setShowNewForm(!showNewForm)} className="btn-primary text-sm">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                Companies
+                <span className="text-sm font-normal text-gray-500">({companies.length})</span>
+              </h2>
+              <button onClick={() => setShowNewForm(!showNewForm)} className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm">
                 {showNewForm ? "Cancel" : "+ New Company"}
               </button>
             </div>
 
+            {/* New Company Form */}
             {showNewForm && (
-              <form onSubmit={handleCreateCompany} className="glass-card space-y-4">
-                <h3 className="text-white font-medium">New Company</h3>
+              <form onSubmit={handleCreateCompany} className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/20 to-gray-950/40 p-5 space-y-4">
+                <h3 className="text-white font-medium flex items-center gap-2">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                  New Company
+                </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-gray-400 mb-1 block">Company Name</label>
                     <input placeholder="e.g. Acme Corp" value={newCompany.name} onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })} className="input-field" required />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Ticker Symbol (max 6 chars)</label>
+                    <label className="text-xs text-gray-400 mb-1 block">Ticker Symbol (max 6)</label>
                     <input placeholder="e.g. ACME" value={newCompany.ticker} onChange={(e) => setNewCompany({ ...newCompany, ticker: e.target.value.toUpperCase() })} className="input-field" required maxLength={6} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Initial Price (in cents)</label>
+                    <label className="text-xs text-gray-400 mb-1 block">Initial Price (cents)</label>
                     <input type="number" min="1" value={newCompany.share_price} onChange={(e) => setNewCompany({ ...newCompany, share_price: Number(e.target.value) })} className="input-field" required />
                   </div>
                   <div>
@@ -533,96 +590,70 @@ export default function AdminPage() {
                   <label className="text-xs text-gray-400 mb-1 block">Description</label>
                   <input placeholder="What does this company do?" value={newCompany.description} onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })} className="input-field" />
                 </div>
-                <button type="submit" className="btn-success text-sm">Create Company</button>
+                <button type="submit" className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-lg transition-colors text-sm">Create Company</button>
               </form>
             )}
 
+            {/* Company List */}
             <div className="space-y-3">
               {companies.map((c) => {
                 const sharesIncreased = c.initial_shares && c.total_shares > c.initial_shares;
                 return (
-                  <div key={c.id} className="glass-card hover:border-gray-700 transition-colors">
+                  <div key={c.id} className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-950/40 p-4 hover:border-gray-700 transition-colors">
                     {editingCompany?.id === c.id ? (
+                      /* Edit Mode */
                       <form onSubmit={handleUpdateCompany} className="space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-1 rounded">{c.ticker}</span>
                           <span className="text-white font-medium">{c.name}</span>
-                          <span className="text-xs text-gray-500 ml-2">Editing</span>
+                          <span className="text-xs text-yellow-500 ml-2">Editing</span>
                         </div>
-
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
                             <label className="text-xs text-gray-500 block mb-1">Company Name</label>
                             <div className="text-white text-sm">{c.name}</div>
-                            <span className="text-[10px] text-yellow-500 mt-1 inline-block">🔒 Locked</span>
+                            <span className="text-[10px] text-gray-600 mt-1 inline-block">Locked — create new instead</span>
                           </div>
                           <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
                             <label className="text-xs text-gray-500 block mb-1">Share Price</label>
                             <div className="text-white text-sm">{formatCoins(c.share_price)}</div>
-                            <span className="text-[10px] text-yellow-500 mt-1 inline-block">🔒 Locked</span>
+                            <span className="text-[10px] text-gray-600 mt-1 inline-block">Locked — market-driven</span>
                           </div>
                         </div>
-
                         <div>
                           <label className="text-xs text-gray-400 mb-1 block">Description</label>
-                          <input
-                            value={editDescription}
-                            onChange={(e) => setEditDescription(e.target.value)}
-                            className="input-field"
-                            placeholder="Company description"
-                          />
+                          <input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="input-field" placeholder="Company description" />
                         </div>
-
                         <div>
-                          <label className="text-xs text-gray-400 mb-1 block">
-                            Total Shares — can only increase
-                          </label>
-                          <input
-                            type="number"
-                            min={c.total_shares + 1}
-                            value={editShares}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setEditShares(val);
-                            }}
-                            className="input-field"
-                            required
-                          />
+                          <label className="text-xs text-gray-400 mb-1 block">Total Shares — can only increase</label>
+                          <input type="number" min={c.total_shares + 1} value={editShares} onChange={(e) => { const val = Number(e.target.value); setEditShares(val); }} className="input-field" required />
                           <p className="text-xs text-gray-500 mt-1">
                             Current: {c.total_shares.toLocaleString()}
                             {editShares > c.total_shares && (
-                              <span className="text-green-400 ml-2">(+{(editShares - c.total_shares).toLocaleString()} new shares)</span>
+                              <span className="text-emerald-400 ml-2">(+{(editShares - c.total_shares).toLocaleString()} new)</span>
                             )}
                           </p>
                         </div>
-
                         <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            disabled={editShares <= c.total_shares && editDescription === (c.description || "")}
-                            className="btn-success text-sm px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Save Changes
-                          </button>
+                          <button type="submit" disabled={editShares <= c.total_shares && editDescription === (c.description || "")} className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed">Save Changes</button>
                           <button type="button" onClick={() => setEditingCompany(null)} className="text-gray-400 hover:text-white text-sm px-4 py-2">Cancel</button>
                         </div>
                       </form>
                     ) : (
-                      <div className="flex items-center justify-between">
+                      /* View Mode */
+                      <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-mono text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">#{c.id}</span>
+                            <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">#{c.id}</span>
                             <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">{c.ticker}</span>
                             <span className="text-white font-medium truncate">{c.name}</span>
                             {sharesIncreased && (
-                              <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
-                                +{(c.total_shares - (c.initial_shares || 0)).toLocaleString()} shares released
-                              </span>
+                              <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">+{(c.total_shares - (c.initial_shares || 0)).toLocaleString()} released</span>
                             )}
                           </div>
                           <p className="text-xs text-gray-500 truncate">{c.description || "No description"}</p>
                         </div>
-                        <div className="flex items-center gap-5 text-sm ml-4 shrink-0">
+                        <div className="flex items-center gap-5 text-sm shrink-0">
                           <div className="text-right">
                             <div className="text-white font-semibold">{formatCoins(c.share_price)}</div>
                             <div className="text-[10px] text-gray-500">per share</div>
@@ -632,12 +663,8 @@ export default function AdminPage() {
                             <div className="text-[10px] text-gray-500">shares</div>
                           </div>
                           <div className="flex gap-1.5">
-                            <button onClick={() => startEditCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">
-                              Edit
-                            </button>
-                            <button onClick={() => handleDeleteCompany(c.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">
-                              Delete
-                            </button>
+                            <button onClick={() => startEditCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Edit</button>
+                            <button onClick={() => handleDeleteCompany(c.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Delete</button>
                           </div>
                         </div>
                       </div>
@@ -654,14 +681,20 @@ export default function AdminPage() {
 
         {activeTab === "users" && (
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3 mb-3">
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+                <input type="text" placeholder="Search by username or email..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="input-field pl-10" />
+              </div>
+              <select value={userBanFilter} onChange={(e) => setUserBanFilter(e.target.value as any)} className="input-field w-auto sm:w-44">
+                <option value="all">All Users ({users.filter((u) => u.role !== "bot").length})</option>
+                <option value="active">Active Only</option>
+                <option value="banned">Banned Only</option>
+              </select>
               <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
                 <span className="text-xs text-gray-400">Ban duration:</span>
-                <select
-                  value={banDuration}
-                  onChange={(e) => setBanDuration(Number(e.target.value))}
-                  className="bg-transparent text-white text-sm outline-none"
-                >
+                <select value={banDuration} onChange={(e) => setBanDuration(Number(e.target.value))} className="bg-transparent text-white text-sm outline-none">
                   <option value={0}>Indefinite</option>
                   <option value={1}>1 day</option>
                   <option value={3}>3 days</option>
@@ -671,60 +704,40 @@ export default function AdminPage() {
                 </select>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search by username or email..."
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  className="input-field pl-10"
-                />
-              </div>
-              <select
-                value={userBanFilter}
-                onChange={(e) => setUserBanFilter(e.target.value as any)}
-                className="input-field w-auto sm:w-44"
-              >
-                <option value="all">All Users ({users.filter((u) => u.role !== "bot").length})</option>
-                <option value="active">Active Only</option>
-                <option value="banned">Banned Only</option>
-              </select>
-            </div>
 
-            <div className="glass-card overflow-hidden !p-0">
+            {/* Users Table */}
+            <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-950/40 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-800">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">User</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden sm:table-cell">Email</th>
-                      <th className="text-right py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Balance</th>
-                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Role</th>
-                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Status</th>
-                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Bans</th>
-                      <th className="text-center py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Actions</th>
-                      <th className="text-right py-3 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden md:table-cell">Joined</th>
+                    <tr className="border-b border-gray-800 bg-gray-900/40">
+                      <th className="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">User</th>
+                      <th className="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden sm:table-cell">Email</th>
+                      <th className="text-right py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Balance</th>
+                      <th className="text-center py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Role</th>
+                      <th className="text-center py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Status</th>
+                      <th className="text-center py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Bans</th>
+                      <th className="text-center py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">Actions</th>
+                      <th className="text-right py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider hidden md:table-cell">Joined</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredUsers.map((u) => (
-                      <tr key={u.id} className="border-b border-gray-800/50 hover:bg-gray-800/20 transition-colors">
+                      <tr key={u.id} className="border-b border-gray-800/40 hover:bg-white/[0.02] transition-colors">
                         <td className="py-3 px-4">
                           <div className="text-white font-medium">{u.username}</div>
                           <div className="text-gray-500 text-xs sm:hidden">{u.email}</div>
                         </td>
                         <td className="py-3 px-4 text-gray-400 hidden sm:table-cell">{u.email}</td>
                         <td className="py-3 px-4 text-right">
-                          <span className="text-blue-400">{formatCoins(u.balance)}</span>
+                          <span className="text-emerald-400 font-medium">{formatCoins(u.balance)}</span>
                         </td>
                         <td className="py-3 px-4 text-center">
                           {u.is_admin ? (
-                            <span className="text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded text-xs font-bold">ADMIN</span>
+                            <span className="inline-flex items-center gap-1 text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded text-xs font-bold">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                              ADMIN
+                            </span>
                           ) : (
                             <span className="text-gray-500 text-xs">Player</span>
                           )}
@@ -733,52 +746,30 @@ export default function AdminPage() {
                           {u.is_admin ? null : u.allowed === 1 ? (
                             <div className="flex flex-col items-center gap-0.5">
                               <span className="text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-xs font-medium">Banned</span>
-                              {u.banned_until ? (
-                                <span className="text-[10px] text-gray-500">until {new Date(u.banned_until).toLocaleDateString()}</span>
-                              ) : (
-                                <span className="text-[10px] text-gray-500">indefinite</span>
-                              )}
+                              {u.banned_until ? <span className="text-[10px] text-gray-500">until {new Date(u.banned_until).toLocaleDateString()}</span> : <span className="text-[10px] text-gray-500">indefinite</span>}
                             </div>
                           ) : (
-                            <span className="text-green-400 bg-green-400/10 px-2 py-0.5 rounded text-xs font-medium">Active</span>
+                            <span className="text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded text-xs font-medium">Active</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-center text-gray-400 text-sm">
-                          {u.is_admin ? null : (u.ban_count || 0)}
-                        </td>
+                        <td className="py-3 px-4 text-center text-gray-400 text-sm">{u.is_admin ? null : (u.ban_count || 0)}</td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             {!u.is_admin && (
                               u.allowed === 1 ? (
-                                <button onClick={() => handleUnbanUser(u.id)} className="text-green-400 hover:text-green-300 text-xs font-medium">
-                                  Unban
-                                </button>
+                                <button onClick={() => handleUnbanUser(u.id)} className="text-emerald-400 hover:text-emerald-300 text-xs font-medium transition-colors">Unban</button>
                               ) : (
-                                <button onClick={() => handleBanUser(u.id)} className="text-red-400 hover:text-red-300 text-xs font-medium">
-                                  Ban
-                                </button>
+                                <button onClick={() => handleBanUser(u.id)} className="text-red-400 hover:text-red-300 text-xs font-medium transition-colors">Ban</button>
                               )
                             )}
                             {giveCoinsUserId === u.id ? (
                               <div className="flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0.01"
-                                  value={giveCoinsAmount}
-                                  onChange={(e) => setGiveCoinsAmount(e.target.value)}
-                                  placeholder="c"
-                                  className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs"
-                                />
-                                <button onClick={() => handleGiveCoins(u.id)} disabled={givingCoins} className="text-green-400 hover:text-green-300 text-xs font-bold">
-                                  {givingCoins ? "..." : "Give"}
-                                </button>
-                                <button onClick={() => { setGiveCoinsUserId(null); setGiveCoinsAmount(""); }} className="text-gray-500 hover:text-white text-xs">X</button>
+                                <input type="number" step="0.01" min="0.01" value={giveCoinsAmount} onChange={(e) => setGiveCoinsAmount(e.target.value)} placeholder="c" className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs" />
+                                <button onClick={() => handleGiveCoins(u.id)} disabled={givingCoins} className="text-emerald-400 hover:text-emerald-300 text-xs font-bold transition-colors">{givingCoins ? "..." : "Give"}</button>
+                                <button onClick={() => { setGiveCoinsUserId(null); setGiveCoinsAmount(""); }} className="text-gray-500 hover:text-white text-xs transition-colors">X</button>
                               </div>
                             ) : (
-                              <button onClick={() => { setGiveCoinsUserId(u.id); setGiveCoinsAmount(""); }} className="text-gray-400 hover:text-green-400 text-xs font-medium">
-                                + Coins
-                              </button>
+                              <button onClick={() => { setGiveCoinsUserId(u.id); setGiveCoinsAmount(""); }} className="text-gray-400 hover:text-emerald-400 text-xs font-medium transition-colors">+ Coins</button>
                             )}
                           </div>
                         </td>
@@ -790,7 +781,17 @@ export default function AdminPage() {
               </div>
               {filteredUsers.length === 0 && (
                 <div className="text-center text-gray-500 py-8">
-                  {userSearch || userBanFilter !== "all" ? "No users match your filters" : "No users yet"}
+                  {userSearch || userBanFilter !== "all" ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <svg className="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+                      <span>No users match your filters</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <svg className="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      <span>No users yet</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -800,133 +801,100 @@ export default function AdminPage() {
         {activeTab === "settings" && (
           <div className="space-y-6">
             {/* Emergency Close */}
-            <div className={`glass-card border ${tradingSettings.emergency_close ? "border-red-500/40" : "border-orange-500/20"}`}>
-              <div className="flex items-center justify-between">
+            <div className={`rounded-xl border p-5 ${tradingSettings.emergency_close ? "border-red-500/30 bg-gradient-to-br from-red-950/20 to-gray-950/40" : "border-orange-500/20 bg-gradient-to-br from-orange-950/10 to-gray-950/40"}`}>
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <h3 className="text-white font-semibold">
-                    {tradingSettings.emergency_close ? (
-                      <span className="text-red-400">⚠️ Emergency Close Active</span>
-                    ) : (
-                      "Emergency Session Close"
-                    )}
-                  </h3>
-                  <p className="text-gray-400 text-sm mt-1">Immediately closes the market and shows a maintenance message to all users</p>
-                  {tradingSettings.emergency_close === 1 && (
-                    <p className="text-red-400 text-xs mt-1">Market is currently in emergency maintenance mode</p>
-                  )}
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className={`w-5 h-5 ${tradingSettings.emergency_close ? "text-red-400" : "text-orange-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                    <h3 className={`font-semibold ${tradingSettings.emergency_close ? "text-red-300" : "text-white"}`}>
+                      {tradingSettings.emergency_close ? "Emergency Close Active" : "Emergency Session Close"}
+                    </h3>
+                  </div>
+                  <p className="text-gray-400 text-sm">Immediately closes the market and shows a maintenance message to all users</p>
+                  {tradingSettings.emergency_close === 1 && <p className="text-red-400 text-xs mt-1">Market is currently in emergency maintenance mode</p>}
                 </div>
                 <button
                   onClick={() => handleEmergencyClose(tradingSettings.emergency_close !== 1)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    tradingSettings.emergency_close
-                      ? "bg-green-600/90 hover:bg-green-700 text-white"
-                      : "bg-red-600/90 hover:bg-red-700 text-white"
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 ${
+                    tradingSettings.emergency_close ? "bg-emerald-600/80 hover:bg-emerald-600 text-white" : "bg-red-600/80 hover:bg-red-600 text-white"
                   }`}
                 >
                   {tradingSettings.emergency_close ? "Reopen Market" : "Emergency Close"}
                 </button>
               </div>
               {tradingSettings.emergency_close === 1 && (
-                <div className="mt-4">
+                <div className="mt-4 pt-4 border-t border-red-500/20">
                   <label className="text-xs text-gray-400 mb-1 block">Maintenance Message</label>
                   <div className="flex gap-2">
-                    <input
-                      value={tradingSettings.emergency_message}
-                      onChange={(e) => setTradingSettings({ ...tradingSettings, emergency_message: e.target.value })}
-                      className="input-field flex-1"
-                      placeholder="Markets under maintenance"
-                    />
-                    <button
-                      onClick={handleSaveTrading}
-                      disabled={savingTrading}
-                      className="btn-primary text-sm"
-                    >
-                      {savingTrading ? "Saving..." : "Save"}
-                    </button>
+                    <input value={tradingSettings.emergency_message} onChange={(e) => setTradingSettings({ ...tradingSettings, emergency_message: e.target.value })} className="input-field flex-1" placeholder="Markets under maintenance" />
+                    <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save"}</button>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Bot Activity */}
-            <div className="glass-card border-cyan-500/20">
-              <div className="flex items-center justify-between">
+            <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/10 to-gray-950/40 p-5">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <h3 className="text-white font-semibold">Bot Activity</h3>
-                  <p className="text-gray-400 text-sm mt-1">AI bots simulate trading activity to make the market feel alive</p>
-                  <p className="text-gray-500 text-xs mt-1">3 bots: BotAlpha (conservative), BotBeta (balanced), BotCharlie (aggressive)</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    <h3 className="text-white font-semibold">Bot Activity</h3>
+                  </div>
+                  <p className="text-gray-400 text-sm">AI bots simulate trading activity to make the market feel alive</p>
+                  <p className="text-gray-500 text-xs mt-1">25 bots (BotAlpha–BotYankee) with 5000c starting cash each</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                   <button
                     onClick={async () => {
                       const newEnabled = tradingSettings.bots_enabled ? 0 : 1;
                       const newSettings = { ...tradingSettings, bots_enabled: newEnabled };
                       setTradingSettings(newSettings);
-                      await fetch("/api/admin/settings", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(newSettings),
-                      });
+                      await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newSettings) });
                       showToast(newEnabled ? "Bots enabled" : "Bots disabled", "success");
                     }}
-                    className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${
-                      tradingSettings.bots_enabled ? "bg-cyan-600" : "bg-gray-700"
-                    }`}
+                    className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${tradingSettings.bots_enabled ? "bg-cyan-600" : "bg-gray-700"}`}
                   >
-                    <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform duration-300 ${
-                      tradingSettings.bots_enabled ? "translate-x-7" : "translate-x-0.5"
-                    }`} />
+                    <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform duration-300 ${tradingSettings.bots_enabled ? "translate-x-7" : "translate-x-0.5"}`} />
                   </button>
-                  <span className={`text-sm font-medium ${tradingSettings.bots_enabled ? "text-cyan-400" : "text-gray-500"}`}>
-                    {tradingSettings.bots_enabled ? "ON" : "OFF"}
-                  </span>
+                  <span className={`text-sm font-medium ${tradingSettings.bots_enabled ? "text-cyan-400" : "text-gray-500"}`}>{tradingSettings.bots_enabled ? "ON" : "OFF"}</span>
                 </div>
               </div>
             </div>
 
             {/* Trading Hours */}
-            <div className="glass-card border-purple-500/20">
-              <h3 className="text-white font-semibold mb-4">Trading Hours</h3>
+            <div className="rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-950/10 to-gray-950/40 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <h3 className="text-white font-semibold">Trading Hours</h3>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Trading Status</label>
-                  <select
-                    value={tradingSettings.trading_enabled}
-                    onChange={(e) => setTradingSettings({ ...tradingSettings, trading_enabled: Number(e.target.value) })}
-                    className="input-field"
-                  >
+                  <select value={tradingSettings.trading_enabled} onChange={(e) => setTradingSettings({ ...tradingSettings, trading_enabled: Number(e.target.value) })} className="input-field">
                     <option value={1}>Open</option>
                     <option value={0}>Closed (Admin Lock)</option>
                   </select>
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Open Hour (0-23)</label>
-                  <input
-                    type="number" min="0" max="23"
-                    value={tradingSettings.trading_open_hour}
-                    onChange={(e) => setTradingSettings({ ...tradingSettings, trading_open_hour: Number(e.target.value) })}
-                    className="input-field"
-                  />
+                  <input type="number" min="0" max="23" value={tradingSettings.trading_open_hour} onChange={(e) => setTradingSettings({ ...tradingSettings, trading_open_hour: Number(e.target.value) })} className="input-field" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Close Hour (1-24)</label>
-                  <input
-                    type="number" min="1" max="24"
-                    value={tradingSettings.trading_close_hour}
-                    onChange={(e) => setTradingSettings({ ...tradingSettings, trading_close_hour: Number(e.target.value) })}
-                    className="input-field"
-                  />
+                  <input type="number" min="1" max="24" value={tradingSettings.trading_close_hour} onChange={(e) => setTradingSettings({ ...tradingSettings, trading_close_hour: Number(e.target.value) })} className="input-field" />
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mb-3">Hours are in Australian Queensland time (AEST, UTC+10). Default: 0-24 (24/7).</p>
-              <button onClick={handleSaveTrading} disabled={savingTrading} className="btn-primary text-sm">
-                {savingTrading ? "Saving..." : "Save Trading Hours"}
-              </button>
+              <p className="text-xs text-gray-500 mb-4">Hours in Australian Queensland time (AEST, UTC+10). Default: 0-24 (24/7).</p>
+              <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save Trading Hours"}</button>
             </div>
 
             {/* Trading Days */}
-            <div className="glass-card border-blue-500/20">
-              <h3 className="text-white font-semibold mb-2">Trading Days</h3>
+            <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-950/10 to-gray-950/40 p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                <h3 className="text-white font-semibold">Trading Days</h3>
+              </div>
               <p className="text-gray-400 text-xs mb-4">Select which days the market can be open. Unchecked days force-close regardless of hours.</p>
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
@@ -948,9 +916,7 @@ export default function AdminPage() {
                         setTradingSettings({ ...tradingSettings, trading_days: updated.join(",") });
                       }}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
-                        enabled
-                          ? "bg-blue-600/20 border-blue-500/50 text-blue-400"
-                          : "bg-gray-800/50 border-gray-700/50 text-gray-500"
+                        enabled ? "bg-blue-600/20 border-blue-500/50 text-blue-400" : "bg-gray-800/50 border-gray-700/50 text-gray-500"
                       }`}
                     >
                       {day.label}
@@ -958,83 +924,49 @@ export default function AdminPage() {
                   );
                 })}
               </div>
-              <button onClick={handleSaveTrading} disabled={savingTrading} className="btn-primary text-sm">
-                {savingTrading ? "Saving..." : "Save Trading Days"}
-              </button>
+              <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save Trading Days"}</button>
             </div>
 
             {/* Custom Date Ranges */}
-            <div className="glass-card border-yellow-500/20">
-              <h3 className="text-white font-semibold mb-2">Custom Date Ranges</h3>
+            <div className="rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-950/10 to-gray-950/40 p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10v4M8 10v4M12 10v4M10 2v4M14 2v4" /></svg>
+                <h3 className="text-white font-semibold">Custom Date Ranges</h3>
+              </div>
               <p className="text-gray-400 text-xs mb-4">Set specific date ranges when the market should be closed. Higher priority than trading days/hours.</p>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Start Date</label>
-                  <input
-                    type="date"
-                    value={newDateRange.start_date}
-                    onChange={(e) => setNewDateRange({ ...newDateRange, start_date: e.target.value })}
-                    className="input-field"
-                  />
+                  <input type="date" value={newDateRange.start_date} onChange={(e) => setNewDateRange({ ...newDateRange, start_date: e.target.value })} className="input-field" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">End Date</label>
-                  <input
-                    type="date"
-                    value={newDateRange.end_date}
-                    onChange={(e) => setNewDateRange({ ...newDateRange, end_date: e.target.value })}
-                    className="input-field"
-                  />
+                  <input type="date" value={newDateRange.end_date} onChange={(e) => setNewDateRange({ ...newDateRange, end_date: e.target.value })} className="input-field" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Label (optional)</label>
-                  <input
-                    value={newDateRange.label}
-                    onChange={(e) => setNewDateRange({ ...newDateRange, label: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g. Holiday break"
-                  />
+                  <input value={newDateRange.label} onChange={(e) => setNewDateRange({ ...newDateRange, label: e.target.value })} className="input-field" placeholder="e.g. Holiday break" />
                 </div>
               </div>
-              <button
-                onClick={handleAddDateRange}
-                disabled={savingDate || !newDateRange.start_date || !newDateRange.end_date}
-                className="btn-success text-sm"
-              >
-                {savingDate ? "Adding..." : "Add Date Range"}
-              </button>
+              <button onClick={handleAddDateRange} disabled={savingDate || !newDateRange.start_date || !newDateRange.end_date} className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors disabled:opacity-50">{savingDate ? "Adding..." : "Add Date Range"}</button>
 
               {customDates.length > 0 && (
                 <div className="mt-4 space-y-2">
                   {customDates.map((range) => (
-                    <div key={range.id} className="flex items-center justify-between py-3 px-4 bg-gray-800/50 rounded-lg">
+                    <div key={range.id} className="flex items-center justify-between py-3 px-4 bg-gray-800/40 rounded-lg border border-gray-800/60 hover:border-gray-700 transition-colors">
                       <div className="flex items-center gap-3">
                         <span className={`w-2 h-2 rounded-full ${range.enabled ? "bg-red-400" : "bg-gray-600"}`} />
                         <div>
-                          <div className="text-white text-sm">
-                            {range.start_date} → {range.end_date}
-                          </div>
-                          {range.label && (
-                            <div className="text-xs text-gray-400">{range.label}</div>
-                          )}
+                          <div className="text-white text-sm">{range.start_date} → {range.end_date}</div>
+                          {range.label && <div className="text-xs text-gray-400">{range.label}</div>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleToggleDateRange(range.id, range.enabled)}
-                          className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
-                            range.enabled ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30" : "bg-gray-700 text-gray-400 hover:bg-gray-600"
-                          }`}
-                        >
+                        <button onClick={() => handleToggleDateRange(range.id, range.enabled)} className={`text-xs font-medium px-2 py-1 rounded transition-colors ${range.enabled ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30" : "bg-gray-700 text-gray-400 hover:bg-gray-600"}`}>
                           {range.enabled ? "Enabled" : "Disabled"}
                         </button>
-                        <button
-                          onClick={() => handleDeleteDateRange(range.id)}
-                          className="text-red-400 hover:text-red-300 text-xs font-medium px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 transition-colors"
-                        >
-                          Delete
-                        </button>
+                        <button onClick={() => handleDeleteDateRange(range.id)} className="text-red-400 hover:text-red-300 text-xs font-medium px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 transition-colors">Delete</button>
                       </div>
                     </div>
                   ))}

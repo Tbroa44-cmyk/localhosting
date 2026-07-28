@@ -107,17 +107,13 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
-      id: number; balance: number; is_admin: any;
+      id: number; balance: number;
     } | undefined;
 
     if (!user) throw new Error("User not found");
-    const isAdmin = !!user.is_admin;
-
-    if (!isAdmin) {
-      const buyerBalance = Number(user.balance) || 0;
-      if (buyerBalance < company.share_price) {
-        throw new Error(`Insufficient balance. You need at least ${formatCoins(company.share_price)} but have ${formatCoins(buyerBalance)}`);
-      }
+    const buyerBalance = Number(user.balance) || 0;
+    if (buyerBalance < company.share_price) {
+      throw new Error(`Insufficient balance. You need at least ${formatCoins(company.share_price)} but have ${formatCoins(buyerBalance)}`);
     }
 
     if (!(await isTradingOpen(db))) {
@@ -140,10 +136,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
       const sellerRevenue = cost - taxAmount;
 
-      const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number; is_admin: any };
-      if (!seller.is_admin) {
-        await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
-      }
+      const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number };
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
       await addToBankFund(db, taxAmount);
 
       try {
@@ -183,13 +177,9 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 
       let autoFillQty = 0;
       if (availableShares > 0) {
-        autoFillQty = Math.min(remaining, availableShares);
-        if (!isAdmin) {
-          const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-          const canAfford = Math.floor((bal.balance - totalCost) / company.share_price);
-          if (canAfford <= 0) autoFillQty = 0;
-          else autoFillQty = Math.min(autoFillQty, canAfford);
-        }
+        const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+        const canAfford = Math.floor((bal.balance - totalCost) / company.share_price);
+        autoFillQty = Math.min(remaining, availableShares, canAfford > 0 ? canAfford : 0);
       }
 
       if (autoFillQty > 0) {
@@ -214,10 +204,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     let pendingShares = 0;
     if (remaining > 0) {
       const pendingCost = company.share_price * remaining;
-      if (!isAdmin) {
-        const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-        if (bal.balance < totalCost + pendingCost) throw new Error("Insufficient balance");
-      }
+      const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+      if (bal.balance < totalCost + pendingCost) throw new Error("Insufficient balance");
       totalCost += pendingCost;
 
       await db.prepare(
@@ -231,7 +219,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       await addShares(db, userId, companyId, filledShares, "executeBuy_fill");
     }
 
-    if (!isAdmin && totalCost > 0) {
+    if (totalCost > 0) {
       const deductResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(totalCost, userId, totalCost);
       if (deductResult.changes === 0) {
         const currentBal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
@@ -246,10 +234,10 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
     if (pendingShares > 0) {
-      return { newBalance: isAdmin ? -1 : updatedUser.balance, newPrice: company.share_price, totalCost, filledShares, pendingShares, message: `Bought ${filledShares} shares, ${pendingShares} shares pending on market` };
+      return { newBalance: updatedUser.balance, newPrice: company.share_price, totalCost, filledShares, pendingShares, message: `Bought ${filledShares} shares, ${pendingShares} shares pending on market` };
     }
 
-    return { newBalance: isAdmin ? -1 : updatedUser.balance, newPrice: company.share_price, totalCost };
+    return { newBalance: updatedUser.balance, newPrice: company.share_price, totalCost };
   });
 
   const result = buyTransaction;
@@ -285,12 +273,8 @@ export async function executeSell(userId: number, companyId: number, shares: num
     const rawNewPrice = calculateSellPrice(company.share_price, shares, company.total_shares);
     const newPrice = applyPriceCap(company.share_price, rawNewPrice, shares, company.total_shares);
 
-    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number; is_admin: any };
-    const isAdmin = !!user.is_admin;
-
-    if (!isAdmin) {
-      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, userId);
-    }
+    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number };
+    await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, userId);
 
     await addToBankFund(db, taxAmount);
     await updateCompanyPrice(companyId, newPrice);
@@ -307,7 +291,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
 
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
-    return { newBalance: isAdmin ? -1 : updatedUser.balance, newPrice, totalRevenue, taxPaid: taxAmount };
+    return { newBalance: updatedUser.balance, newPrice, totalRevenue, taxPaid: taxAmount };
   });
 
   const result = sellTransaction;
@@ -336,21 +320,17 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     if (priceCents < 5) throw new Error("Price must be at least 0.05c");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
-      id: number; balance: number; is_admin: any;
+      id: number; balance: number;
     } | undefined;
 
     if (!user) throw new Error("User not found");
-    const isAdmin = !!user.is_admin;
 
     if (type === "buy") {
       const totalCost = priceCents * shares;
-
-      if (!isAdmin) {
-        const deductResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(totalCost, userId, totalCost);
-        if (deductResult.changes === 0) {
-          const currentBal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-          throw new Error(`Insufficient balance. Need ${formatCoins(totalCost)}, have ${formatCoins(currentBal?.balance || 0)}`);
-        }
+      const deductResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(totalCost, userId, totalCost);
+      if (deductResult.changes === 0) {
+        const currentBal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+        throw new Error(`Insufficient balance. Need ${formatCoins(totalCost)}, have ${formatCoins(currentBal?.balance || 0)}`);
       }
     }
 
@@ -436,10 +416,7 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
   const sellerRevenue = cost - taxAmount;
 
-  const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number; is_admin: any };
-  if (!seller.is_admin) {
-    await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
-  }
+  await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
   await addToBankFund(db, taxAmount);
 
   try {

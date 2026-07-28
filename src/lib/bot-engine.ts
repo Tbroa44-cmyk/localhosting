@@ -441,10 +441,7 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
       const taxAmount = Math.round(cost * 0.03);
       const sellerRevenue = cost - taxAmount;
 
-      const seller = await db.prepare("SELECT is_admin FROM users WHERE id = ?").get(sellOrder.user_id) as { is_admin: any } | undefined;
-      if (!seller?.is_admin) {
-        await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
-      }
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
 
       try {
         await removeShares(db, sellOrder.user_id, companyId, fillQty, "bot_buy_fill", sellOrder.id);
@@ -535,10 +532,7 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
       const taxAmount = Math.round(grossRevenue * 0.03);
       const netRevenue = grossRevenue - taxAmount;
 
-      const buyer = await db.prepare("SELECT is_admin FROM users WHERE id = ?").get(buyOrder.user_id) as { is_admin: any } | undefined;
-      if (!buyer?.is_admin) {
-        await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(netRevenue, buyOrder.user_id);
-      }
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(netRevenue, buyOrder.user_id);
 
       if (fillQty >= Number(buyOrder.shares)) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(buyOrder.id);
