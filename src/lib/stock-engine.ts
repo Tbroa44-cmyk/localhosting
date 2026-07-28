@@ -170,7 +170,6 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     const filledFromSells = shares - remaining;
     const buyImpactPrice = filledFromSells > 0 ? calculateBuyPrice(company.share_price, filledFromSells) : company.share_price;
     const afterFillPrice = await setPriceFromTrade(db, companyId, buyImpactPrice, filledFromSells > 0 ? filledFromSells : undefined);
-    await recordPriceHistory(db, companyId, afterFillPrice);
     company.share_price = afterFillPrice;
 
     if (remaining > 0) {
@@ -197,12 +196,9 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         await db.prepare(
           "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)"
         ).run(userId, companyId, autoFillQty, company.share_price, new Date().toISOString());
-        await recordPriceHistory(db, companyId, newAutoPrice);
         company.share_price = newAutoPrice;
       }
     }
-
-    await recordPriceHistory(db, companyId, company.share_price);
 
     let pendingShares = 0;
     if (remaining > 0) {
@@ -461,7 +457,6 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   const currentCompanyPrice = Number(row?.share_price) || fillPrice;
   const buyPressurePrice = calculateBuyPrice(currentCompanyPrice, fillQty);
   const newPrice = await setPriceFromTrade(db, buyOrder.company_id, buyPressurePrice, fillQty);
-  await recordPriceHistory(db, buyOrder.company_id, newPrice);
 
   await awardXP(db, buyOrder.user_id, fillQty * 1);
   await awardXP(db, sellOrder.user_id, fillQty * 2);

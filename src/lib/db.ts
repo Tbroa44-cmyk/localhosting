@@ -512,13 +512,15 @@ function getDbProxy() {
 export default getDbProxy;
 
 export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
+  let body: any = null;
   try {
-    let holderCount = 0;
+    body = { company_id: companyId, price, timestamp };
+
     try {
       const holdings = await restFetch(`/holdings?company_id=eq.${companyId}&shares_owned=gt.0&select=user_id`, {});
       if (Array.isArray(holdings)) {
         const uniqueUsers = new Set(holdings.map((h: any) => h.user_id));
-        holderCount = uniqueUsers.size;
+        body.holder_count = uniqueUsers.size;
       }
     } catch {
       console.error("[insertPriceHistory] holder_count lookup failed");
@@ -527,10 +529,21 @@ export async function insertPriceHistory(companyId: number, price: number, times
     await restFetch(`/price_history`, {
       method: "POST",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ company_id: companyId, price, timestamp, holder_count: holderCount }),
+      body: JSON.stringify(body),
     });
   } catch (e: any) {
-    console.error("[insertPriceHistory] FAILED:", e?.message);
+    try {
+      if (body) {
+        const { holder_count, ...fallbackBody } = body;
+        await restFetch(`/price_history`, {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(fallbackBody),
+        });
+      }
+    } catch (e2: any) {
+      console.error("[insertPriceHistory] FAILED:", e2?.message);
+    }
   }
 }
 
