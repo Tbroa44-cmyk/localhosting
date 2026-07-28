@@ -97,16 +97,16 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
 
   switch (filter) {
     case "1h":
-      bucketSize = 5 * 60 * 1000;
+      bucketSize = 60 * 1000;
       formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       break;
     case "1d":
-      bucketSize = 60 * 60 * 1000;
+      bucketSize = 10 * 60 * 1000;
       formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       break;
     case "7d":
-      bucketSize = 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      bucketSize = 60 * 60 * 1000;
+      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { weekday: "short", hour: "2-digit" });
       break;
     case "1m":
       bucketSize = 24 * 60 * 60 * 1000;
