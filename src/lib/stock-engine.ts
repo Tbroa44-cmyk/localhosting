@@ -71,6 +71,7 @@ export async function setPriceFromTrade(db: any, companyId: number, tradePrice: 
   const totalShares = row ? Number(row.total_shares) : undefined;
   const cappedPrice = applyPriceCap(currentPrice, tradePrice, tradeShares, totalShares);
   await updateCompanyPrice(companyId, cappedPrice);
+  await recordPriceHistory(db, companyId, cappedPrice);
   return cappedPrice;
 }
 
