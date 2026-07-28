@@ -513,10 +513,21 @@ export default getDbProxy;
 
 export async function insertPriceHistory(companyId: number, price: number, timestamp: number) {
   try {
+    let holderCount = 0;
+    try {
+      const holdings = await restFetch(`/holdings?company_id=eq.${companyId}&shares_owned=gt.0&select=user_id`, {});
+      if (Array.isArray(holdings)) {
+        const uniqueUsers = new Set(holdings.map((h: any) => h.user_id));
+        holderCount = uniqueUsers.size;
+      }
+    } catch {
+      console.error("[insertPriceHistory] holder_count lookup failed");
+    }
+
     await restFetch(`/price_history`, {
       method: "POST",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ company_id: companyId, price, timestamp }),
+      body: JSON.stringify({ company_id: companyId, price, timestamp, holder_count: holderCount }),
     });
   } catch (e: any) {
     console.error("[insertPriceHistory] FAILED:", e?.message);

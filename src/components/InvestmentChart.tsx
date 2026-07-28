@@ -92,7 +92,7 @@ export default function InvestmentChart({ trades, priceHistory, currentPrice }: 
     labels,
     datasets: [
       {
-        label: "Portfolio Value",
+        label: "Your Shares Total Value",
         data: valueData,
         borderColor: "#3b82f6",
         backgroundColor: "rgba(59,130,246,0.1)",
@@ -101,15 +101,6 @@ export default function InvestmentChart({ trades, priceHistory, currentPrice }: 
         pointRadius: 3,
         pointBackgroundColor: "#3b82f6",
         borderWidth: 2,
-      },
-      {
-        label: "Cost Basis",
-        data: avgCostData,
-        borderColor: "#6b7280",
-        borderDash: [5, 5],
-        pointRadius: 0,
-        borderWidth: 1,
-        fill: false,
       },
       {
         label: "Buys",
@@ -180,6 +171,7 @@ export default function InvestmentChart({ trades, priceHistory, currentPrice }: 
                   label: (ctx) => {
                     if (ctx.dataset.label === "Buys" && ctx.raw !== null) return `BUY @ ${formatCoins(confirmedTrades[ctx.dataIndex]?.price_per_share || 0)}`;
                     if (ctx.dataset.label === "Sells" && ctx.raw !== null) return `SELL @ ${formatCoins(confirmedTrades[ctx.dataIndex]?.price_per_share || 0)}`;
+                    if (ctx.dataset.label === "Your Shares Total Value") return `Value: ${formatCoins(ctx.raw as number)}`;
                     return `${ctx.dataset.label}: ${formatCoins(ctx.raw as number)}`;
                   },
                 },

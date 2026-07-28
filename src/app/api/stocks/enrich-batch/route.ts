@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
 
       const [allHistory, pendingSellRows, txCountRows] = await Promise.all([
-        db.prepare("SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(company.id) as Promise<any[]>,
+        db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(company.id) as Promise<any[]>,
         db.prepare("SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(company.id) as Promise<any[]>,
         db.prepare("SELECT id, type FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 500").all(company.id) as Promise<any[]>,
       ]);

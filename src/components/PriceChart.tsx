@@ -19,6 +19,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 interface PricePoint {
   price: number;
   timestamp: number;
+  holder_count?: number;
 }
 
 interface Transaction {
@@ -30,7 +31,7 @@ interface Transaction {
 }
 
 type TimeFilter = "1h" | "1d" | "7d" | "1m" | "6m" | "all";
-type ViewMode = "price" | "trades";
+type ViewMode = "price" | "trades" | "holders";
 
 const FILTER_OPTIONS: { key: TimeFilter; label: string; ms: number | null }[] = [
   { key: "1h", label: "1H", ms: 60 * 60 * 1000 },
@@ -129,14 +130,17 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
   const maxTime = Math.max(...filtered.map((t) => new Date(t.created_at).getTime()));
 
   const buckets = new Map<number, BucketData>();
+  let currentBucket = Math.floor(minTime / bucketSize) * bucketSize;
+  while (currentBucket <= maxTime) {
+    buckets.set(currentBucket, { buys: 0, sells: 0, buyTotalPrice: 0, sellTotalPrice: 0 });
+    currentBucket += bucketSize;
+  }
 
   for (const tx of filtered) {
     const txTime = new Date(tx.created_at).getTime();
-    const bucketStart = Math.floor((txTime - minTime) / bucketSize) * bucketSize + minTime;
-    if (!buckets.has(bucketStart)) {
-      buckets.set(bucketStart, { buys: 0, sells: 0, buyTotalPrice: 0, sellTotalPrice: 0 });
-    }
-    const bucket = buckets.get(bucketStart)!;
+    const bucketStart = Math.floor(txTime / bucketSize) * bucketSize;
+    const bucket = buckets.get(bucketStart);
+    if (!bucket) continue;
     const shares = Number(tx.shares) || 1;
     const price = Number(tx.price_per_share) || 0;
     if (String(tx.type).toLowerCase().includes("buy")) {
@@ -263,6 +267,39 @@ export default function PriceChart({
     };
   }, [groupedTrades]);
 
+  const holderChartData = useMemo(() => {
+    if (filteredData.length === 0) {
+      return {
+        labels: ["No data"],
+        datasets: [{ data: [0], borderColor: "#a78bfa", backgroundColor: "rgba(167, 139, 250, 0.1)", fill: true, tension: 0.4, pointRadius: 0 }],
+      };
+    }
+    const labels = filteredData.map((p) => {
+      const date = new Date(p.timestamp);
+      if (filter === "1h") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (filter === "1d") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (filter === "7d") return date.toLocaleDateString([], { weekday: "short", hour: "2-digit" });
+      return date.toLocaleDateString([], { month: "short", day: "numeric" });
+    });
+    const holders = filteredData.map((p) => p.holder_count ?? 0);
+    return {
+      labels,
+      datasets: [
+        {
+          label: "Holders",
+          data: holders,
+          borderColor: "#a78bfa",
+          backgroundColor: "rgba(167, 139, 250, 0.1)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: filteredData.length < 60 ? 2 : 0,
+          pointBackgroundColor: "#a78bfa",
+          borderWidth: 2,
+        },
+      ],
+    };
+  }, [filteredData, filter]);
+
   const yScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 1 };
     const prices = filteredData.map((p) => p.price / 100);
@@ -319,6 +356,62 @@ export default function PriceChart({
       },
     }),
     [yScale]
+  );
+
+  const holdersYScale = useMemo(() => {
+    if (filteredData.length === 0) return { min: 0, max: 10 };
+    const holders = filteredData.map((p) => p.holder_count ?? 0);
+    const minH = Math.min(...holders);
+    const maxH = Math.max(...holders);
+    const range = maxH - minH;
+    const padding = range > 0 ? Math.max(range * 0.15, 1) : 2;
+    return { min: Math.max(0, Math.floor(minH - padding)), max: Math.ceil(maxH + padding) };
+  }, [filteredData]);
+
+  const holdersOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: hasAnimated.current ? false : { duration: 800, easing: "easeOutQuart" } as any,
+      plugins: {
+        tooltip: {
+          backgroundColor: "rgba(0,0,0,0.8)",
+          titleColor: "#fff",
+          bodyColor: "#fff",
+          borderColor: "rgba(255,255,255,0.1)",
+          borderWidth: 1,
+          callbacks: {
+            label: (ctx: any) => `${ctx.parsed.y} holder${ctx.parsed.y !== 1 ? "s" : ""}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          display: true,
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: { color: "#6b7280", maxTicksLimit: 8, font: { size: 11 } },
+          border: { display: false },
+        },
+        y: {
+          display: true,
+          min: holdersYScale.min,
+          max: holdersYScale.max,
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: {
+            color: "#6b7280",
+            font: { size: 11 },
+            stepSize: 1,
+            callback: (val: any) => `${val}`,
+          },
+          border: { display: false },
+        },
+      },
+      interaction: {
+        intersect: false,
+        mode: "index" as const,
+      },
+    }),
+    [holdersYScale]
   );
 
   const tradeOptions = useMemo(
@@ -444,6 +537,16 @@ export default function PriceChart({
             >
               Trades
             </button>
+            <button
+              onClick={() => setViewMode("holders")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                viewMode === "holders"
+                  ? "bg-violet-600 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-700"
+              }`}
+            >
+              Holders
+            </button>
           </div>
           <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1">
             {FILTER_OPTIONS.map((opt) => (
@@ -465,6 +568,8 @@ export default function PriceChart({
       <div className="h-64 sm:h-80">
         {viewMode === "price" ? (
           <Line key={chartKey} data={priceChartData} options={priceOptions} />
+        ) : viewMode === "holders" ? (
+          <Line key={chartKey} data={holderChartData} options={holdersOptions} />
         ) : (
           <Bar key={chartKey} data={tradeChartData} options={tradeOptions} />
         )}
@@ -478,6 +583,14 @@ export default function PriceChart({
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
             <span className="text-gray-400">Sells ({totalSells})</span>
+          </div>
+        </div>
+      )}
+      {viewMode === "holders" && (
+        <div className="flex items-center justify-center gap-4 mt-2 text-xs flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "#a78bfa" }} />
+            <span className="text-gray-400">Holders over time</span>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import getDb from "@/lib/db";
 import { isTradingOpen } from "@/lib/trading-hours";
+import { addShares, removeShares, getHolding } from "@/lib/holdings";
 
 const BOT_INITIAL_CASH = 5000;
 const BOT_COOLDOWN_MS = 10000;
@@ -128,12 +129,7 @@ async function seedBotShares(db: any, botId: number, botIndex: number) {
 
     await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(cost, botId);
 
-    const existing = await db.prepare("SELECT id FROM holdings WHERE user_id = ? AND company_id = ?").get(botId, company.id) as { id: number } | undefined;
-    if (existing) {
-      await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(shares, existing.id);
-    } else {
-      await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(botId, company.id, shares);
-    }
+    await addShares(db, botId, company.id, shares, "bot_market_buy");
 
     await db.prepare(
       "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
@@ -450,14 +446,15 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
         await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
       }
 
-      const sellerHolding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, companyId) as { id: number; shares_owned: number } | undefined;
-      if (sellerHolding) {
-        if (sellerHolding.shares_owned <= fillQty) {
-          await db.prepare("DELETE FROM holdings WHERE id = ?").run(sellerHolding.id);
-        } else {
-          await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(fillQty, sellerHolding.id);
-        }
+      try {
+        await removeShares(db, sellOrder.user_id, companyId, fillQty, "bot_buy_fill", sellOrder.id);
+      } catch (e: any) {
+        console.error(`Bot buy seller holding error:`, e?.message || e);
       }
+
+      await db.prepare(
+        "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
+      ).run(sellOrder.user_id, companyId, fillQty, fillPrice, sellerRevenue);
 
       if (fillQty >= Number(sellOrder.shares)) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(sellOrder.id);
@@ -556,6 +553,8 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
 
       await db.prepare("INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)").run(botId, companyId, fillQty, fillPrice, grossRevenue);
       await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, 'filled', ?)").run(botId, companyId, fillQty, fillPrice, new Date().toISOString());
+
+      await db.prepare("INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)").run(buyOrder.user_id, companyId, fillQty, fillPrice, grossRevenue);
 
       remaining -= fillQty;
       filledShares += fillQty;

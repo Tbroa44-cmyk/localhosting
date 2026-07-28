@@ -1,6 +1,7 @@
 import getDb, { insertPriceHistory, updateCompanyPrice } from "@/lib/db";
 import { formatCoins } from "@/lib/format";
 import { isTradingOpen as isTradingOpenCore } from "@/lib/trading-hours";
+import { addShares, removeShares, getHolding } from "@/lib/holdings";
 
 const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
@@ -145,15 +146,10 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       }
       await addToBankFund(db, taxAmount);
 
-      const sellerHolding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, companyId) as
-        | { id: number; shares_owned: number } | undefined;
-
-      if (sellerHolding) {
-        if (sellerHolding.shares_owned <= fillQty) {
-          await db.prepare("DELETE FROM holdings WHERE id = ?").run(sellerHolding.id);
-        } else {
-          await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(fillQty, sellerHolding.id);
-        }
+      try {
+        await removeShares(db, sellOrder.user_id, companyId, fillQty, "executeBuy_sell_fill", sellOrder.id);
+      } catch (e: any) {
+        console.error(`Seller holding error (user ${sellOrder.user_id}, company ${companyId}):`, e?.message || e);
       }
 
       if (fillQty >= sellOrder.shares) {
@@ -232,15 +228,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 
     const filledShares = shares - pendingShares;
     if (filledShares > 0) {
-      const existingHolding = await db.prepare(
-        "SELECT id FROM holdings WHERE user_id = ? AND company_id = ?"
-      ).get(userId, companyId) as { id: number } | undefined;
-
-      if (existingHolding) {
-        await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(filledShares, existingHolding.id);
-      } else {
-        await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(userId, companyId, filledShares);
-      }
+      await addShares(db, userId, companyId, filledShares, "executeBuy_fill");
     }
 
     if (!isAdmin && totalCost > 0) {
@@ -307,11 +295,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
     await addToBankFund(db, taxAmount);
     await updateCompanyPrice(companyId, newPrice);
 
-    if (holding.shares_owned === shares) {
-      await db.prepare("DELETE FROM holdings WHERE id = ?").run(holding.id);
-    } else {
-      await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(shares, holding.id);
-    }
+    await removeShares(db, userId, companyId, shares, "executeSell");
 
     await db.prepare(
       "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
@@ -458,25 +442,13 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   }
   await addToBankFund(db, taxAmount);
 
-  const sellerHolding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, buyOrder.company_id) as
-    | { id: number; shares_owned: number } | undefined;
-
-  if (sellerHolding) {
-    if (sellerHolding.shares_owned <= fillQty) {
-      await db.prepare("DELETE FROM holdings WHERE id = ?").run(sellerHolding.id);
-    } else {
-      await db.prepare("UPDATE holdings SET shares_owned = shares_owned - ? WHERE id = ?").run(fillQty, sellerHolding.id);
-    }
+  try {
+    await removeShares(db, sellOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_sell", sellOrder.id);
+  } catch (e: any) {
+    console.error(`fillOrderPair seller holding error:`, e?.message || e);
   }
 
-  const buyerHolding = await db.prepare("SELECT id FROM holdings WHERE user_id = ? AND company_id = ?").get(buyOrder.user_id, buyOrder.company_id) as
-    | { id: number } | undefined;
-
-  if (buyerHolding) {
-    await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(fillQty, buyerHolding.id);
-  } else {
-    await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(buyOrder.user_id, buyOrder.company_id, fillQty);
-  }
+  await addShares(db, buyOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_buy", buyOrder.id);
 
   const reserved = buyOrder.price_per_share * fillQty;
   if (cost < reserved) {
@@ -486,6 +458,10 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   await db.prepare(
     "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'trade', ?, ?, ?)"
   ).run(buyOrder.user_id, buyOrder.company_id, fillQty, fillPrice, cost);
+
+  await db.prepare(
+    "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
+  ).run(sellOrder.user_id, buyOrder.company_id, fillQty, fillPrice, sellerRevenue);
 
   if (fillQty >= buyOrder.shares) {
     await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(buyOrder.id);

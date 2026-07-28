@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const basePrice = Number((company as any).share_price) || 0;
 
     const [priceHistoryResult, pendingSellRowsResult, session] = await Promise.all([
-      db.prepare("SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
+      db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
       db.prepare("SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(id),
       getServerSession(authOptions),
     ]);
