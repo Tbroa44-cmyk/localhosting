@@ -16,9 +16,9 @@ export async function GET() {
 
     let users: any[] = [];
     try {
-      const rawUsers = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
+      const rawUsers = await db.prepare("SELECT id, username, email, balance, is_admin, allowed, role, ban_count, banned_until, created_at FROM users ORDER BY created_at DESC").all() as any[];
       users = (Array.isArray(rawUsers) ? rawUsers : []).map((u: any) => ({
-        ...u,
+        id: u.id, username: u.username, email: u.email, balance: u.balance, is_admin: u.is_admin, created_at: u.created_at,
         allowed: u.allowed ?? 0,
         role: u.role ?? "user",
         ban_count: u.ban_count ?? 0,
@@ -26,7 +26,12 @@ export async function GET() {
       }));
     } catch (e: any) {
       console.error("Failed to fetch users:", e?.message);
-      users = [];
+      try {
+        const rawUsers = await db.prepare("SELECT id, username, email, balance, is_admin, created_at FROM users ORDER BY created_at DESC").all() as any[];
+        users = (Array.isArray(rawUsers) ? rawUsers : []).map((u: any) => ({
+          ...u, allowed: 0, role: "user", ban_count: 0, banned_until: null,
+        }));
+      } catch {}
     }
 
     let companies: any[] = [];
