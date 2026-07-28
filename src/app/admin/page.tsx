@@ -371,35 +371,6 @@ export default function AdminPage() {
     });
   }
 
-  const [migrating, setMigrating] = useState(false);
-  const [resettingBalances, setResettingBalances] = useState(false);
-
-  async function handleMigrateBots() {
-    setMigrating(true);
-    try {
-      const res = await fetch("/api/admin/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "migrate-bots" }) });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(`Migrated ${data.renamed} bots renamed, ${data.roleUpdated} roles updated`, "success");
-        fetchAdminData();
-      } else showToast(data.error || "Failed", "error");
-    } catch { showToast("Migration failed", "error"); }
-    finally { setMigrating(false); }
-  }
-
-  async function handleResetBalances() {
-    openConfirm("Reset Balances", "Reset ALL users to 10c and bots to 50c?", true, async () => {
-      setResettingBalances(true);
-      try {
-        const res = await fetch("/api/admin/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset-balances" }) });
-        const data = await res.json();
-        if (res.ok) { showToast(data.message, "success"); fetchAdminData(); }
-        else showToast(data.error || "Failed", "error");
-      } catch { showToast("Reset failed", "error"); }
-      finally { setResettingBalances(false); }
-    });
-  }
-
   async function handleResetMarket() {
     openConfirm("Reset Market", "This will DELETE all user holdings and reset all company prices. This cannot be undone. Continue?", true, async () => {
       setResetting(true);
@@ -535,18 +506,6 @@ export default function AdminPage() {
               <div className="glass-card">
                 <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Bank Fund (3% Tax)</div>
                 <div className="text-3xl font-bold text-amber-400">{formatCoins(stats.bankFund)}</div>
-              </div>
-            </div>
-
-            <div className="glass-card border-violet-500/20">
-              <h3 className="text-white font-semibold mb-3">Maintenance</h3>
-              <div className="flex flex-wrap gap-3">
-                <button onClick={handleMigrateBots} disabled={migrating} className="bg-violet-600/80 hover:bg-violet-600 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 text-sm">
-                  {migrating ? "Migrating..." : "Migrate Bots (BotAlpha→Bot1)"}
-                </button>
-                <button onClick={handleResetBalances} disabled={resettingBalances} className="bg-amber-600/80 hover:bg-amber-600 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 text-sm">
-                  {resettingBalances ? "Resetting..." : "Reset All Balances (10c/50c)"}
-                </button>
               </div>
             </div>
 
@@ -855,23 +814,8 @@ export default function AdminPage() {
                       const newEnabled = tradingSettings.bots_enabled ? 0 : 1;
                       const newSettings = { ...tradingSettings, bots_enabled: newEnabled };
                       setTradingSettings(newSettings);
-
-                      if (!newEnabled) {
-                        try {
-                          await fetch("/api/admin/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "liquidate-bots" }) });
-                        } catch {}
-                      }
-
                       await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newSettings) });
-
-                      if (newEnabled) {
-                        try {
-                          await fetch("/api/admin/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset-balances" }) });
-                        } catch {}
-                      }
-
-                      showToast(newEnabled ? "Bots enabled (balances reset to 50c)" : "Bots disabled (holdings liquidated)", "success");
-                      fetchAdminData();
+                      showToast(newEnabled ? "Bots enabled" : "Bots disabled", "success");
                     }}
                     className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${tradingSettings.bots_enabled ? "bg-cyan-600" : "bg-gray-700"}`}
                   >
