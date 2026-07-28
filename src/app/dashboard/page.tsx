@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import StockCard from "@/components/StockCard";
 import Navbar from "@/components/Navbar";
@@ -9,81 +9,73 @@ import PageBackground from "@/components/PageBackground";
 
 type SortKey = "name" | "price-asc" | "price-desc" | "day-asc" | "day-desc" | "month-asc" | "month-desc" | "holders" | "buyers" | "sellers";
 
-function SkeletonCard({ index }: { index: number }) {
-  return (
-    <div className="glass-card overflow-hidden animate-pulse" style={{ animationDelay: `${Math.min(index * 40, 300)}ms` }}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-lg bg-gray-700/50" />
-          <div>
-            <div className="h-4 w-16 bg-gray-700/50 rounded mb-2" />
-            <div className="h-3 w-24 bg-gray-700/30 rounded" />
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="h-6 w-16 bg-gray-700/50 rounded mb-2 ml-auto" />
-          <div className="h-4 w-12 bg-gray-700/30 rounded ml-auto" />
-        </div>
-      </div>
-      <div className="h-[60px] bg-gray-700/30 rounded mb-4" />
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="text-center"><div className="h-4 bg-gray-700/40 rounded mb-1 mx-auto w-8" /><div className="h-3 bg-gray-700/20 rounded mx-auto w-12" /></div>
-        <div className="text-center"><div className="h-4 bg-gray-700/40 rounded mb-1 mx-auto w-8" /><div className="h-3 bg-gray-700/20 rounded mx-auto w-12" /></div>
-        <div className="text-center"><div className="h-4 bg-gray-700/40 rounded mb-1 mx-auto w-8" /><div className="h-3 bg-gray-700/20 rounded mx-auto w-12" /></div>
-      </div>
-      <div className="flex gap-2">
-        <div className="flex-1 h-10 bg-gray-700/40 rounded-lg" />
-        <div className="flex-1 h-10 bg-gray-700/30 rounded-lg" />
-      </div>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [companies, setCompanies] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [isBanned, setIsBanned] = useState(false);
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
   const [userHoldings, setUserHoldings] = useState<Record<number, number>>({});
-  const [cardsRevealed, setCardsRevealed] = useState(false);
-  const prevCountRef = useRef(0);
-
-  function loadHoldings() {
-    fetch("/api/portfolio").then(r => r.json()).then(data => {
-      const map: Record<number, number> = {};
-      if (Array.isArray(data.holdings)) {
-        for (const h of data.holdings) {
-          map[h.company_id] = h.shares_owned;
-        }
-      }
-      setUserHoldings(map);
-    }).catch(() => {});
-  }
 
   useEffect(() => {
-    function loadStocks() {
-      fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
-        .then((r) => r.json())
-        .then((data) => {
-          const list = Array.isArray(data) ? data : [];
-          const isNewLoad = companies.length === 0;
-          setCompanies(list);
-          setLoading(false);
-          if (isNewLoad && list.length > 0) {
-            setCardsRevealed(true);
-          }
-        })
-        .catch(() => { setCompanies([]); setLoading(false); });
+    async function loadAll() {
+      const [stocksRes, portfolioRes] = await Promise.all([
+        fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } }).then(r => r.json()).catch(() => []),
+        fetch("/api/portfolio").then(r => r.json()).catch(() => null),
+      ]);
+
+      if (Array.isArray(stocksRes)) {
+        setCompanies(stocksRes);
+      }
+
+      if (portfolioRes && Array.isArray(portfolioRes.holdings)) {
+        const map: Record<number, number> = {};
+        for (const h of portfolioRes.holdings) {
+          map[h.company_id] = h.shares_owned;
+        }
+        setUserHoldings(map);
+      }
+
+      setInitialLoading(false);
     }
-    loadStocks();
-    const interval = setInterval(loadStocks, 15000);
+
+    loadAll();
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+          .then(r => r.json())
+          .then(data => { if (Array.isArray(data)) setCompanies(data); })
+          .catch(() => {});
+        if (status === "authenticated") {
+          fetch("/api/portfolio").then(r => r.json()).then(data => {
+            if (data && Array.isArray(data.holdings)) {
+              const map: Record<number, number> = {};
+              for (const h of data.holdings) map[h.company_id] = h.shares_owned;
+              setUserHoldings(map);
+            }
+          }).catch(() => {});
+        }
+      }
+    }, 15000);
+
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        loadStocks();
-        if (status === "authenticated") loadHoldings();
+        fetch(`/api/stocks`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
+          .then(r => r.json())
+          .then(data => { if (Array.isArray(data)) setCompanies(data); })
+          .catch(() => {});
+        if (status === "authenticated") {
+          fetch("/api/portfolio").then(r => r.json()).then(data => {
+            if (data && Array.isArray(data.holdings)) {
+              const map: Record<number, number> = {};
+              for (const h of data.holdings) map[h.company_id] = h.shares_owned;
+              setUserHoldings(map);
+            }
+          }).catch(() => {});
+        }
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -99,10 +91,6 @@ export default function DashboardPage() {
 
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
-
-  useEffect(() => {
-    if (status === "authenticated") loadHoldings();
-  }, [status]);
 
   const filtered = useMemo(() => {
     let list = [...companies];
@@ -161,23 +149,14 @@ export default function DashboardPage() {
 
   const isFiltering = search.trim().length > 0 || sortBy !== "name";
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="min-h-screen">
         <PageBackground variant="market" />
         <Navbar />
         <div className="max-w-7xl mx-auto px-6 py-12">
-          <div className="mb-8">
-            <div className="h-10 w-48 bg-gray-700/40 rounded-lg animate-pulse mb-2" />
-            <div className="h-5 w-64 bg-gray-700/30 rounded animate-pulse" />
-          </div>
-          <div className="mb-8">
-            <div className="h-14 w-full bg-gray-700/30 rounded-xl animate-pulse" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 18 }).map((_, i) => (
-              <SkeletonCard key={i} index={i} />
-            ))}
+          <div className="flex items-center justify-center h-64">
+            <MarketLoader text="Loading markets..." />
           </div>
         </div>
       </div>
