@@ -137,15 +137,17 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
       const sellerRevenue = cost - taxAmount;
 
+      const sellerHolding = await db.prepare("SELECT shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, companyId) as { shares_owned: number } | undefined;
+      if (!sellerHolding || Number(sellerHolding.shares_owned) < fillQty) {
+        console.warn(`Seller ${sellOrder.user_id} lacks ${fillQty} shares of ${companyId}, skipping sell order ${sellOrder.id}`);
+        continue;
+      }
+
       const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number };
       await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
       await addToBankFund(db, taxAmount);
 
-      try {
-        await removeShares(db, sellOrder.user_id, companyId, fillQty, "executeBuy_sell_fill", sellOrder.id);
-      } catch (e: any) {
-        console.error(`Seller holding error (user ${sellOrder.user_id}, company ${companyId}):`, e?.message || e);
-      }
+      await removeShares(db, sellOrder.user_id, companyId, fillQty, "executeBuy_sell_fill", sellOrder.id);
 
       if (fillQty >= sellOrder.shares) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(sellOrder.id);
@@ -417,14 +419,16 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
   const sellerRevenue = cost - taxAmount;
 
+  const sellerHolding = await db.prepare("SELECT shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, buyOrder.company_id) as { shares_owned: number } | undefined;
+  if (!sellerHolding || Number(sellerHolding.shares_owned) < fillQty) {
+    console.warn(`fillOrderPair: seller ${sellOrder.user_id} lacks ${fillQty} shares of ${buyOrder.company_id}, skipping`);
+    return;
+  }
+
   await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
   await addToBankFund(db, taxAmount);
 
-  try {
-    await removeShares(db, sellOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_sell", sellOrder.id);
-  } catch (e: any) {
-    console.error(`fillOrderPair seller holding error:`, e?.message || e);
-  }
+  await removeShares(db, sellOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_sell", sellOrder.id);
 
   await addShares(db, buyOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_buy", buyOrder.id);
 
