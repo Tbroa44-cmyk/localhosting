@@ -44,26 +44,19 @@ export async function POST(request: NextRequest) {
 
     const r = result as any;
     if (r && !r.duplicate && (r.filledShares || 0) > 0) {
-      const holdings = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE user_id = ? AND company_id = ?").all(userId, companyId) as any[];
-      const actualShares = Number(holdings?.[0]?.total || 0);
+      const holdingRows = await db.prepare("SELECT shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").all(userId, companyId) as any[];
+      const actualShares = (Array.isArray(holdingRows) ? holdingRows : []).reduce((s: number, h: any) => s + Number(h.shares_owned || 0), 0);
       if (actualShares < (r.filledShares || 0)) {
         console.warn(`[Buy] holdings missing! Expected ${r.filledShares}, got ${actualShares}. Healing...`);
-        const existing = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").all(userId, companyId) as any[];
-        if (existing.length > 0) {
-          const total = existing.reduce((s: number, r: any) => s + Number(r.shares_owned || 0), 0);
-          const keepId = existing[0].id;
-          for (let i = 1; i < existing.length; i++) {
-            await db.prepare("DELETE FROM holdings WHERE id = ?").run(existing[i].id);
-          }
-          const newTotal = total + (r.filledShares || 0) - actualShares;
+        if (holdingRows.length > 0) {
+          const keepId = holdingRows[0].id;
+          const newTotal = actualShares + (r.filledShares || 0) - actualShares;
           await db.prepare("UPDATE holdings SET shares_owned = ? WHERE id = ?").run(newTotal, keepId);
         } else {
           await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(userId, companyId, r.filledShares || 0);
         }
-        r.shares_actual = (r.filledShares || 0);
-      } else {
-        r.shares_actual = actualShares;
       }
+      r.shares_actual = Math.max(actualShares, r.filledShares || 0);
     }
 
     return NextResponse.json(result);

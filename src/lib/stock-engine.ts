@@ -121,6 +121,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price);
     }
 
+    await db.prepare("UPDATE orders SET price_per_share = ? WHERE company_id = ? AND status = 'pending' AND price_per_share != ?").run(company.share_price, companyId, company.share_price);
+
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND user_id != ? ORDER BY price_per_share ASC, created_at ASC"
     ).all(companyId, userId) as any[];
@@ -243,13 +245,13 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
   return result;
 }
 
-export async function executeSell(userId: number, companyId: number, shares: number) {
+export async function executeSell(userId: number, companyId: number, shares: number, requestId?: string) {
   const db = getDb();
 
   if (!(await isTradingOpen(db))) {
     const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
     const sellPrice = Math.max(5, Number(company?.share_price) || 5);
-    return await placeLimitOrder(userId, companyId, "sell", shares, sellPrice);
+    return await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId);
   }
 
   const sellTransaction = await db.transaction(async () => {

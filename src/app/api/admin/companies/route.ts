@@ -102,6 +102,11 @@ export async function POST(request: Request) {
     const companyId = result.lastInsertRowid;
     await insertPriceHistory(companyId, share_price, Date.now());
 
+    const admin = await db.prepare("SELECT id FROM users WHERE email = ?").get("T-ADMIN@stocksim.com") as { id: number } | undefined;
+    if (admin) {
+      await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(admin.id, companyId, total_shares);
+    }
+
     return NextResponse.json({ message: "Company created successfully" });
   } catch (error) {
     console.error("Admin create error:", error);

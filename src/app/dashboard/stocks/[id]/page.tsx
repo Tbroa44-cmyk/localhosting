@@ -56,6 +56,8 @@ export default function StockDetailPage() {
   const prevTradesRef = useRef<any[]>([]);
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
   const [showInvestment, setShowInvestment] = useState(false);
+  const [pressRelease, setPressRelease] = useState<any>(null);
+  const [pressReleaseOpen, setPressReleaseOpen] = useState(false);
 
   const companyId = Number(params.id);
   const canTrade = status === "authenticated";
@@ -68,6 +70,11 @@ export default function StockDetailPage() {
         setCompanyLoaded(true);
       })
       .catch(() => setCompanyLoaded(true));
+
+    fetch(`/api/press-releases/${companyId}`)
+      .then((res) => res.json())
+      .then((data) => { if (data.press_release) setPressRelease(data.press_release); })
+      .catch(() => {});
 
     if (status === "authenticated") {
       fetch(`/api/portfolio`)
@@ -227,6 +234,7 @@ export default function StockDetailPage() {
       const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      prevOrdersRef.current = prevOrdersRef.current.filter(o => o.id !== orderId);
       window.dispatchEvent(new Event("balance-changed"));
       fetchData();
     } catch (err: any) {
@@ -274,12 +282,43 @@ export default function StockDetailPage() {
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="text-sm font-mono text-blue-400 bg-blue-400/10 px-3 py-1 rounded">{company!.ticker}</span>
+                  <span className="text-sm font-mono text-blue-400 bg-blue-400/10 px-3 py-1 rounded">{(company as any)?.ticker || "—"}</span>
                 </div>
-                <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{company!.name}</h1>
-                <p className="text-gray-400 mb-4">{company!.description}</p>
-                <div className="text-sm text-gray-500">
-                  {company!.total_shares.toLocaleString()} total shares &middot; {company!.available_shares.toLocaleString()} available at market
+                <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{(company as any)?.name || "Unknown"}</h1>
+                <p className="text-gray-400 mb-4">{(company as any)?.description || ""}</p>
+                {pressRelease && (
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setPressReleaseOpen(!pressReleaseOpen)}
+                      className={`flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg border text-sm transition-all ${
+                        pressRelease.type === "positive"
+                          ? "bg-green-500/5 border-green-500/20 text-green-400 hover:bg-green-500/10"
+                          : "bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10"
+                      }`}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        {pressRelease.type === "positive" ? (
+                          <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></>
+                        ) : (
+                          <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></>
+                        )}
+                      </svg>
+                      <span className="font-medium">Press Release &middot; {new Date(pressRelease.created_at).toLocaleDateString()}</span>
+                      <svg className={`ml-auto w-4 h-4 transition-transform ${pressReleaseOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    </button>
+                    {pressReleaseOpen && (
+                      <div className="mt-2 px-3 py-3 bg-gray-900/50 border border-gray-800 rounded-lg text-sm text-gray-300 whitespace-pre-wrap">
+                        {pressRelease.content}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="text-sm text-gray-500 flex flex-wrap gap-x-2">
+                  <span>{((company as any)?.total_shares || 0).toLocaleString()} total shares</span>
+                  <span className="text-gray-600">·</span>
+                  <span>{((company as any)?.available_shares || 0).toLocaleString()} available</span>
+                  <span className="text-gray-600">·</span>
+                  <span className="text-violet-400">{(company as any)?.holder_count ?? 0} holder{((company as any)?.holder_count ?? 0) !== 1 ? "s" : ""}</span>
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -515,7 +554,7 @@ export default function StockDetailPage() {
             </div>
           ) : (
             <div className="animate-fade-up">
-              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={company!.recent_transactions} />
+              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} />
               {canTrade && (
                 <button
                   onClick={() => setShowInvestment(!showInvestment)}
@@ -559,7 +598,8 @@ export default function StockDetailPage() {
                 <div className="flex flex-col items-center">
                   <svg width="160" height="160" viewBox="0 0 160 160">
                     {(() => {
-                      const ownershipPercent = company!.total_shares > 0 ? (sharesOwned / company!.total_shares) * 100 : 0;
+                      const totalShares = (company as any)?.total_shares || 0;
+                      const ownershipPercent = totalShares > 0 ? (sharesOwned / totalShares) * 100 : 0;
                       const unownedPercent = 100 - ownershipPercent;
                       const ownedAngle = (ownershipPercent / 100) * 360;
                       const r = 60;
@@ -586,7 +626,7 @@ export default function StockDetailPage() {
                       );
                     })()}
                     <text x="80" y="76" textAnchor="middle" className="fill-white text-xl font-bold">
-                      {company!.total_shares > 0 ? ((sharesOwned / company!.total_shares) * 100).toFixed(1) : "0.0"}%
+                      {((company as any)?.total_shares > 0 ? ((sharesOwned / ((company as any)?.total_shares ?? 1)) * 100).toFixed(1) : "0.0")}%
                     </text>
                     <text x="80" y="94" textAnchor="middle" className="fill-gray-400 text-xs">
                       of market
@@ -603,7 +643,7 @@ export default function StockDetailPage() {
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-gray-400">Market Share</div>
-                      <div className="text-lg font-bold text-gray-300">{company!.total_shares > 0 ? ((sharesOwned / company!.total_shares) * 100).toFixed(1) : "0.0"}%</div>
+                      <div className="text-lg font-bold text-gray-300">{((company as any)?.total_shares > 0 ? ((sharesOwned / ((company as any)?.total_shares ?? 1)) * 100).toFixed(1) : "0.0")}%</div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-gray-400">Market Value</div>
@@ -625,7 +665,7 @@ export default function StockDetailPage() {
                   <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />
                 ))}
               </div>
-            ) : (!canTrade || (company as any).my_trades?.length === 0) && company!.recent_transactions?.length === 0 ? (
+            ) : (!canTrade || (company as any).my_trades?.length === 0) && (company as any)?.recent_transactions?.length === 0 ? (
               <p className="text-gray-400 text-sm">No trades yet for this stock</p>
             ) : canTrade ? (
               (company as any).my_trades?.length === 0 ? (
@@ -642,13 +682,20 @@ export default function StockDetailPage() {
                         <span className={`text-xs font-bold px-2 py-1 rounded ${String(tx.type).includes("buy") ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                           {String(tx.type).toUpperCase().replace("_", " ")}
                         </span>
-                        <span className="text-white">{tx.shares} shares</span>
+                        <span className="text-white">
+                          {tx.status === "pending" && tx.original_shares && tx.original_shares > tx.shares
+                            ? `${tx.shares}/${tx.original_shares} shares`
+                            : `${tx.shares} shares`}
+                        </span>
                         <span className={`text-xs px-2 py-0.5 rounded ${
                           tx.status === "confirmed" ? "bg-blue-500/20 text-blue-400" :
-                          tx.status === "pending" ? "bg-yellow-500/20 text-yellow-400 group-hover:bg-red-500/20 group-hover:text-red-400" :
-                          "bg-gray-500/20 text-gray-400"
+                          tx.status === "pending" ? tx.original_shares && tx.original_shares > tx.shares
+                            ? "bg-blue-500/20 text-blue-400"
+                            : "bg-yellow-500/20 text-yellow-400 group-hover:bg-red-500/20 group-hover:text-red-400"
+                          : "bg-gray-500/20 text-gray-400"
                         }`}>
                           {tx.status === "confirmed" ? "Confirmed" :
+                           tx.status === "pending" && tx.original_shares && tx.original_shares > tx.shares ? `${tx.shares}/${tx.original_shares} ${String(tx.type).includes("buy") ? "bought" : "sold"}` :
                            tx.status === "pending" ? "Click to Cancel" :
                            "Cancelled"}
                         </span>

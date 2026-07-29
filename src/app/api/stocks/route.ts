@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
 
       let holderCount = 0;
       try {
-        const holderRows = await db.prepare("SELECT id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(company.id) as any[];
-        holderCount = Array.isArray(holderRows) ? holderRows.length : 0;
+        const holderRows = await db.prepare("SELECT user_id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(company.id) as any[];
+        if (Array.isArray(holderRows)) holderCount = new Set(holderRows.map((r: any) => r.user_id)).size;
       } catch {}
 
       const shares_available = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;

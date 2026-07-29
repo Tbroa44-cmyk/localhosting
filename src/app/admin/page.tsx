@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { formatCoins } from "@/lib/format";
 import Navbar from "@/components/Navbar";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -634,6 +635,7 @@ export default function AdminPage() {
                             <div className="text-[10px] text-gray-500">shares</div>
                           </div>
                           <div className="flex gap-1.5">
+                            <Link href={`/admin/press-release/${c.id}`} className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Press Release</Link>
                             <button onClick={() => startEditCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Edit</button>
                             <button onClick={() => handleDeleteCompany(c.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Delete</button>
                           </div>

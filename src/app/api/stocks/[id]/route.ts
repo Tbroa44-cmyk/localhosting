@@ -22,14 +22,16 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const basePrice = Number((company as any).share_price) || 0;
 
-    const [priceHistoryResult, pendingSellRowsResult, session] = await Promise.all([
+    const [priceHistoryResult, pendingSellRowsResult, holderResult, session] = await Promise.all([
       db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
       db.prepare("SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(id),
+      db.prepare("SELECT user_id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(id),
       getServerSession(authOptions),
     ]);
 
     const priceHistory = priceHistoryResult as any[];
     const pendingSellRows = pendingSellRowsResult as any[];
+    const holderCount = Array.isArray(holderResult) ? new Set(holderResult.map((r: any) => r.user_id)).size : 0;
 
     priceHistory.reverse();
 
@@ -54,46 +56,37 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     if (session?.user) {
       const userId = (session.user as any).id;
 
-      const [transactions, myPendingOrders, myCancelledOrders, recentTx, pendingSells] = await Promise.all([
+      const [transactions, myPendingOrders, myCancelledOrders, recentTx] = await Promise.all([
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25").all(id, userId),
-        db.prepare("SELECT id, type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC").all(id, userId),
-        db.prepare("SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20").all(id, userId),
+        db.prepare("SELECT id, type, shares, original_shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC").all(id, userId),
+        db.prepare("SELECT type, shares, original_shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20").all(id, userId),
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id),
-        db.prepare("SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY created_at DESC LIMIT 25").all(id),
       ]);
 
       for (const tx of transactions as any[]) {
         myTrades.push({ ...tx, status: "confirmed" });
       }
       for (const o of myPendingOrders as any[]) {
-        myTrades.push({ type: String(o.type), shares: o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "pending", order_id: o.id });
+        myTrades.push({ type: String(o.type), shares: o.shares, original_shares: Number(o.original_shares) || o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "pending", order_id: o.id });
       }
       for (const o of myCancelledOrders as any[]) {
-        myTrades.push({ type: String(o.type), shares: o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "cancelled" });
+        myTrades.push({ type: String(o.type), shares: o.shares, original_shares: Number(o.original_shares) || o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "cancelled" });
       }
       myTrades.sort((a, b) => (b.created_at || "") > (a.created_at || "") ? 1 : (b.created_at || "") < (a.created_at || "") ? -1 : 0);
 
-      for (const tx of recentTx as any[]) { tx.status = "confirmed"; recentTransactions.push(tx); }
-      for (const o of pendingSells as any[]) {
-        recentTransactions.push({ type: o.type, shares: o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "pending" });
-      }
+      recentTransactions = recentTx as any[];
+      for (const tx of recentTransactions) { tx.status = "confirmed"; }
     } else {
-      const [recentTx, pendingSells] = await Promise.all([
-        db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id),
-        db.prepare("SELECT type, shares, price_per_share, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY created_at DESC LIMIT 25").all(id),
-      ]);
-      for (const tx of recentTx as any[]) { tx.status = "confirmed"; recentTransactions.push(tx); }
-      for (const o of pendingSells as any[]) {
-        recentTransactions.push({ type: o.type, shares: o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "pending" });
-      }
+      const recentTx = await db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id);
+      recentTransactions = recentTx as any[];
+      for (const tx of recentTransactions) { tx.status = "confirmed"; }
     }
-
-    recentTransactions.sort((a: any, b: any) => (b.created_at || "") > (a.created_at || "") ? 1 : (b.created_at || "") < (a.created_at || "") ? -1 : 0);
 
     return NextResponse.json({
       ...company,
       price_history: priceHistory,
       available_shares: availableShares,
+      holder_count: holderCount,
       my_trades: myTrades,
       recent_transactions: recentTransactions,
       shareEvent,

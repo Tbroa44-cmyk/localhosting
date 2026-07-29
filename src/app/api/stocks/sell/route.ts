@@ -43,11 +43,8 @@ export async function POST(request: NextRequest) {
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
-
     const sellPrice = Math.max(5, Number(company.share_price) || 5);
-    console.log("[Sell] company.share_price:", company.share_price, "sellPrice:", sellPrice);
     const result = await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId);
-    console.log("[Sell] success:", JSON.stringify(result));
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("[Sell] error:", error.message, error.stack?.substring(0, 300));

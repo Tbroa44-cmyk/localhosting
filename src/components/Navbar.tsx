@@ -189,6 +189,9 @@ export default function Navbar() {
             <Link href="/account" className="text-gray-300 hover:text-white transition-colors">
               My Account
             </Link>
+            <Link href="/settings" className="text-gray-300 hover:text-white transition-colors">
+              Settings
+            </Link>
             {(session.user as any)?.isAdmin && (
               <Link href="/admin" className="text-yellow-400 hover:text-yellow-300 transition-colors font-medium">
                 Admin Panel
@@ -196,25 +199,9 @@ export default function Navbar() {
             )}
             <div className="flex items-center gap-3 pl-3 border-l border-gray-700">
               <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
-              {(session.user as any)?.level && (
-                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                  (session.user as any).level >= 10 ? "bg-blue-500/20 text-blue-400" :
-                  (session.user as any).level >= 5 ? "bg-green-500/20 text-green-400" :
-                  "bg-gray-500/20 text-gray-400"
-                }`}>
-                  Lv.{(session.user as any).level}
-                </span>
-              )}
               <span className="text-green-400 font-semibold">
                 {formatCoins(liveBalance !== null ? liveBalance : ((session.user as any)?.balance || 0))}
               </span>
-              <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                className="text-gray-400 hover:text-red-400 transition-colors text-sm disabled:opacity-50"
-              >
-                Logout
-              </button>
             </div>
           </div>
         ) : !isMobile ? (
@@ -256,7 +243,7 @@ export default function Navbar() {
               {(session.user as any)?.isAdmin && (
                 <Link href="/admin" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-yellow-400 hover:text-yellow-300 hover:bg-white/5 rounded-lg transition-colors font-medium">Admin Panel</Link>
               )}
-              <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="block w-full text-left px-2 py-2 text-red-400 hover:text-red-300 hover:bg-white/5 rounded-lg transition-colors">Logout</button>
+              <Link href="/settings" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Settings</Link>
             </>
           ) : (
             <>

@@ -65,13 +65,14 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
         const t = prev.timestamp + h * HOUR_MS;
         const fraction = h / gapHours;
         const interpolatedPrice = Math.round(prev.price + (curr.price - prev.price) * fraction);
-        result.push({ price: interpolatedPrice, timestamp: t });
+        result.push({ price: interpolatedPrice, timestamp: t, holder_count: prev.holder_count });
       }
     }
     result.push(curr);
   }
 
-  result.push({ price: currentPrice, timestamp: now });
+  const lastHolderCount = data[data.length - 1]?.holder_count;
+  result.push({ price: currentPrice, timestamp: now, holder_count: lastHolderCount });
 
   return result;
 }

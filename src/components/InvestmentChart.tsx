@@ -28,11 +28,34 @@ interface PricePoint {
   timestamp: number;
 }
 
+type TimeFilter = "1h" | "1d" | "7d" | "1m" | "6m" | "all";
+
+const FILTER_OPTIONS: { key: TimeFilter; label: string; ms: number | null }[] = [
+  { key: "1h", label: "1H", ms: 60 * 60 * 1000 },
+  { key: "1d", label: "1D", ms: 24 * 60 * 60 * 1000 },
+  { key: "7d", label: "7D", ms: 7 * 24 * 60 * 60 * 1000 },
+  { key: "1m", label: "1M", ms: 30 * 24 * 60 * 60 * 1000 },
+  { key: "6m", label: "6M", ms: 180 * 24 * 60 * 60 * 1000 },
+  { key: "all", label: "All", ms: null },
+];
+
 export default function InvestmentChart({ trades, priceHistory, currentPrice }: { trades: Trade[]; priceHistory: PricePoint[]; currentPrice: number }) {
-  const confirmedTrades = useMemo(() =>
-    trades.filter(t => t.status === "confirmed").sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-    [trades]
-  );
+  const [filter, setFilter] = useState<TimeFilter>("all");
+
+  const confirmedTrades = useMemo(() => {
+    const now = Date.now();
+    const option = FILTER_OPTIONS.find((f) => f.key === filter);
+    return trades
+      .filter(t => {
+        if (t.status !== "confirmed") return false;
+        if (option?.ms) {
+          const age = now - new Date(t.created_at).getTime();
+          if (age > option.ms) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }, [trades, filter]);
 
   const investment = useMemo(() => {
     let shares = 0;
@@ -49,7 +72,6 @@ export default function InvestmentChart({ trades, priceHistory, currentPrice }: 
         totalCost += trade.shares * trade.price_per_share;
       } else {
         const avgCost = shares > 0 ? totalCost / shares : 0;
-        const sellValue = trade.shares * trade.price_per_share;
         shares -= trade.shares;
         totalCost -= trade.shares * avgCost;
         if (totalCost < 0) totalCost = 0;
@@ -128,25 +150,43 @@ export default function InvestmentChart({ trades, priceHistory, currentPrice }: 
 
   return (
     <div>
-      <div className="flex flex-wrap gap-4 mb-4 text-sm">
-        <div>
-          <span className="text-gray-400">Shares: </span>
-          <span className="text-white font-medium">{investment.finalShares}</span>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div>
+            <span className="text-gray-400">Shares: </span>
+            <span className="text-white font-medium">{investment.finalShares}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Avg Cost: </span>
+            <span className="text-white font-medium">{formatCoins(investment.avgCost)}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Current: </span>
+            <span className="text-white font-medium">{formatCoins(currentPrice)}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Unrealized P&amp;L: </span>
+            <span className={`font-medium ${profit >= 0 ? "text-green-400" : "text-red-400"}`} title="Market Value - Total Cost (profit/loss if sold now)">
+              {profit >= 0 ? "+" : ""}{formatCoins(profit)} ({profit >= 0 ? "+" : ""}{profitPercent.toFixed(1)}%)
+            </span>
+          </div>
         </div>
-        <div>
-          <span className="text-gray-400">Avg Cost: </span>
-          <span className="text-white font-medium">{formatCoins(investment.avgCost)}</span>
-        </div>
-        <div>
-          <span className="text-gray-400">Current: </span>
-          <span className="text-white font-medium">{formatCoins(currentPrice)}</span>
-        </div>
-        <div>
-          <span className="text-gray-400">P&L: </span>
-          <span className={`font-medium ${profit >= 0 ? "text-green-400" : "text-red-400"}`}>
-            {profit >= 0 ? "+" : ""}{formatCoins(profit)} ({profit >= 0 ? "+" : ""}{profitPercent.toFixed(1)}%)
-          </span>
-        </div>
+      </div>
+
+      <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1 mb-3 w-fit">
+        {FILTER_OPTIONS.map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => setFilter(opt.key)}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+              filter === opt.key
+                ? "bg-blue-600 text-white"
+                : "text-gray-400 hover:text-white hover:bg-gray-700"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       <div className="h-48 sm:h-64">
@@ -169,8 +209,9 @@ export default function InvestmentChart({ trades, priceHistory, currentPrice }: 
                 borderWidth: 1,
                 callbacks: {
                   label: (ctx) => {
-                    if (ctx.dataset.label === "Buys" && ctx.raw !== null) return `BUY @ ${formatCoins(confirmedTrades[ctx.dataIndex]?.price_per_share || 0)}`;
-                    if (ctx.dataset.label === "Sells" && ctx.raw !== null) return `SELL @ ${formatCoins(confirmedTrades[ctx.dataIndex]?.price_per_share || 0)}`;
+                    const t = confirmedTrades[ctx.dataIndex];
+                    if (ctx.dataset.label === "Buys" && ctx.raw !== null) return `\u00D7${t?.shares || "?"} BUY @ ${formatCoins(t?.price_per_share || 0)}`;
+                    if (ctx.dataset.label === "Sells" && ctx.raw !== null) return `\u00D7${t?.shares || "?"} SELL @ ${formatCoins(t?.price_per_share || 0)}`;
                     if (ctx.dataset.label === "Your Shares Total Value") return `Value: ${formatCoins(ctx.raw as number)}`;
                     return `${ctx.dataset.label}: ${formatCoins(ctx.raw as number)}`;
                   },
