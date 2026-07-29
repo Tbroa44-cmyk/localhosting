@@ -866,6 +866,21 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
 
   await adjustPricesByPressure(db, companies);
 
+  let recentPressReleases: Record<number, { type: string; severity: number }> = {};
+  try {
+    const dayAgo = new Date(Date.now() - 86400000).toISOString();
+    const prs = await db.prepare(
+      "SELECT company_id, type, severity FROM press_releases WHERE created_at >= ? ORDER BY created_at DESC"
+    ).all(dayAgo) as { company_id: number; type: string; severity: number }[];
+    if (Array.isArray(prs)) {
+      for (const pr of prs) {
+        if (!recentPressReleases[pr.company_id]) {
+          recentPressReleases[pr.company_id] = { type: pr.type, severity: Number(pr.severity) || 1 };
+        }
+      }
+    }
+  } catch {}
+
   const obQueries = await Promise.all(
     companies.map((c) => getOrderBookState(db, c.id))
   );
@@ -887,11 +902,22 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
     const holdings = allHoldings[bot.id] || [];
     const hasStocks = holdings.length > 0;
 
+    const prForCompany = (companyId: number) => recentPressReleases[companyId];
+
     if (hasStocks && Math.random() < 0.2) {
       const pick = holdings[Math.floor(Math.random() * holdings.length)];
       const ob = orderBooks[pick.company_id];
       const company = companies.find((c) => c.id === pick.company_id);
       const currentPrice = company ? Number(company.share_price) : 0;
+
+      const pr = prForCompany(pick.company_id);
+      const sellMod = pr && pr.type === "negative" ? Math.min(pr.severity * 0.05, 0.3) : 0;
+      if (Math.random() < sellMod) {
+        const sellPrice = Math.max(5, Math.floor(currentPrice * (0.95 - Math.random() * 0.05)));
+        const shares = Math.max(1, Math.floor(Math.random() * Math.min(pick.shares_owned, bot.config.maxSharesPerTrade)) + 1);
+        const ok = await placeBotSellOrder(db, bot.id, pick.company_id, Math.min(shares, pick.shares_owned), sellPrice);
+        if (ok) { totalTrades++; const reloaded = await db.prepare("SELECT balance FROM users WHERE id = ?").get(bot.id) as { balance: number } | undefined; if (reloaded) allBalances[bot.id] = Number(reloaded.balance); continue; }
+      }
 
       let sellPrice: number;
       if (ob && ob.highestBuy > 0) {
@@ -909,13 +935,16 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
       }
     }
 
-    if (balance >= 10 && Math.random() < 0.25) {
+    if (balance >= 10) {
+      let buyProb = 0.25;
       const affordable = companies.filter((c) => {
         const ob = orderBooks[c.id];
         if (ob && ob.lowestSell > 0 && ob.lowestSell <= balance * 0.6) return true;
         return Number(c.share_price) <= balance * 0.6;
       });
-      if (affordable.length > 0) {
+      const posPR = affordable.find((c) => { const pr = prForCompany(c.id); return pr && pr.type === "positive"; });
+      if (posPR) buyProb += 0.15;
+      if (Math.random() < buyProb && affordable.length > 0) {
         const pick = affordable[Math.floor(Math.random() * affordable.length)];
         const ob = orderBooks[pick.id];
         const currentPrice = Number(pick.share_price);

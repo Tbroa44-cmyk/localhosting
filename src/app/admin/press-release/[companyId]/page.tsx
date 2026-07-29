@@ -16,6 +16,7 @@ export default function PressReleasePage() {
   const [companyName, setCompanyName] = useState("");
   const [content, setContent] = useState("");
   const [type, setType] = useState<"positive" | "negative">("positive");
+  const [severity, setSeverity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function PressReleasePage() {
       const res = await fetch("/api/admin/press-releases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: parseInt(companyId, 10), content, type }),
+        body: JSON.stringify({ company_id: parseInt(companyId, 10), content, type, severity }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -107,6 +108,22 @@ export default function PressReleasePage() {
             </div>
 
             <div>
+              <label className="text-gray-400 text-sm block mb-2">Severity (1-10)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={severity}
+                  onChange={(e) => setSeverity(Number(e.target.value))}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="text-white font-bold text-lg w-6 text-center">{severity}</span>
+                <span className="text-gray-500 text-xs w-16">{severity * 1}% {type === "positive" ? "increase" : "decrease"}</span>
+              </div>
+            </div>
+
+            <div>
               <label className="text-gray-400 text-sm block mb-2">Press Release Text</label>
               <textarea
                 value={content}
@@ -139,7 +156,7 @@ export default function PressReleasePage() {
             </div>
 
             <p className={`text-xs ${type === "positive" ? "text-green-500/70" : "text-red-500/70"} text-center`}>
-              Price will {type === "positive" ? "increase" : "decrease"} by ~2% after publishing
+              Price will {type === "positive" ? "increase" : "decrease"} by ~{severity}% after publishing
             </p>
           </form>
         </div>

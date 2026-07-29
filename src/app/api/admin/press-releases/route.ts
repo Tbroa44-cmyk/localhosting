@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const { company_id, content, type } = await request.json();
+    const { company_id, content, type, severity } = await request.json();
     if (!company_id || !content || !type) {
       return NextResponse.json({ error: "company_id, content, and type are required" }, { status: 400 });
     }
@@ -27,12 +27,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    await db.prepare("INSERT INTO press_releases (company_id, content, type, created_at) VALUES (?, ?, ?, ?)").run(company_id, content, type, new Date().toISOString());
+    const sev = Math.max(1, Math.min(10, parseInt(severity) || 1));
+    await db.prepare("INSERT INTO press_releases (company_id, content, type, severity, created_at) VALUES (?, ?, ?, ?, ?)").run(company_id, content, type, sev, new Date().toISOString());
 
     const currentPrice = Number(company.share_price);
-    const adjustment = type === "positive"
-      ? Math.max(1, Math.round(currentPrice * 0.02))
-      : Math.max(1, Math.round(currentPrice * 0.02));
+    const pct = 0.01 * sev;
+    const adjustment = Math.max(1, Math.round(currentPrice * pct));
     const newPrice = type === "positive"
       ? currentPrice + adjustment
       : Math.max(5, currentPrice - adjustment);
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(newPrice, company_id);
     await insertPriceHistory(company_id, newPrice, Date.now());
 
-    return NextResponse.json({ message: `Press release published. Price ${type === "positive" ? "increased" : "decreased"} by ${formatPrice(adjustment)}.` });
+    return NextResponse.json({ message: `Press release published. Price ${type === "positive" ? "increased" : "decreased"} by ${formatPrice(adjustment)} (severity ${sev}).` });
   } catch (error) {
     console.error("Press release error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
