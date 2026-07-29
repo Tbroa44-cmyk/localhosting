@@ -67,11 +67,15 @@ function saveBotIds(ids: number[]) {
 async function ensureBotUsers(db: any): Promise<{ id: number; name: string; config: BotConfig }[]> {
   const cached = getBotIds();
   if (cached.length >= MAX_BOTS) {
-    const bots = [];
-    for (let i = 0; i < MAX_BOTS; i++) {
-      bots.push({ id: cached[i], name: `Bot${BOT_NUMBERS[i]}`, config: BOT_CONFIGS[i % BOT_CONFIGS.length] });
+    const firstBot = await db.prepare("SELECT id FROM users WHERE id = ?").get(cached[0]) as { id: number } | undefined;
+    if (firstBot) {
+      const bots = [];
+      for (let i = 0; i < MAX_BOTS; i++) {
+        bots.push({ id: cached[i], name: `Bot${BOT_NUMBERS[i]}`, config: BOT_CONFIGS[i % BOT_CONFIGS.length] });
+      }
+      return bots;
     }
-    return bots;
+    saveBotIds([]);
   }
 
   const bots: { id: number; name: string; config: BotConfig }[] = [];
