@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const db = getDb();
     try {
       const userInfo = await db.prepare("SELECT allowed FROM users WHERE id = ?").get(userId) as any;
-      if (userInfo && Number(userInfo.allowed) === 1) {
+      if (userInfo && Number(userInfo.allowed) === 0) {
         return NextResponse.json({ error: "Your account has been banned" }, { status: 403 });
       }
     } catch {}

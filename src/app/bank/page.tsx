@@ -206,7 +206,7 @@ export default function BankPage() {
                       min="0.50"
                       value={depositAmount}
                       onChange={(e) => setDepositAmount(e.target.value)}
-                      placeholder="Amount in c"
+                      placeholder="Amount ($)"
                       className="input-field flex-1"
                     />
                     <button
@@ -227,7 +227,7 @@ export default function BankPage() {
                       min="0.01"
                       value={withdrawAmount}
                       onChange={(e) => setWithdrawAmount(e.target.value)}
-                      placeholder="Amount in c"
+                      placeholder="Amount ($)"
                       className="input-field flex-1"
                     />
                     <button
@@ -256,15 +256,7 @@ export default function BankPage() {
                     {bankData.investments.length} companies actively investing in
                   </span>
                 )}
-                {bankData?.canOperate && bankData.investments && bankData.investments.length > 0 && bankData.needsRotation && (
-                  <button
-                    onClick={handleInvest}
-                    disabled={investing}
-                    className="btn-primary text-sm flex items-center gap-2"
-                  >
-                    {investing ? <><ButtonSpinner size={14} /> Improving...</> : "Re-pick Companies"}
-                  </button>
-                )}
+
                 {bankData?.canOperate && (!bankData.investments || bankData.investments.length === 0) && (
                   <button
                     onClick={handleInvest}

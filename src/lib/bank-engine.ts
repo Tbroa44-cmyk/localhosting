@@ -1,9 +1,9 @@
 import getDb from "@/lib/db";
 import { formatCoins } from "@/lib/format";
 
-const MIN_BALANCE_TO_OPERATE = 5000;
+const MIN_BALANCE_TO_OPERATE = 50;
 const UPDATE_INTERVAL_MS = 60 * 60 * 1000;
-const ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const ROTATION_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 const MAX_COMPANIES = 3;
 
 export async function getOrCreateBankAccount(db: any, userId: number) {
