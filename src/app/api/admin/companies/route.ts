@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import getDb, { insertPriceHistory } from "@/lib/db";
+import getDb, { insertPriceHistory, runSql } from "@/lib/db";
 import { issueCertificates } from "@/lib/certificates";
 
 export async function GET() {
@@ -14,6 +14,10 @@ export async function GET() {
     }
 
     const db = getDb();
+
+    try {
+      await runSql(`ALTER TABLE companies ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0`);
+    } catch {}
 
     let users: any[] = [];
     try {
@@ -33,8 +37,10 @@ export async function GET() {
     let companies: any[] = [];
     try {
       companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares, delisted FROM companies ORDER BY ticker").all() as any[];
-    } catch (e: any) {
-      console.error("Failed to fetch companies:", e?.message);
+    } catch {
+      try {
+        companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
+      } catch {}
     }
 
     let totalBalance = 0;

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import getDb from "@/lib/db";
+import getDb, { runSql } from "@/lib/db";
 import { issueCertificates, countTotalForCompany } from "@/lib/certificates";
 
 const BATCH_SIZE = 1000;
@@ -17,10 +17,8 @@ export async function POST() {
     const db = getDb();
 
     try {
-      await db.prepare(`ALTER TABLE companies ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0`).run();
-    } catch {
-      // column may already exist
-    }
+      await runSql(`ALTER TABLE companies ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0`);
+    } catch {}  // column may already exist
 
     const companies = await db.prepare("SELECT id, total_shares FROM companies").all() as { id: number; total_shares: number }[];
     const holdings = await db.prepare(

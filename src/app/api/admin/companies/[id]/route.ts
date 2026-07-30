@@ -21,7 +21,12 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json();
     const db = getDb();
 
-    const company = await db.prepare("SELECT total_shares, delisted FROM companies WHERE id = ?").get(id) as any;
+    let company: any;
+    try {
+      company = await db.prepare("SELECT total_shares, delisted FROM companies WHERE id = ?").get(id) as any;
+    } catch {
+      company = await db.prepare("SELECT total_shares FROM companies WHERE id = ?").get(id) as any;
+    }
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
@@ -35,8 +40,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     if (body.delisted !== undefined) {
-      updates.push("delisted = ?");
-      paramsList.push(body.delisted ? 1 : 0);
+      try {
+        await db.prepare("UPDATE companies SET delisted = ? WHERE id = ?").run(body.delisted ? 1 : 0, id);
+      } catch (e: any) {
+        console.error("Failed to update delisted (column may not exist):", e?.message);
+      }
     }
 
     const newShares = Number(body.total_shares);

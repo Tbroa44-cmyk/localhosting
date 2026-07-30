@@ -97,6 +97,28 @@ function restUrl(): string {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1`;
 }
 
+export async function runSql(sql: string): Promise<void> {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) {
+    console.warn("[runSql] No SUPABASE_SERVICE_ROLE_KEY found, cannot run raw SQL. Add it to .env.local");
+    return;
+  }
+  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/sql`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify({ query: sql }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`SQL execution failed: ${res.status} ${text.substring(0, 200)}`);
+  }
+}
+
 const TEXT_FIELDS = new Set(["ticker", "name", "description", "type", "status", "email", "username", "password", "paypal_order_id", "code", "expires_at"]);
 
 function coerceValue(v: any, fieldName?: string): any {
