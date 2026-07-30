@@ -28,19 +28,25 @@ export async function POST(request: Request) {
     }
 
     const sev = Math.max(1, Math.min(10, parseInt(severity) || 1));
-    await db.prepare("INSERT INTO press_releases (company_id, content, type, severity, created_at) VALUES (?, ?, ?, ?, ?)").run(company_id, content, type, sev, new Date().toISOString());
-
     const currentPrice = Number(company.share_price);
-    const pct = 0.01 * sev;
+
+    // Exponential severity multiplier: each level compounds
+    const pct = (sev * sev + sev) / 200; // 1%, 3%, 6%, 10%, 15%, 21%, 28%, 36%, 45%, 55%
     const adjustment = Math.max(1, Math.round(currentPrice * pct));
     const newPrice = type === "positive"
       ? currentPrice + adjustment
       : Math.max(5, currentPrice - adjustment);
 
+    // Lingering effect: 0.3% per severity level, decays over duration
+    const lingeringTotal = Math.round(currentPrice * sev * 0.003);
+
+    await db.prepare("INSERT INTO press_releases (company_id, content, type, severity, created_at, price_at_creation, lingering_total, lingering_remaining) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(company_id, content, type, sev, new Date().toISOString(), currentPrice, lingeringTotal, lingeringTotal);
+
     await db.prepare("UPDATE companies SET share_price = ? WHERE id = ?").run(newPrice, company_id);
     await insertPriceHistory(company_id, newPrice, Date.now());
 
-    return NextResponse.json({ message: `Press release published. Price ${type === "positive" ? "increased" : "decreased"} by ${formatPrice(adjustment)} (severity ${sev}).` });
+    return NextResponse.json({ message: `Press release published. Price ${type === "positive" ? "increased" : "decreased"} by ${formatPrice(adjustment)} (severity ${sev}). Lingering effect: ${formatPrice(lingeringTotal)}.` });
   } catch (error) {
     console.error("Press release error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

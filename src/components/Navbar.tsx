@@ -189,9 +189,6 @@ export default function Navbar() {
             <Link href="/account" className="text-gray-300 hover:text-white transition-colors">
               My Account
             </Link>
-            <Link href="/settings" className="text-gray-300 hover:text-white transition-colors">
-              Settings
-            </Link>
             {(session.user as any)?.isAdmin && (
               <Link href="/admin" className="text-yellow-400 hover:text-yellow-300 transition-colors font-medium">
                 Admin Panel
@@ -243,7 +240,6 @@ export default function Navbar() {
               {(session.user as any)?.isAdmin && (
                 <Link href="/admin" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-yellow-400 hover:text-yellow-300 hover:bg-white/5 rounded-lg transition-colors font-medium">Admin Panel</Link>
               )}
-              <Link href="/settings" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Settings</Link>
             </>
           ) : (
             <>

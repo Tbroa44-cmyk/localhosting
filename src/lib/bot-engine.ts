@@ -1,6 +1,7 @@
 import getDb, { insertPriceHistory } from "@/lib/db";
-import { isTradingOpen } from "@/lib/trading-hours";
+import { isTradingOpen, getTradingInfo } from "@/lib/trading-hours";
 import { addShares, removeShares, getHolding } from "@/lib/holdings";
+import { issueCertificates, transferCertificates, reserveCertificates, releaseCertificates, countActive, countTotalForCompany, verifyIntegrity } from "@/lib/certificates";
 
 const BOT_INITIAL_CASH = 5000;
 const BOT_COOLDOWN_MS = 10000;
@@ -111,6 +112,9 @@ async function seedBotShares(db: any, botId: number, botIndex: number) {
 
   if (companies.length === 0) return;
 
+  const admin = await db.prepare("SELECT id FROM users WHERE email = ?").get("T-ADMIN@stocksim.com") as { id: number } | undefined;
+  if (!admin) return;
+
   const seeded = new Set<number>();
   const numPositions = 1 + (botIndex % 3);
 
@@ -127,9 +131,15 @@ async function seedBotShares(db: any, botId: number, botIndex: number) {
     const user = await db.prepare("SELECT balance FROM users WHERE id = ?").get(botId) as { balance: number } | undefined;
     if (!user || Number(user.balance) < cost) continue;
 
+    const adminCerts = await countActive(db, company.id, admin.id);
+    if (adminCerts < shares) continue;
+
     await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(cost, botId);
+    await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(cost, admin.id);
 
     await addShares(db, botId, company.id, shares, "bot_market_buy");
+    await removeShares(db, admin.id, company.id, shares, "bot_market_buy");
+    await transferCertificates(db, company.id, admin.id, botId, shares);
 
     await db.prepare(
       "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
@@ -449,6 +459,13 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
         console.error(`Bot buy seller holding error:`, e?.message || e);
       }
 
+      await addShares(db, botId, companyId, fillQty, "bot_buy_fill", sellOrder.id);
+      try {
+        await transferCertificates(db, companyId, sellOrder.user_id, botId, fillQty);
+      } catch (e: any) {
+        console.error(`Bot buy certificate transfer error:`, e?.message || e);
+      }
+
       await db.prepare(
         "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
       ).run(sellOrder.user_id, companyId, fillQty, fillPrice, sellerRevenue);
@@ -468,30 +485,14 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
       lastFillPrice = fillPrice;
     }
 
-    if (remaining > 0) {
-      const autoPrice = Number(company?.share_price || price);
-      const totalHeld = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?").get(companyId) as { total: number } | undefined;
-      const avail = Math.max(0, (company?.total_shares || 0) - (totalHeld?.total || 0));
-      const autoQty = Math.min(remaining, avail);
-
-      if (autoQty > 0) {
-        const autoCost = autoPrice * autoQty;
-        await addShares(db, botId, companyId, autoQty, "bot_auto_buy");
-        await db.prepare("INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)").run(botId, companyId, autoQty, autoPrice, autoCost);
-        await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)").run(botId, companyId, autoQty, autoPrice, new Date().toISOString());
-        remaining -= autoQty;
-        filledShares += autoQty;
-        totalSpent += autoCost;
-      }
-    }
+    let balanceDeduction = totalSpent;
 
     if (remaining > 0) {
-      const refund = remaining * price;
-      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(refund, botId);
       await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?)").run(botId, companyId, remaining, remaining, price, new Date().toISOString());
-    } else {
-      await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(totalSpent, botId);
+      balanceDeduction += remaining * price;
     }
+
+    await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(balanceDeduction, botId);
 
     if (filledShares > 0) {
       const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice, filledShares, company?.total_shares);
@@ -535,7 +536,20 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
       const taxAmount = Math.round(grossRevenue * 0.03);
       const netRevenue = grossRevenue - taxAmount;
 
-      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(netRevenue, buyOrder.user_id);
+      const debitResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(grossRevenue, buyOrder.user_id, grossRevenue);
+      if (debitResult.changes === 0) continue;
+
+      try {
+        await removeShares(db, botId, companyId, fillQty, "bot_sell_fill", buyOrder.id);
+      } catch (e: any) {
+        console.error(`Bot sell holding error:`, e?.message || e);
+      }
+      await addShares(db, buyOrder.user_id, companyId, fillQty, "bot_sell_fill", buyOrder.id);
+      try {
+        await transferCertificates(db, companyId, botId, buyOrder.user_id, fillQty);
+      } catch (e: any) {
+        console.error(`Bot sell certificate transfer error:`, e?.message || e);
+      }
 
       if (fillQty >= Number(buyOrder.shares)) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(buyOrder.id);
@@ -554,18 +568,14 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
       lastFillPrice = fillPrice;
     }
 
-    const grossRevenueBot = remaining * price;
-    const taxBot = Math.round(grossRevenueBot * 0.03);
-    const netBot = grossRevenueBot - taxBot;
-    totalRevenue += netBot;
-
-    await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, botId);
-
-    if (remaining > 0) {
-    await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botId, companyId, shares, shares, price, new Date().toISOString());
+    if (filledShares > 0) {
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, botId);
     }
 
-    await removeShares(db, botId, companyId, shares, "bot_sell_fill");
+    if (remaining > 0) {
+      const result = await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botId, companyId, remaining, remaining, price, new Date().toISOString());
+      await reserveCertificates(db, companyId, botId, remaining, result.lastInsertRowid as number);
+    }
 
     if (filledShares > 0) {
       const cappedPrice = applyPriceCapToCompany(currentPrice, lastFillPrice, filledShares, company?.total_shares);
@@ -573,7 +583,8 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
       await insertPriceHistory(companyId, cappedPrice, Date.now());
     }
   } else {
-    await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botId, companyId, shares, shares, price, new Date().toISOString());
+    const result = await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botId, companyId, shares, shares, price, new Date().toISOString());
+    await reserveCertificates(db, companyId, botId, shares, result.lastInsertRowid as number);
   }
 
   return true;
@@ -621,8 +632,10 @@ async function marketMake(db: any, bots: { id: number; name: string; config: Bot
       if (trades >= 4) break;
       const botForSell = bots[(botIdx + 3) % bots.length];
       const holding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(botForSell.id, company.id) as { id: number; shares_owned: number } | undefined;
-      if (holding && holding.shares_owned >= shares) {
-        await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botForSell.id, company.id, shares, shares, sellPrice, new Date().toISOString());
+      const certCount = await countActive(db, company.id, botForSell.id);
+      if (holding && holding.shares_owned >= shares && certCount >= shares) {
+        const result = await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botForSell.id, company.id, shares, shares, sellPrice, new Date().toISOString());
+        await reserveCertificates(db, company.id, botForSell.id, shares, result.lastInsertRowid as number);
         trades++;
       }
     }
@@ -692,6 +705,22 @@ async function botToBotMatch(db: any, bots: { id: number; name: string; config: 
       }
 
       await addShares(db, buyBotId, companyId, fillQty, "bot_match_buy", buyOrder.id);
+
+      try {
+        const certIds = await db.prepare(
+          "SELECT id FROM share_certificates WHERE company_id = ? AND status = 'pending_order' AND order_id = ? LIMIT ?"
+        ).all(companyId, sellOrder.id, fillQty) as { id: number }[];
+        if (certIds.length > 0) {
+          const ph = certIds.map(() => "?").join(",");
+          await db.prepare(
+            `UPDATE share_certificates SET owner_id = ?, status = 'active', order_id = NULL WHERE id IN (${ph})`
+          ).run(buyBotId, ...certIds.map((c) => c.id));
+        } else {
+          await transferCertificates(db, companyId, sellOrder.user_id, buyBotId, fillQty);
+        }
+      } catch (e: any) {
+        console.error(`botToBotMatch certificate transfer error:`, e?.message || e);
+      }
 
       if (fillQty >= Number(sellOrder.shares)) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(sellOrder.id);
@@ -772,6 +801,23 @@ async function adjustPricesByPressure(db: any, companies: { id: number; share_pr
 
       let adjustment = 0;
 
+      // Lingering effects from press releases
+      try {
+        const lingeringPRs = await db.prepare(
+          "SELECT id, type, lingering_remaining FROM press_releases WHERE company_id = ? AND lingering_remaining > 0 ORDER BY created_at ASC"
+        ).all(companyId) as { id: number; type: string; lingering_remaining: number }[];
+        for (const pr of lingeringPRs) {
+          const applyCents = Math.max(1, Math.ceil(Number(pr.lingering_remaining) * 0.05));
+          if (pr.type === "positive") {
+            adjustment += applyCents;
+          } else {
+            adjustment -= applyCents;
+          }
+          const newRemaining = Number(pr.lingering_remaining) - applyCents;
+          await db.prepare("UPDATE press_releases SET lingering_remaining = ? WHERE id = ?").run(Math.max(0, newRemaining), pr.id);
+        }
+      } catch {}
+
       const recentSharesReleased = totalShares > initialShares;
       const heldRatio = totalShares > 0 ? heldShares / totalShares : 1;
       const totalTxShares = buyShares + sellShares;
@@ -819,7 +865,12 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
     return { botsEnabled: false, tradesExecuted: 0, message: "Bots disabled" };
   }
 
-  if (!(await isTradingOpen(db))) {
+  const tradingInfo = await getTradingInfo(db);
+  if (tradingInfo.emergencyClose) {
+    return { botsEnabled: true, tradesExecuted: 0, message: `Session closed: ${tradingInfo.emergencyMessage}` };
+  }
+
+  if (!tradingInfo.isOpen) {
     return { botsEnabled: true, tradesExecuted: 0, message: "Market closed" };
   }
 
@@ -855,7 +906,7 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
     ).all(bot.id) as { company_id: number; shares_owned: number }[];
   }
 
-  const companies = await db.prepare("SELECT id, share_price FROM companies WHERE total_shares > 0 AND share_price >= 5").all() as { id: number; share_price: number }[];
+  const companies = await db.prepare("SELECT id, share_price FROM companies WHERE total_shares > 0 AND share_price >= 5 AND delisted = 0").all() as { id: number; share_price: number }[];
 
   for (const c of companies) {
     const price = Number(c.share_price);
@@ -894,10 +945,12 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
   totalTrades += matchTrades;
 
   const shuffledBots = [...bots].sort(() => Math.random() - 0.5);
-  const maxTraders = Math.min(6, shuffledBots.length);
 
-  for (let bi = 0; bi < maxTraders && totalTrades < 10; bi++) {
-    const bot = shuffledBots[bi];
+  for (const bot of shuffledBots) {
+    if (totalTrades >= 10) break;
+    const lastTick = lastBotTickTime[bot.id] || 0;
+    if (now - lastTick < BOT_COOLDOWN_MS) continue;
+    lastBotTickTime[bot.id] = now;
     const balance = allBalances[bot.id] ?? 0;
     const holdings = allHoldings[bot.id] || [];
     const hasStocks = holdings.length > 0;

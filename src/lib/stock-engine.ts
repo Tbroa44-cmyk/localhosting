@@ -2,6 +2,7 @@ import getDb, { insertPriceHistory, updateCompanyPrice } from "@/lib/db";
 import { formatCoins } from "@/lib/format";
 import { isTradingOpen as isTradingOpenCore } from "@/lib/trading-hours";
 import { addShares, removeShares, getHolding } from "@/lib/holdings";
+import { transferCertificates, reserveCertificates, releaseCertificates, preTransferCheck, verifyIntegrity } from "@/lib/certificates";
 
 const PRICE_CHANGE_PERCENT = 0.02;
 const SELL_TAX_PERCENT = 0.03;
@@ -99,13 +100,14 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     }
 
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
-      id: number; name: string; ticker: string; share_price: number; total_shares: number;
+      id: number; name: string; ticker: string; share_price: number; total_shares: number; delisted: number;
     } | undefined;
 
     if (!company) throw new Error("Company not found");
     company.share_price = Number(company.share_price);
     company.total_shares = Number(company.total_shares);
     if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
+    if (company.delisted) throw new Error("This stock is delisted and cannot be traded");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
       id: number; balance: number;
@@ -150,6 +152,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       await addToBankFund(db, taxAmount);
 
       await removeShares(db, sellOrder.user_id, companyId, fillQty, "executeBuy_sell_fill", sellOrder.id);
+      await transferCertificates(db, companyId, sellOrder.user_id, userId, fillQty);
 
       if (fillQty >= sellOrder.shares) {
         await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(sellOrder.id);
@@ -175,30 +178,9 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     company.share_price = afterFillPrice;
 
     if (remaining > 0) {
-      const totalSharesAllHoldings = await db.prepare("SELECT SUM(shares_owned) as total FROM holdings WHERE company_id = ?").all(companyId) as { total: number }[];
-      const totalHeld = totalSharesAllHoldings[0]?.total || 0;
-      const availableShares = Math.max(0, company.total_shares - totalHeld);
-
-      let autoFillQty = 0;
-      if (availableShares > 0) {
-        const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-        const canAfford = Math.floor((bal.balance - totalCost) / company.share_price);
-        autoFillQty = Math.min(remaining, availableShares, canAfford > 0 ? canAfford : 0);
-      }
-
-      if (autoFillQty > 0) {
-        const autoFillCost = company.share_price * autoFillQty;
-        totalCost += autoFillCost;
-        remaining -= autoFillQty;
-
-        const newAutoPrice = await setPriceFromTrade(db, companyId, calculateBuyPrice(company.share_price, autoFillQty), autoFillQty);
-        await db.prepare(
-          "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
-        ).run(userId, companyId, autoFillQty, company.share_price, autoFillCost);
-        await db.prepare(
-          "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)"
-        ).run(userId, companyId, autoFillQty, company.share_price, new Date().toISOString());
-        company.share_price = newAutoPrice;
+      const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
+      if (bal.balance < totalCost + remaining * company.share_price) {
+        throw new Error("Insufficient balance");
       }
     }
 
@@ -256,12 +238,13 @@ export async function executeSell(userId: number, companyId: number, shares: num
 
   const sellTransaction = await db.transaction(async () => {
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
-      id: number; share_price: number; total_shares: number;
+      id: number; share_price: number; total_shares: number; delisted: number;
     } | undefined;
 
     if (!company) throw new Error("Company not found");
     company.share_price = Number(company.share_price);
     if (company.share_price < 5) throw new Error("Share price too low to trade (minimum 0.05c)");
+    if (company.delisted) throw new Error("This stock is delisted and cannot be traded");
 
     const holding = await db.prepare("SELECT * FROM holdings WHERE user_id = ? AND company_id = ?").get(userId, companyId) as
       | { id: number; shares_owned: number } | undefined;
@@ -281,6 +264,16 @@ export async function executeSell(userId: number, companyId: number, shares: num
     await updateCompanyPrice(companyId, newPrice);
 
     await removeShares(db, userId, companyId, shares, "executeSell");
+
+    const cancelCertCount = await db.prepare(
+      "SELECT COUNT(*) as count FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?"
+    ).get(companyId, userId, shares) as { count: number } | undefined;
+    const toCancel = cancelCertCount?.count ?? 0;
+    if (toCancel > 0) {
+      await db.prepare(
+        "UPDATE share_certificates SET status = 'cancelled' WHERE id IN (SELECT id FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?)"
+      ).run(companyId, userId, toCancel);
+    }
 
     await db.prepare(
       "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
@@ -313,12 +306,13 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     }
 
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
-      id: number; share_price: number; total_shares: number;
+      id: number; share_price: number; total_shares: number; delisted: number;
     } | undefined;
 
     if (!company) throw new Error("Company not found");
     if (shares <= 0 || !Number.isInteger(shares)) throw new Error("Shares must be a positive whole number");
     if (priceCents < 5) throw new Error("Price must be at least 0.05c");
+    if (company.delisted) throw new Error("This stock is delisted and cannot be traded");
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as {
       id: number; balance: number;
@@ -355,9 +349,15 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
       "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
     ).run(userId, companyId, type, shares, shares, priceCents, requestId || null, new Date().toISOString());
 
+    const orderId = result.lastInsertRowid as number;
+
+    if (type === "sell") {
+      await reserveCertificates(db, companyId, userId, shares, orderId);
+    }
+
     await matchOrders(db, companyId);
 
-    return { orderId: result.lastInsertRowid, message: `${type} order placed for ${shares} shares at ${formatCoins(priceCents)}` };
+    return { orderId, message: `${type} order placed for ${shares} shares at ${formatCoins(priceCents)}` };
   });
 }
 
@@ -373,9 +373,9 @@ export async function cancelOrder(userId: number, orderId: number) {
     if (order.type === "buy") {
       const refund = order.price_per_share * order.shares;
       await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(refund, userId);
+    } else {
+      await releaseCertificates(db, orderId);
     }
-
-
 
     await db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(orderId);
 
@@ -385,6 +385,12 @@ export async function cancelOrder(userId: number, orderId: number) {
 
 export async function matchOrders(db: any, companyId: number) {
   if (!(await isTradingOpen(db))) return;
+
+  const integrity = await verifyIntegrity(db, companyId);
+  if (!integrity.ok) {
+    console.error(`[matchOrders] Certificate integrity check failed: ${integrity.error}`);
+    return;
+  }
 
   while (true) {
     const pendingSells = await db.prepare(
@@ -427,8 +433,17 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   await addToBankFund(db, taxAmount);
 
   await removeShares(db, sellOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_sell", sellOrder.id);
-
   await addShares(db, buyOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_buy", buyOrder.id);
+
+  const certIds = await db.prepare(
+    "SELECT id FROM share_certificates WHERE company_id = ? AND status = 'pending_order' AND order_id = ? LIMIT ?"
+  ).all(buyOrder.company_id, sellOrder.id, fillQty) as { id: number }[];
+  if (certIds.length > 0) {
+    const ph = certIds.map(() => "?").join(",");
+    await db.prepare(
+      `UPDATE share_certificates SET owner_id = ?, status = 'active', order_id = NULL WHERE id IN (${ph})`
+    ).run(buyOrder.user_id, ...certIds.map((c) => c.id));
+  }
 
   const reserved = buyOrder.price_per_share * fillQty;
   if (cost < reserved) {
@@ -455,10 +470,7 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
     await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, sellOrder.id);
   }
 
-  const row = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(buyOrder.company_id) as { share_price: number } | undefined;
-  const currentCompanyPrice = Number(row?.share_price) || fillPrice;
-  const buyPressurePrice = calculateBuyPrice(currentCompanyPrice, fillQty);
-  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, buyPressurePrice, fillQty);
+  const newPrice = await setPriceFromTrade(db, buyOrder.company_id, fillPrice, fillQty);
 
   await awardXP(db, buyOrder.user_id, fillQty * 1);
   await awardXP(db, sellOrder.user_id, fillQty * 2);
@@ -475,6 +487,7 @@ export async function resetMarket() {
   const resetTransaction = await db.transaction(async () => {
     const companies = await db.prepare("SELECT * FROM companies").all() as any[];
 
+    await db.prepare("DELETE FROM share_certificates").run();
     await db.prepare("DELETE FROM holdings").run();
     await db.prepare("DELETE FROM price_history").run();
     await db.prepare("UPDATE orders SET status = 'cancelled' WHERE status = 'pending'").run();

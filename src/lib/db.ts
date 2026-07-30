@@ -240,40 +240,45 @@ async function executeInsert(sql: string, params: any[]): Promise<{ changes: num
   const colsMatch = sql.match(/\(([^)]+)\)\s+VALUES/i);
   if (!colsMatch) return { changes: 0, lastInsertRowid: 0 };
   const columns = colsMatch[1].split(",").map((c: string) => c.trim());
+  const colCount = columns.length;
 
-  const valuesMatch = sql.match(/VALUES\s*\(([^)]+)\)/i);
-  let values: any[] = [];
-  if (valuesMatch) {
-    const parts = valuesMatch[1].split(",").map((s: string) => s.trim());
+  const allValuesMatch = sql.match(/VALUES\s+(\([^)]+\)(?:\s*,\s*\([^)]+\))*)/i);
+  let rows: Record<string, any>[] = [];
+
+  if (allValuesMatch) {
+    const groupRe = /\(([^)]+)\)/g;
+    let match: RegExpExecArray | null;
     let paramIdx = 0;
-    for (const part of parts) {
-      if (part === "?") {
-        values.push(params[paramIdx++]);
-      } else if (part === "NOW()") {
-        values.push(new Date().toISOString());
-      } else {
-        values.push(part.replace(/^['"]|['"]$/g, ""));
-      }
+    while ((match = groupRe.exec(allValuesMatch[1])) !== null) {
+      const parts = match[1].split(",").map((s: string) => s.trim());
+      const row: Record<string, any> = {};
+      columns.forEach((col, i) => {
+        const part = parts[i];
+        if (part === "?") {
+          row[col] = params[paramIdx++] ?? null;
+        } else if (/^NOW\(\)|datetime\('now'\)$/i.test(part)) {
+          row[col] = new Date().toISOString();
+        } else {
+          row[col] = part.replace(/^['"]|['"]$/g, "");
+        }
+      });
+      rows.push(row);
     }
-  } else {
-    values = params;
   }
 
-  const row: Record<string, any> = {};
-  columns.forEach((col, i) => {
-    row[col] = values[i] !== undefined ? values[i] : null;
-  });
+  if (rows.length === 0) return { changes: 0, lastInsertRowid: 0 };
 
   try {
+    const body = rows.length === 1 ? rows[0] : rows;
     const data = await restFetch(`/${table}`, {
       method: "POST",
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify(row),
+      body: JSON.stringify(body),
     });
-    const id = Array.isArray(data) ? data[0]?.id : data?.id;
-    return { changes: 1, lastInsertRowid: id ?? 0 };
+    const firstId = Array.isArray(data) ? data[0]?.id : data?.id;
+    return { changes: rows.length, lastInsertRowid: firstId ?? 0 };
   } catch (e: any) {
-    console.error("[executeInsert] error:", e?.message, "table:", table, "row:", JSON.stringify(row));
+    console.error("[executeInsert] error:", e?.message, "table:", table, "rows:", rows.length);
     throw new Error(`Insert failed for ${table}: ${e.message}`);
   }
 }

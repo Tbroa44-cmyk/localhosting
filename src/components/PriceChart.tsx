@@ -78,10 +78,8 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
 }
 
 interface BucketData {
-  buys: number;
-  sells: number;
-  buyTotalPrice: number;
-  sellTotalPrice: number;
+  tx: number;
+  totalPrice: number;
 }
 
 function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter) {
@@ -124,7 +122,7 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
   }
 
   if (filtered.length === 0) {
-    return { labels: ["No data"], buys: [0], sells: [0], buyAvgPrices: [0], sellAvgPrices: [0] };
+    return { labels: ["No data"], transactions: [0], avgPrices: [0] };
   }
 
   const minTime = Math.min(...filtered.map((t) => new Date(t.created_at).getTime()));
@@ -133,7 +131,7 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
   const buckets = new Map<number, BucketData>();
   let currentBucket = Math.floor(minTime / bucketSize) * bucketSize;
   while (currentBucket <= maxTime) {
-    buckets.set(currentBucket, { buys: 0, sells: 0, buyTotalPrice: 0, sellTotalPrice: 0 });
+    buckets.set(currentBucket, { tx: 0, totalPrice: 0 });
     currentBucket += bucketSize;
   }
 
@@ -144,23 +142,16 @@ function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter
     if (!bucket) continue;
     const shares = Number(tx.shares) || 1;
     const price = Number(tx.price_per_share) || 0;
-    if (String(tx.type).toLowerCase().includes("buy")) {
-      bucket.buys += shares;
-      bucket.buyTotalPrice += shares * price;
-    } else {
-      bucket.sells += shares;
-      bucket.sellTotalPrice += shares * price;
-    }
+    bucket.tx += shares;
+    bucket.totalPrice += shares * price;
   }
 
   const sortedBuckets = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]);
 
   return {
     labels: sortedBuckets.map(([ts]) => formatLabel(ts)),
-    buys: sortedBuckets.map(([, b]) => b.buys),
-    sells: sortedBuckets.map(([, b]) => b.sells),
-    buyAvgPrices: sortedBuckets.map(([, b]) => b.buys > 0 ? b.buyTotalPrice / b.buys : 0),
-    sellAvgPrices: sortedBuckets.map(([, b]) => b.sells > 0 ? b.sellTotalPrice / b.sells : 0),
+    transactions: sortedBuckets.map(([, b]) => b.tx),
+    avgPrices: sortedBuckets.map(([, b]) => b.tx > 0 ? b.totalPrice / b.tx : 0),
   };
 }
 
@@ -168,10 +159,14 @@ export default function PriceChart({
   priceHistory,
   currentPrice,
   transactions,
+  pendingBuyCount = 0,
+  pendingSellCount = 0,
 }: {
   priceHistory: PricePoint[];
   currentPrice: number;
   transactions?: Transaction[];
+  pendingBuyCount?: number;
+  pendingSellCount?: number;
 }) {
   const [filter, setFilter] = useState<TimeFilter>("7d");
   const [viewMode, setViewMode] = useState<ViewMode>("price");
@@ -202,11 +197,10 @@ export default function PriceChart({
   const holdersYScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 10 };
     const holders = filteredData.map((p) => p.holder_count ?? 0);
-    const minH = Math.min(...holders);
     const maxH = Math.max(...holders);
-    const range = maxH - minH;
+    const range = maxH;
     const padding = range > 0 ? Math.max(range * 0.15, 1) : 2;
-    return { min: Math.max(0, Math.floor(minH - padding)), max: Math.ceil(maxH + padding) };
+    return { min: 1, max: Math.ceil(maxH + padding) };
   }, [filteredData]);
 
   const priceChartData = useMemo(() => {
@@ -266,13 +260,25 @@ export default function PriceChart({
     return { labels, datasets };
   }, [filteredData, filter, showHolders]);
 
+  const bucketCount = groupedTrades?.labels.length ?? 0;
+  const buyOrdersData = useMemo(() => {
+    if (bucketCount <= 1) return [0];
+    return Array(bucketCount).fill(pendingBuyCount);
+  }, [bucketCount, pendingBuyCount]);
+
+  const sellOrdersData = useMemo(() => {
+    if (bucketCount <= 1) return [0];
+    return Array(bucketCount).fill(pendingSellCount);
+  }, [bucketCount, pendingSellCount]);
+
   const tradeChartData = useMemo(() => {
     if (!groupedTrades) {
       return {
         labels: ["No trades"],
         datasets: [
-          { label: "Buys", data: [0], backgroundColor: "rgba(34, 197, 94, 0.7)", borderRadius: 4 },
-          { label: "Sells", data: [0], backgroundColor: "rgba(239, 68, 68, 0.7)", borderRadius: 4 },
+          { label: "Transactions", data: [0], backgroundColor: "rgba(99, 102, 241, 0.7)", borderRadius: 4, yAxisID: "y" },
+          { label: "Buy Orders", data: [0], backgroundColor: "rgba(34, 197, 94, 0.7)", borderRadius: 4, yAxisID: "y1" },
+          { label: "Sell Orders", data: [0], backgroundColor: "rgba(239, 68, 68, 0.7)", borderRadius: 4, yAxisID: "y1" },
         ],
       };
     }
@@ -281,20 +287,29 @@ export default function PriceChart({
       labels: groupedTrades.labels,
       datasets: [
         {
-          label: "Buys",
-          data: groupedTrades.buys,
-          backgroundColor: "rgba(34, 197, 94, 0.7)",
+          label: "Transactions",
+          data: groupedTrades.transactions,
+          backgroundColor: "rgba(99, 102, 241, 0.7)",
           borderRadius: 4,
+          yAxisID: "y",
         },
         {
-          label: "Sells",
-          data: groupedTrades.sells,
+          label: "Buy Orders",
+          data: buyOrdersData,
+          backgroundColor: "rgba(34, 197, 94, 0.7)",
+          borderRadius: 4,
+          yAxisID: "y1",
+        },
+        {
+          label: "Sell Orders",
+          data: sellOrdersData,
           backgroundColor: "rgba(239, 68, 68, 0.7)",
           borderRadius: 4,
+          yAxisID: "y1",
         },
       ],
     };
-  }, [groupedTrades]);
+  }, [groupedTrades, buyOrdersData, sellOrdersData]);
 
   const yScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 1 };
@@ -378,6 +393,8 @@ export default function PriceChart({
     [yScale, showHolders, holdersYScale]
   );
 
+  const maxOrderCount = Math.max(pendingBuyCount, pendingSellCount, 1);
+
   const tradeOptions = useMemo(
     () => ({
       responsive: true,
@@ -404,16 +421,17 @@ export default function PriceChart({
             label: (ctx: any) => {
               const idx = ctx.dataIndex;
               const dsIdx = ctx.datasetIndex;
-              const shares = ctx.parsed.y;
-              if (shares === 0) return;
-              const avgPrice = dsIdx === 0
-                ? groupedTrades?.buyAvgPrices[idx]
-                : groupedTrades?.sellAvgPrices[idx];
-              const label = dsIdx === 0 ? "Bought" : "Sold";
-              if (avgPrice && avgPrice > 0) {
-                return `${shares} share${shares !== 1 ? "s" : ""} ${label} @ avg ${formatCoins(Math.round(avgPrice * 100))}`;
+              const val = ctx.parsed.y;
+              if (val === 0) return;
+              if (dsIdx === 0) {
+                const avgPrice = groupedTrades?.avgPrices[idx];
+                if (avgPrice && avgPrice > 0) {
+                  return `${val} share${val !== 1 ? "s" : ""} traded @ avg ${formatCoins(Math.round(avgPrice))}`;
+                }
+                return `${val} share${val !== 1 ? "s" : ""} traded`;
               }
-              return `${shares} share${shares !== 1 ? "s" : ""} ${label}`;
+              if (dsIdx === 1) return `${val} buy order${val !== 1 ? "s" : ""} pending`;
+              return `${val} sell order${val !== 1 ? "s" : ""} pending`;
             },
           },
         },
@@ -427,6 +445,7 @@ export default function PriceChart({
         },
         y: {
           display: true,
+          position: "left" as const,
           grid: { color: "rgba(255,255,255,0.05)" },
           ticks: {
             color: "#6b7280",
@@ -435,6 +454,32 @@ export default function PriceChart({
             callback: (val: any) => val,
           },
           border: { display: false },
+          title: {
+            display: true,
+            text: "Shares",
+            color: "#6b7280",
+            font: { size: 10 },
+          },
+        },
+        y1: {
+          display: true,
+          position: "right" as const,
+          min: 0,
+          max: maxOrderCount + 1,
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: "#6b7280",
+            font: { size: 10 },
+            stepSize: 1,
+            callback: (val: any) => `${val}`,
+          },
+          border: { display: false },
+          title: {
+            display: true,
+            text: "Orders",
+            color: "#6b7280",
+            font: { size: 10 },
+          },
         },
       },
       interaction: {
@@ -442,7 +487,7 @@ export default function PriceChart({
         mode: "index" as const,
       },
     }),
-    [groupedTrades]
+    [groupedTrades, maxOrderCount]
   );
 
   const displayPrice = filteredData.length > 0 ? filteredData[filteredData.length - 1].price / 100 : 0;
@@ -452,8 +497,7 @@ export default function PriceChart({
 
   const chartKey = `${filter}-${viewMode}-${showHolders}`;
 
-  const totalBuys = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
-  const totalSells = tradeChartData.datasets[1]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalTx = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
 
   return (
     <div className="glass-card">
@@ -472,9 +516,11 @@ export default function PriceChart({
               </>
             ) : (
               <>
-                <span className="text-sm text-green-400 font-medium">{totalBuys} bought</span>
+                <span className="text-sm text-indigo-400 font-medium">{totalTx} traded</span>
                 <span className="text-gray-600">·</span>
-                <span className="text-sm text-red-400 font-medium">{totalSells} sold</span>
+                <span className="text-sm text-green-400 font-medium">{pendingBuyCount} buy orders</span>
+                <span className="text-gray-600">·</span>
+                <span className="text-sm text-red-400 font-medium">{pendingSellCount} sell orders</span>
               </>
             )}
           </div>
@@ -546,12 +592,16 @@ export default function PriceChart({
       {viewMode === "trades" && tradeChartData.labels.length > 1 && (
         <div className="flex items-center justify-center gap-4 mt-2 text-xs flex-wrap">
           <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(99, 102, 241, 0.7)" }} />
+            <span className="text-gray-400">Transactions ({totalTx})</span>
+          </div>
+          <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(34, 197, 94, 0.7)" }} />
-            <span className="text-gray-400">Buys ({totalBuys})</span>
+            <span className="text-gray-400">Buy Orders ({pendingBuyCount})</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
-            <span className="text-gray-400">Sells ({totalSells})</span>
+            <span className="text-gray-400">Sell Orders ({pendingSellCount})</span>
           </div>
         </div>
       )}

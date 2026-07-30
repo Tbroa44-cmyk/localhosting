@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -33,6 +33,7 @@ interface Company {
   total_shares: number;
   initial_price?: number;
   initial_shares?: number;
+  delisted?: number;
 }
 
 interface Stats {
@@ -90,6 +91,7 @@ export default function AdminPage() {
 
   const [tradingSettings, setTradingSettings] = useState<TradingSettings>({ trading_enabled: 1, trading_open_hour: 0, trading_close_hour: 24, emergency_close: 0, emergency_message: "Markets under maintenance", trading_days: "1,2,3,4,5,6,7", bots_enabled: 1 });
   const [savingTrading, setSavingTrading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const [customDates, setCustomDates] = useState<CustomDateRange[]>([]);
   const [newDateRange, setNewDateRange] = useState({ start_date: "", end_date: "", label: "" });
@@ -108,56 +110,73 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState("");
   const [userBanFilter, setUserBanFilter] = useState<"all" | "players" | "banned" | "bots">("all");
   const [banModalUser, setBanModalUser] = useState<User | null>(null);
+  const [globalLoading, setGlobalLoading] = useState(true);
+  const [appVersion, setAppVersion] = useState("");
+  const [migratingCerts, setMigratingCerts] = useState(false);
+  const [certVerifications, setCertVerifications] = useState<Record<number, { ok: boolean; total: number; expected: number } | null>>({});
+  const [fixHoldingInput, setFixHoldingInput] = useState({ userId: "", companyId: "", correctShares: "" });
+  const [fixingHolding, setFixingHolding] = useState(false);
+  const [allHoldings, setAllHoldings] = useState<any[]>([]);
+  const [showHoldings, setShowHoldings] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
+  const fetchAdminData = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/companies?t=${Date.now()}`, {
+        headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" },
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      setUsers(data.users || []);
+      setCompanies(data.companies || []);
+      setStats(data.stats || { totalUsers: 0, totalBalance: 0, totalTransactions: 0, bankFund: 0 });
+    } catch (e: any) {
+      console.error("fetchAdminData error:", e);
+      setError(e.message || "Failed to fetch data");
+    } finally {
+      setGlobalLoading(false);
+    }
+  }, []);
+
+  const fetchTradingSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/settings?t=${Date.now()}`, {
+        headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" },
+      });
+      const data = await res.json();
+      if (data.trading_enabled !== undefined) setTradingSettings({
+        trading_enabled: data.trading_enabled,
+        trading_open_hour: data.trading_open_hour,
+        trading_close_hour: data.trading_close_hour,
+        emergency_close: data.emergency_close ?? 0,
+        emergency_message: data.emergency_message ?? "Markets under maintenance",
+        trading_days: data.trading_days ?? "1,2,3,4,5,6,7",
+        bots_enabled: data.bots_enabled ?? 1,
+      });
+    } catch {}
+  }, []);
+
+  const fetchCustomDates = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/custom-dates?t=${Date.now()}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setCustomDates(data);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchAdminData();
     fetchTradingSettings();
     fetchCustomDates();
+    fetch("/api/version").then(r => r.json()).then(d => setAppVersion(d.version || "1.0.0")).catch(() => {});
     const interval = setInterval(fetchAdminData, 10000);
     const onVisible = () => { if (document.visibilityState === "visible") fetchAdminData(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
-  }, []);
-
-  function fetchAdminData() {
-    fetch(`/api/admin/companies?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) { setError(data.error); return; }
-        setUsers(data.users || []);
-        setCompanies(data.companies || []);
-        setStats(data.stats || { totalUsers: 0, totalBalance: 0, totalTransactions: 0, bankFund: 0 });
-      })
-      .catch(console.error);
-  }
-
-  function fetchTradingSettings() {
-    fetch(`/api/admin/settings?t=${Date.now()}`, { headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" } })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.trading_enabled !== undefined) setTradingSettings({
-          trading_enabled: data.trading_enabled,
-          trading_open_hour: data.trading_open_hour,
-          trading_close_hour: data.trading_close_hour,
-          emergency_close: data.emergency_close ?? 0,
-          emergency_message: data.emergency_message ?? "Markets under maintenance",
-          trading_days: data.trading_days ?? "1,2,3,4,5,6,7",
-          bots_enabled: data.bots_enabled ?? 1,
-        });
-      })
-      .catch(console.error);
-  }
-
-  function fetchCustomDates() {
-    fetch(`/api/admin/custom-dates?t=${Date.now()}`)
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setCustomDates(data); })
-      .catch(console.error);
-  }
+  }, [fetchAdminData, fetchTradingSettings, fetchCustomDates]);
 
   async function handleAddDateRange() {
     if (!newDateRange.start_date || !newDateRange.end_date) return;
@@ -225,15 +244,19 @@ export default function AdminPage() {
 
   async function handleSaveTrading() {
     setSavingTrading(true);
+    setSaveStatus("saving");
     try {
       await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tradingSettings),
       });
-      showToast("Trading settings saved!", "success");
+      showToast("Settings saved!", "success");
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
       showToast("Failed to save settings", "error");
+      setSaveStatus("error");
     } finally {
       setSavingTrading(false);
     }
@@ -251,7 +274,7 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(`Gave ${amount}c to user`, "success");
+        showToast(`Gave ${amount}¢ to user`, "success");
         setGiveCoinsUserId(null);
         setGiveCoinsAmount("");
         fetchAdminData();
@@ -330,38 +353,68 @@ export default function AdminPage() {
     setEditShares(c.total_shares);
   }
 
-  async function handleUpdateCompany(e: React.FormEvent) {
+  async function handleUpdateDescription(e: React.FormEvent) {
     e.preventDefault();
     if (!editingCompany) return;
-    const hasShareChange = editShares > editingCompany.total_shares;
-    const hasDescChange = editDescription !== (editingCompany.description || "");
-    if (!hasShareChange && !hasDescChange) {
-      showToast("No changes to save", "error");
-      return;
-    }
     try {
-      const body: any = {};
-      if (hasShareChange) body.total_shares = editShares;
-      if (hasDescChange) body.description = editDescription;
       const res = await fetch(`/api/admin/companies/${editingCompany.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ description: editDescription }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
-      showToast(data.message || "Updated!", "success");
+      showToast("Description updated!", "success");
       setEditingCompany(null);
       fetchAdminData();
     } catch {
-      showToast("Error updating company", "error");
+      showToast("Error updating description", "error");
     }
   }
 
-  async function handleDeleteCompany(id: number) {
-    openConfirm("Delete Company", "Delete this company? This cannot be undone.", true, async () => {
+  async function handleUpdateShares(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCompany) return;
+    if (editShares <= editingCompany.total_shares) {
+      showToast("Shares can only be increased", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/companies/${editingCompany.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ total_shares: editShares }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
+      showToast("Shares increased!", "success");
+      setEditingCompany(null);
+      fetchAdminData();
+    } catch {
+      showToast("Error updating shares", "error");
+    }
+  }
+
+  async function handleToggleDelist(c: Company) {
+    try {
+      const res = await fetch(`/api/admin/companies/${c.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delisted: c.delisted ? 0 : 1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
+      showToast(c.delisted ? "Company relisted" : "Company delisted", "success");
+      fetchAdminData();
+    } catch {
+      showToast("Error toggling delist", "error");
+    }
+  }
+
+  async function handleDeleteCompany(c: Company) {
+    openConfirm("Delete Company", `Delete "${c.name}" (${c.ticker})? This will permanently remove all related data.`, true, async () => {
       try {
-        const res = await fetch(`/api/admin/companies/${id}`, { method: "DELETE" });
+        const res = await fetch(`/api/admin/companies/${c.id}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok) { showToast(data.error || "Failed", "error"); return; }
         showToast("Company deleted", "success");
@@ -392,7 +445,7 @@ export default function AdminPage() {
     });
   }
 
-  const isBot = (u: User) => u.role === "Bot";
+  const isBot = (u: User) => u.email.endsWith("@stockgame.uk");
 
   const filteredUsers = users.filter((u) => {
     if (userBanFilter === "bots") return isBot(u);
@@ -406,6 +459,13 @@ export default function AdminPage() {
     return true;
   });
 
+  const userCounts = {
+    all: users.filter((u) => !isBot(u)).length,
+    players: users.filter((u) => !isBot(u) && u.allowed !== 1).length,
+    banned: users.filter((u) => !isBot(u) && u.allowed === 1).length,
+    bots: users.filter((u) => isBot(u)).length,
+  };
+
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -414,10 +474,14 @@ export default function AdminPage() {
     );
   }
 
-  if (error) {
+  if (error && !globalLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-400">{error}</div>
+        <div className="text-center">
+          <svg className="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <div className="text-red-400 mb-3">{error}</div>
+          <button onClick={fetchAdminData} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">Retry</button>
+        </div>
       </div>
     );
   }
@@ -454,7 +518,6 @@ export default function AdminPage() {
       />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white flex items-center gap-3">
@@ -465,13 +528,18 @@ export default function AdminPage() {
             </h1>
             <p className="text-gray-400 text-sm mt-1 ml-10">Manage companies, users, and the market</p>
           </div>
-          <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
-            <div className={`w-2 h-2 rounded-full ${users.length > 0 || companies.length > 0 ? "bg-green-400" : "bg-yellow-400 animate-pulse"}`} />
-            <span className="text-xs text-gray-400">{users.length > 0 || companies.length > 0 ? "Connected" : "Connecting..."}</span>
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-gray-500 font-mono">v{appVersion || "—"}</div>
+            <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2">
+              <div className={`w-2 h-2 rounded-full ${globalLoading ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`} />
+              <span className="text-xs text-gray-400">{globalLoading ? "Loading..." : "Connected"}</span>
+            </div>
+            <button onClick={fetchAdminData} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white p-2 rounded-lg transition-colors" title="Refresh">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            </button>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 mb-8 bg-gray-900/50 border border-gray-800 rounded-xl p-1">
           {tabs.map((tab) => (
             <button
@@ -511,10 +579,10 @@ export default function AdminPage() {
             </div>
 
             <div className="glass-card border-red-500/20">
-              <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                    <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
                     <h3 className="text-red-300 font-semibold">Danger Zone</h3>
                   </div>
                   <p className="text-gray-400 text-sm mt-1">Reset the entire market — deletes all holdings and resets all prices</p>
@@ -522,11 +590,88 @@ export default function AdminPage() {
                 <button
                   onClick={handleResetMarket}
                   disabled={resetting}
-                  className="bg-red-600/80 hover:bg-red-600 text-white font-medium py-2 px-5 rounded-lg transition-colors disabled:opacity-50 text-sm shrink-0"
+                  className="bg-red-600/80 hover:bg-red-600 text-white font-medium py-2.5 px-5 rounded-lg transition-colors disabled:opacity-50 text-sm shrink-0"
                 >
                   {resetting ? "Resetting..." : "Reset Holdings & Prices"}
                 </button>
               </div>
+            </div>
+
+            <div className="glass-card border-purple-500/20">
+              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Tools
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-gray-800/40 rounded-lg p-4 border border-gray-700/50">
+                  <h4 className="text-sm font-medium text-gray-300 mb-2">Migrate Certificates</h4>
+                  <p className="text-xs text-gray-500 mb-3">Creates share certificates for any holdings that are missing them. Safe to run multiple times.</p>
+                  <button
+                    onClick={async () => {
+                      setMigratingCerts(true);
+                      try {
+                        const res = await fetch("/api/admin/migrate", { method: "POST" });
+                        const data = await res.json();
+                        showToast(data.message || data.error || "Done", res.ok ? "success" : "error");
+                        fetchAdminData();
+                      } catch { showToast("Migration failed", "error"); }
+                      finally { setMigratingCerts(false); }
+                    }}
+                    disabled={migratingCerts}
+                    className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-4 py-2 rounded-lg text-xs transition-colors disabled:opacity-50"
+                  >
+                    {migratingCerts ? "Running..." : "Run Migration"}
+                  </button>
+                </div>
+
+                <div className="bg-gray-800/40 rounded-lg p-4 border border-gray-700/50">
+                  <h4 className="text-sm font-medium text-gray-300 mb-2">Fix Holdings</h4>
+                  <p className="text-xs text-gray-500 mb-3">Manually set a user's shares_owned for a company.</p>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    <input type="number" placeholder="User ID" value={fixHoldingInput.userId} onChange={(e) => setFixHoldingInput({ ...fixHoldingInput, userId: e.target.value })} className="input-field text-xs" />
+                    <input type="number" placeholder="Company ID" value={fixHoldingInput.companyId} onChange={(e) => setFixHoldingInput({ ...fixHoldingInput, companyId: e.target.value })} className="input-field text-xs" />
+                    <input type="number" placeholder="Shares" value={fixHoldingInput.correctShares} onChange={(e) => setFixHoldingInput({ ...fixHoldingInput, correctShares: e.target.value })} className="input-field text-xs" />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const userId = parseInt(fixHoldingInput.userId);
+                      const companyId = parseInt(fixHoldingInput.companyId);
+                      const correctShares = parseInt(fixHoldingInput.correctShares);
+                      if (!userId || !companyId || isNaN(correctShares)) { showToast("Fill all fields", "error"); return; }
+                      setFixingHolding(true);
+                      try {
+                        const res = await fetch("/api/admin/fix-holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, companyId, correctShares }) });
+                        const data = await res.json();
+                        showToast(data.message || data.error || "Done", res.ok ? "success" : "error");
+                      } catch { showToast("Fix failed", "error"); }
+                      finally { setFixingHolding(false); }
+                    }}
+                    disabled={fixingHolding}
+                    className="bg-amber-600/80 hover:bg-amber-600 text-white font-medium px-4 py-2 rounded-lg text-xs transition-colors disabled:opacity-50"
+                  >
+                    {fixingHolding ? "Fixing..." : "Apply"}
+                  </button>
+                  <button onClick={async () => {
+                    try {
+                      const res = await fetch("/api/admin/fix-holdings");
+                      const data = await res.json();
+                      if (Array.isArray(data)) { setAllHoldings(data); setShowHoldings(true); }
+                    } catch { showToast("Failed to load holdings", "error"); }
+                  }} className="text-gray-400 hover:text-white text-xs ml-2 transition-colors">View All</button>
+                </div>
+              </div>
+              {showHoldings && allHoldings.length > 0 && (
+                <div className="mt-4 max-h-48 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-gray-500 border-b border-gray-800"><th className="text-left py-1 px-2">User</th><th className="text-left py-1 px-2">Company</th><th className="text-right py-1 px-2">Shares</th></tr></thead>
+                    <tbody>
+                      {allHoldings.map((h: any, i: number) => (
+                        <tr key={i} className="border-b border-gray-800/40"><td className="py-1 px-2 text-gray-300">{h.username} (#{h.user_id})</td><td className="py-1 px-2 text-gray-300">{h.ticker} (#{h.company_id})</td><td className="py-1 px-2 text-right text-white">{h.shares_owned}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -575,43 +720,46 @@ export default function AdminPage() {
                 return (
                   <div key={c.id} className="glass-card">
                     {editingCompany?.id === c.id ? (
-                      <form onSubmit={handleUpdateCompany} className="space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="space-y-5">
+                        <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-1 rounded">{c.ticker}</span>
                           <span className="text-white font-medium">{c.name}</span>
                           <span className="text-xs text-yellow-500 ml-2">Editing</span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
-                            <label className="text-xs text-gray-500 block mb-1">Company Name</label>
-                            <div className="text-white text-sm">{c.name}</div>
-                            <span className="text-[10px] text-gray-600 mt-1 inline-block">Locked — create new instead</span>
-                          </div>
+
+                        <div className="grid grid-cols-2 gap-3">
                           <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
                             <label className="text-xs text-gray-500 block mb-1">Share Price</label>
-                            <div className="text-white text-sm">{formatCoins(c.share_price)}</div>
-                            <span className="text-[10px] text-gray-600 mt-1 inline-block">Locked — market-driven</span>
+                            <div className="text-white text-sm font-semibold">{formatCoins(c.share_price)}</div>
+                            <span className="text-[10px] text-gray-600 mt-1 inline-block">Market-driven</span>
+                          </div>
+                          <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-800">
+                            <label className="text-xs text-gray-500 block mb-1">Total Shares</label>
+                            <div className="text-white text-sm font-semibold">{c.total_shares.toLocaleString()}</div>
+                            <span className="text-[10px] text-gray-600 mt-1 inline-block">Current</span>
                           </div>
                         </div>
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Description</label>
+
+                        <div className="border border-gray-800 rounded-lg p-4 space-y-3">
+                          <h4 className="text-sm font-medium text-gray-300">Change Description</h4>
                           <input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="input-field" placeholder="Company description" />
+                          <button onClick={handleUpdateDescription} disabled={editDescription === (c.description || "")} className="bg-blue-600/80 hover:bg-blue-600 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm disabled:opacity-40">Save Description</button>
                         </div>
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Total Shares — can only increase</label>
-                          <input type="number" min={c.total_shares + 1} value={editShares} onChange={(e) => { const val = Number(e.target.value); setEditShares(val); }} className="input-field" required />
-                          <p className="text-xs text-gray-500 mt-1">
+
+                        <div className="border border-gray-800 rounded-lg p-4 space-y-3">
+                          <h4 className="text-sm font-medium text-gray-300">Increase Shares</h4>
+                          <input type="number" min={c.total_shares + 1} value={editShares} onChange={(e) => setEditShares(Number(e.target.value))} className="input-field" required />
+                          <p className="text-xs text-gray-500">
                             Current: {c.total_shares.toLocaleString()}
                             {editShares > c.total_shares && (
-                              <span className="text-emerald-400 ml-2">(+{(editShares - c.total_shares).toLocaleString()} new)</span>
+                              <span className="text-emerald-400 ml-2">+{(editShares - c.total_shares).toLocaleString()} new</span>
                             )}
                           </p>
+                          <button onClick={handleUpdateShares} disabled={editShares <= c.total_shares} className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm disabled:opacity-40">Issue New Shares</button>
                         </div>
-                        <div className="flex gap-2">
-                          <button type="submit" disabled={editShares <= c.total_shares && editDescription === (c.description || "")} className="bg-emerald-600/80 hover:bg-emerald-600 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed">Save Changes</button>
-                          <button type="button" onClick={() => setEditingCompany(null)} className="text-gray-400 hover:text-white text-sm px-4 py-2">Cancel</button>
-                        </div>
-                      </form>
+
+                        <button type="button" onClick={() => setEditingCompany(null)} className="text-gray-400 hover:text-white text-sm transition-colors">Close Editing</button>
+                      </div>
                     ) : (
                       <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex-1 min-w-0">
@@ -622,6 +770,9 @@ export default function AdminPage() {
                             {sharesIncreased && (
                               <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">+{(c.total_shares - (c.initial_shares || 0)).toLocaleString()} released</span>
                             )}
+                            {c.delisted ? (
+                              <span className="text-[10px] text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded">Delisted</span>
+                            ) : null}
                           </div>
                           <p className="text-xs text-gray-500 truncate">{c.description || "No description"}</p>
                         </div>
@@ -635,9 +786,13 @@ export default function AdminPage() {
                             <div className="text-[10px] text-gray-500">shares</div>
                           </div>
                           <div className="flex gap-1.5">
-                            <Link href={`/admin/press-release/${c.id}`} className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Press Release</Link>
+                            <Link href={`/admin/press-release/${c.id}`} className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Press</Link>
+                            <button onClick={() => { const cv = certVerifications[c.id]; if (cv) { setCertVerifications(prev => { const next = { ...prev }; delete next[c.id]; return next; }); return; } fetch(`/api/admin/companies/${c.id}/verify`).then(r => r.json()).then(d => setCertVerifications(prev => ({ ...prev, [c.id]: d }))).catch(() => showToast("Verify failed", "error")); }} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${certVerifications[c.id] ? (certVerifications[c.id]!.ok ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400") : "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20"}`}>
+                              {certVerifications[c.id] ? (certVerifications[c.id]!.ok ? `✓ ${certVerifications[c.id]!.total}` : `✗ ${certVerifications[c.id]!.total}/${certVerifications[c.id]!.expected}`) : "Verify"}
+                            </button>
                             <button onClick={() => startEditCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Edit</button>
-                            <button onClick={() => handleDeleteCompany(c.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Delete</button>
+                            <button onClick={() => handleToggleDelist(c)} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${c.delisted ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" : "bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"}`}>{c.delisted ? "Relist" : "Delist"}</button>
+                            <button onClick={() => handleDeleteCompany(c)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Delete</button>
                           </div>
                         </div>
                       </div>
@@ -646,7 +801,11 @@ export default function AdminPage() {
                 );
               })}
               {companies.length === 0 && (
-                <div className="text-center text-gray-500 py-8">No companies yet</div>
+                <div className="text-center text-gray-500 py-12">
+                  <svg className="w-10 h-10 text-gray-600 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                  <p className="text-gray-500">No companies yet</p>
+                  <button onClick={() => setShowNewForm(true)} className="text-emerald-400 hover:text-emerald-300 text-sm mt-2 transition-colors">Create your first company</button>
+                </div>
               )}
             </div>
           </div>
@@ -657,13 +816,13 @@ export default function AdminPage() {
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1 relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-                <input type="text" placeholder="Search..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="input-field pl-10" />
+                <input type="text" placeholder="Search by username or email..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="input-field pl-10" />
               </div>
-              <select value={userBanFilter} onChange={(e) => setUserBanFilter(e.target.value as any)} className="input-field w-auto sm:w-44">
-                <option value="all">All Players ({users.filter((u) => !isBot(u)).length})</option>
-                <option value="players">Active Players</option>
-                <option value="banned">Banned Only</option>
-                <option value="bots">Bots ({users.filter((u) => isBot(u)).length})</option>
+              <select value={userBanFilter} onChange={(e) => setUserBanFilter(e.target.value as any)} className="input-field w-auto sm:w-48">
+                <option value="all">All Players ({userCounts.all})</option>
+                <option value="players">Active ({userCounts.players})</option>
+                <option value="banned">Banned ({userCounts.banned})</option>
+                <option value="bots">Bots ({userCounts.bots})</option>
               </select>
             </div>
 
@@ -725,14 +884,15 @@ export default function AdminPage() {
                           <div className="flex items-center justify-center gap-2">
                             {!u.is_admin && !isBot(u) && (
                               u.allowed === 1 ? (
-                                <button onClick={() => handleUnbanUser(u.id)} className="text-emerald-400 hover:text-emerald-300 text-xs font-medium transition-colors">Unban</button>
+                                <button onClick={() => handleUnbanUser(u.id)} className="text-emerald-400 hover:text-emerald-300 text-xs font-medium transition-colors" title="Unban this user">Unban</button>
                               ) : (
-                                <button onClick={() => setBanModalUser(u)} className="text-red-400 hover:text-red-300 text-xs font-medium transition-colors">Ban</button>
+                                <button onClick={() => setBanModalUser(u)} className="text-red-400 hover:text-red-300 text-xs font-medium transition-colors" title="Ban this user">Ban</button>
                               )
                             )}
                             {!isBot(u) && (giveCoinsUserId === u.id ? (
-                              <div className="flex items-center gap-1">
-                                <input type="number" step="0.01" min="0.01" value={giveCoinsAmount} onChange={(e) => setGiveCoinsAmount(e.target.value)} placeholder="c" className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs" />
+                              <div className="flex items-center gap-1.5">
+                                <input type="number" step="0.01" min="0.01" value={giveCoinsAmount} onChange={(e) => setGiveCoinsAmount(e.target.value)} placeholder="Amount" className="w-20 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white text-xs" />
+                                <span className="text-[10px] text-gray-500">¢</span>
                                 <button onClick={() => handleGiveCoins(u.id)} disabled={givingCoins} className="text-emerald-400 hover:text-emerald-300 text-xs font-bold transition-colors">{givingCoins ? "..." : "Give"}</button>
                                 <button onClick={() => { setGiveCoinsUserId(null); setGiveCoinsAmount(""); }} className="text-gray-500 hover:text-white text-xs transition-colors">X</button>
                               </div>
@@ -786,7 +946,7 @@ export default function AdminPage() {
                     tradingSettings.emergency_close ? "bg-emerald-600/80 hover:bg-emerald-600 text-white" : "bg-red-600/80 hover:bg-red-600 text-white"
                   }`}
                 >
-                  {tradingSettings.emergency_close ? "Reopen Market" : "Emergency Close"}
+                  {tradingSettings.emergency_close ? "Reopen Market" : "Close Market"}
                 </button>
               </div>
               {tradingSettings.emergency_close === 1 && (
@@ -808,23 +968,24 @@ export default function AdminPage() {
                     <h3 className="text-white font-semibold">Bot Activity</h3>
                   </div>
                   <p className="text-gray-400 text-sm">25 AI bots (Bot1–Bot25) simulate trading activity</p>
-                  <p className="text-gray-500 text-xs mt-1">5000c starting cash each</p>
+                  <p className="text-gray-500 text-xs mt-1">5000¢ starting cash each</p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={async () => {
-                      const newEnabled = tradingSettings.bots_enabled ? 0 : 1;
-                      const newSettings = { ...tradingSettings, bots_enabled: newEnabled };
-                      setTradingSettings(newSettings);
-                      await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newSettings) });
+                <button
+                  onClick={async () => {
+                    const newEnabled = tradingSettings.bots_enabled ? 0 : 1;
+                    setTradingSettings({ ...tradingSettings, bots_enabled: newEnabled });
+                    try {
+                      await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...tradingSettings, bots_enabled: newEnabled }) });
                       showToast(newEnabled ? "Bots enabled" : "Bots disabled", "success");
-                    }}
-                    className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${tradingSettings.bots_enabled ? "bg-cyan-600" : "bg-gray-700"}`}
-                  >
-                    <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform duration-300 ${tradingSettings.bots_enabled ? "translate-x-7" : "translate-x-0.5"}`} />
-                  </button>
-                  <span className={`text-sm font-medium ${tradingSettings.bots_enabled ? "text-cyan-400" : "text-gray-500"}`}>{tradingSettings.bots_enabled ? "ON" : "OFF"}</span>
-                </div>
+                    } catch {
+                      setTradingSettings({ ...tradingSettings, bots_enabled: tradingSettings.bots_enabled });
+                      showToast("Failed to toggle bots", "error");
+                    }
+                  }}
+                  className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${tradingSettings.bots_enabled ? "bg-cyan-600" : "bg-gray-700"}`}
+                >
+                  <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform duration-300 ${tradingSettings.bots_enabled ? "translate-x-7" : "translate-x-0.5"}`} />
+                </button>
               </div>
             </div>
 
@@ -833,7 +994,7 @@ export default function AdminPage() {
                 <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <h3 className="text-white font-semibold">Trading Hours</h3>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Trading Status</label>
                   <select value={tradingSettings.trading_enabled} onChange={(e) => setTradingSettings({ ...tradingSettings, trading_enabled: Number(e.target.value) })} className="input-field">
@@ -850,45 +1011,55 @@ export default function AdminPage() {
                   <input type="number" min="1" max="24" value={tradingSettings.trading_close_hour} onChange={(e) => setTradingSettings({ ...tradingSettings, trading_close_hour: Number(e.target.value) })} className="input-field" />
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mb-4">Hours in Australian Queensland time (AEST, UTC+10). Default: 0-24 (24/7).</p>
-              <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save Trading Hours"}</button>
-            </div>
+              <p className="text-xs text-gray-500 mb-4">Hours in AEST (UTC+10). Default: 0-24 (24/7).</p>
 
-            <div className="glass-card border-blue-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                <h3 className="text-white font-semibold">Trading Days</h3>
+              <div className="border-t border-gray-800 pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-300 mb-3">Trading Days</h4>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {[
+                    { label: "Mon", value: 1 },
+                    { label: "Tue", value: 2 },
+                    { label: "Wed", value: 3 },
+                    { label: "Thu", value: 4 },
+                    { label: "Fri", value: 5 },
+                    { label: "Sat", value: 6 },
+                    { label: "Sun", value: 0 },
+                  ].map((day) => {
+                    const enabled = (tradingSettings.trading_days || "1,2,3,4,5,6,7").split(",").map(Number).includes(day.value);
+                    return (
+                      <button
+                        key={day.value}
+                        onClick={() => {
+                          const current = (tradingSettings.trading_days || "1,2,3,4,5,6,7").split(",").map(Number);
+                          const updated = enabled ? current.filter(d => d !== day.value) : [...current, day.value];
+                          setTradingSettings({ ...tradingSettings, trading_days: updated.join(",") });
+                        }}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+                          enabled ? "bg-blue-600/20 border-blue-500/50 text-blue-400" : "bg-gray-800/50 border-gray-700/50 text-gray-500"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <p className="text-gray-400 text-xs mb-4">Select which days the market can be open.</p>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {[
-                  { label: "Mon", value: 1 },
-                  { label: "Tue", value: 2 },
-                  { label: "Wed", value: 3 },
-                  { label: "Thu", value: 4 },
-                  { label: "Fri", value: 5 },
-                  { label: "Sat", value: 6 },
-                  { label: "Sun", value: 0 },
-                ].map((day) => {
-                  const enabled = (tradingSettings.trading_days || "1,2,3,4,5,6,7").split(",").map(Number).includes(day.value);
-                  return (
-                    <button
-                      key={day.value}
-                      onClick={() => {
-                        const current = (tradingSettings.trading_days || "1,2,3,4,5,6,7").split(",").map(Number);
-                        const updated = enabled ? current.filter(d => d !== day.value) : [...current, day.value];
-                        setTradingSettings({ ...tradingSettings, trading_days: updated.join(",") });
-                      }}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
-                        enabled ? "bg-blue-600/20 border-blue-500/50 text-blue-400" : "bg-gray-800/50 border-gray-700/50 text-gray-500"
-                      }`}
-                    >
-                      {day.label}
-                    </button>
-                  );
-                })}
+
+              <div className="mt-6 pt-4 border-t border-gray-800">
+                <button
+                  onClick={handleSaveTrading}
+                  disabled={savingTrading}
+                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    saveStatus === "saved"
+                      ? "bg-emerald-600 text-white"
+                      : saveStatus === "error"
+                      ? "bg-red-600 text-white"
+                      : "bg-purple-600/80 hover:bg-purple-600 text-white"
+                  }`}
+                >
+                  {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved ✓" : saveStatus === "error" ? "Error - Retry" : "Save All Settings"}
+                </button>
               </div>
-              <button onClick={handleSaveTrading} disabled={savingTrading} className="bg-purple-600/80 hover:bg-purple-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">{savingTrading ? "Saving..." : "Save Trading Days"}</button>
             </div>
 
             <div className="glass-card border-amber-500/20">
@@ -896,7 +1067,7 @@ export default function AdminPage() {
                 <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10v4M8 10v4M12 10v4M10 2v4M14 2v4" /></svg>
                 <h3 className="text-white font-semibold">Custom Date Ranges</h3>
               </div>
-              <p className="text-gray-400 text-xs mb-4">Set specific date ranges when the market should be closed.</p>
+              <p className="text-gray-400 text-xs mb-4">Set specific date ranges when the market should be closed (overrides trading days).</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div>

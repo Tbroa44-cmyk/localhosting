@@ -58,6 +58,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
 
   const price = formatCoins(company.share_price);
   const isUp = company.dayChangePercent >= 0;
+  const isDelisted = company.delisted === 1;
 
   return (
     <div className={`glass-card hover:border-blue-500/30 transition-all group overflow-hidden ${exiting ? "stock-card-exit" : ""}`}>
@@ -76,6 +77,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
             <div className="min-w-0">
               <h3 className="font-bold text-white group-hover:text-blue-400 transition-colors">{company.ticker}</h3>
               <p className="text-xs text-gray-400 truncate">{company.name}</p>
+              {isDelisted && <span className="text-[10px] text-red-400 bg-red-400/10 px-1 py-0.5 rounded mt-0.5 inline-block">Delisted</span>}
             </div>
           </div>
           <div className="flex flex-col items-end shrink-0">
@@ -116,7 +118,15 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
       </div>
 
       {!modalOpen && isLoggedIn && (
-        isMarketOpen ? (
+        isDelisted ? (
+          <button
+            onClick={() => { setExiting(true); setTimeout(() => router.push(`/dashboard/stocks/${company.id}`), 340); }}
+            className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            Delisted
+          </button>
+        ) : isMarketOpen ? (
           <div className="flex gap-2">
             <button
               onClick={() => { setModalType("buy"); setModalOpen(true); }}

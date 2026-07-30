@@ -82,6 +82,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       for (const tx of recentTransactions) { tx.status = "confirmed"; }
     }
 
+    const pendingBuyRows = await db.prepare("SELECT COUNT(*) as cnt FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending'").get(id) as any;
+    const pendingSellCount = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number) => s + 1, 0) : 0;
+
     return NextResponse.json({
       ...company,
       price_history: priceHistory,
@@ -90,6 +93,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       my_trades: myTrades,
       recent_transactions: recentTransactions,
       shareEvent,
+      pending_buy_count: pendingBuyRows?.cnt ?? 0,
+      pending_sell_count: pendingSellCount,
     }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });

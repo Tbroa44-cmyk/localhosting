@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import getDb, { insertPriceHistory } from "@/lib/db";
+import { issueCertificates } from "@/lib/certificates";
 
 export async function GET() {
   try {
@@ -31,7 +32,7 @@ export async function GET() {
 
     let companies: any[] = [];
     try {
-      companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares FROM companies ORDER BY ticker").all() as any[];
+      companies = await db.prepare("SELECT id, name, ticker, description, share_price, total_shares, initial_price, initial_shares, delisted FROM companies ORDER BY ticker").all() as any[];
     } catch (e: any) {
       console.error("Failed to fetch companies:", e?.message);
     }
@@ -58,7 +59,7 @@ export async function GET() {
       users,
       companies,
       stats: {
-        totalUsers: users.filter((u: any) => u.role !== "Bot").length,
+        totalUsers: users.filter((u: any) => !String(u.email).endsWith("@stockgame.uk")).length,
         totalBalance,
         totalTransactions,
         bankFund: bankFundBalance,
@@ -104,7 +105,12 @@ export async function POST(request: Request) {
 
     const admin = await db.prepare("SELECT id FROM users WHERE email = ?").get("T-ADMIN@stocksim.com") as { id: number } | undefined;
     if (admin) {
-      await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(admin.id, companyId, total_shares);
+      try {
+        await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(admin.id, companyId, total_shares);
+        await issueCertificates(db, companyId, total_shares, admin.id);
+      } catch (e: any) {
+        console.error("Failed to issue certificates for new company:", e?.message);
+      }
     }
 
     return NextResponse.json({ message: "Company created successfully" });

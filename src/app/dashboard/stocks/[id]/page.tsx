@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+} from "chart.js";
 import Navbar from "@/components/Navbar";
 import PriceChart from "@/components/PriceChart";
 import TradeAnimation from "@/components/TradeAnimation";
@@ -18,6 +27,8 @@ import ConfirmModal from "@/components/ConfirmModal";
 import { showTradeNotification } from "@/components/TradeNotification";
 import InvestmentChart from "@/components/InvestmentChart";
 
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip);
+
 interface Company {
   id: number;
   name: string;
@@ -29,6 +40,96 @@ interface Company {
   recent_transactions: any[];
   available_shares: number;
   shareEvent: { shares_added: number } | null;
+  pending_buy_count?: number;
+  pending_sell_count?: number;
+}
+
+function ProfitChart({ myTrades }: { myTrades: any[] }) {
+  const profitData = useMemo(() => {
+    let shares = 0;
+    let totalCost = 0;
+    let cumulativeProfit = 0;
+    const points: { date: string; profit: number }[] = [];
+
+    const confirmed = myTrades
+      .filter((t: any) => String(t.status) === "confirmed")
+      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    for (const trade of confirmed) {
+      const date = new Date(trade.created_at);
+      const dateStr = date.toLocaleDateString([], { month: "short", day: "numeric" });
+
+      if (String(trade.type).includes("buy")) {
+        shares += Number(trade.shares);
+        totalCost += Number(trade.shares) * Number(trade.price_per_share);
+      } else {
+        const avgCost = shares > 0 ? totalCost / shares : 0;
+        const sellProfit = (Number(trade.price_per_share) - avgCost) * Number(trade.shares);
+        cumulativeProfit += sellProfit;
+        shares -= Number(trade.shares);
+        totalCost -= Number(trade.shares) * avgCost;
+        if (totalCost < 0) totalCost = 0;
+      }
+
+      points.push({ date: dateStr, profit: cumulativeProfit });
+    }
+
+    return points;
+  }, [myTrades]);
+
+  if (profitData.length < 2) return null;
+
+  const isUp = profitData[profitData.length - 1].profit >= 0;
+  const totalProfit = profitData[profitData.length - 1].profit;
+
+  return (
+    <div className="mt-6 pt-6 border-t border-gray-800">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-semibold text-gray-300">Realized Profit</h4>
+        <span className={`text-sm font-medium ${isUp ? "text-green-400" : "text-red-400"}`}>
+          {totalProfit >= 0 ? "+" : ""}{formatCoins(Math.round(totalProfit))}
+        </span>
+      </div>
+      <div className="h-24">
+        <Line
+          data={{
+            labels: profitData.map((p) => p.date),
+            datasets: [
+              {
+                label: "Cumulative Profit",
+                data: profitData.map((p) => p.profit / 100),
+                borderColor: isUp ? "#22c55e" : "#ef4444",
+                backgroundColor: isUp ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 2,
+              },
+            ],
+          }}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              tooltip: {
+                backgroundColor: "rgba(0,0,0,0.8)",
+                titleColor: "#fff",
+                bodyColor: "#fff",
+                callbacks: {
+                  label: (ctx: any) => `${ctx.parsed.y >= 0 ? "+" : ""}${ctx.parsed.y.toFixed(2)}c`,
+                },
+              },
+              legend: { display: false },
+            },
+            scales: {
+              x: { display: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", maxTicksLimit: 6, font: { size: 10 } }, border: { display: false } },
+              y: { display: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6b7280", font: { size: 10 }, callback: (v: any) => `${v.toFixed(1)}c` }, border: { display: false } },
+            },
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function StockDetailPage() {
@@ -264,6 +365,8 @@ export default function StockDetailPage() {
   const priceChangePercent = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : "0.00";
   const isAdmin = (session?.user as any)?.isAdmin;
 
+  const isDelisted = (company as any)?.delisted === 1;
+
   const reservedSells = myOrders.filter((o) => o.type === "sell").reduce((sum, o) => sum + o.shares, 0);
   const availableToSell = Math.max(0, sharesOwned - reservedSells);
   const reservedBuys = myOrders.filter((o) => o.type === "buy").reduce((sum, o) => sum + o.shares * o.price_per_share, 0);
@@ -320,7 +423,7 @@ export default function StockDetailPage() {
                               : "bg-red-500/5 border-red-500/20"
                           }`}>
                             <div className={`text-xs font-medium mb-1 ${pr.type === "positive" ? "text-green-400" : "text-red-400"}`}>
-                              {pr.type === "positive" ? "▲ Positive" : "▼ Negative"} &middot; {new Date(pr.created_at).toLocaleDateString()} {pr.severity && `· Severity ${pr.severity}`}
+                              {pr.type === "positive" ? (Number(pr.severity) >= 3 ? "▲ Really Good" : "▲ Good") : (Number(pr.severity) >= 3 ? "▼ Really Bad" : "▼ Bad")} &middot; {new Date(pr.created_at).toLocaleDateString()}
                             </div>
                             <div className="text-gray-300 whitespace-pre-wrap">{pr.content}</div>
                           </div>
@@ -361,7 +464,19 @@ export default function StockDetailPage() {
           )}
         </div>
 
-        {canTrade && companyLoaded && (
+        {canTrade && companyLoaded && isDelisted && (
+          <div className="glass-card mb-6 animate-fade-up border-red-500/20">
+            <div className="flex items-center gap-3 text-red-400">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              <div>
+                <div className="text-white font-semibold">Market Closed</div>
+                <div className="text-sm text-red-400">This stock has been delisted and cannot be traded</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {canTrade && companyLoaded && !isDelisted && (
           <div className="glass-card mb-6 animate-fade-up">
             <h3 className="text-lg font-semibold text-white mb-4">Place Order</h3>
 
@@ -575,7 +690,7 @@ export default function StockDetailPage() {
             </div>
           ) : (
             <div className="animate-fade-up">
-              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} />
+              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} pendingBuyCount={(company as any)?.pending_buy_count ?? 0} pendingSellCount={(company as any)?.pending_sell_count ?? 0} />
               {canTrade && (
                 <button
                   onClick={() => setShowInvestment(!showInvestment)}
@@ -598,6 +713,7 @@ export default function StockDetailPage() {
                     priceHistory={priceHistory}
                     currentPrice={currentPrice}
                   />
+                  <ProfitChart myTrades={(company as any).my_trades || []} />
                 </div>
               )}
             </div>

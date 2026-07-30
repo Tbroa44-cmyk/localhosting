@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import getDb from "@/lib/db";
+import { issueCertificates } from "@/lib/certificates";
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -20,28 +21,53 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json();
     const db = getDb();
 
-    const company = await db.prepare("SELECT total_shares FROM companies WHERE id = ?").get(id) as any;
+    const company = await db.prepare("SELECT total_shares, delisted FROM companies WHERE id = ?").get(id) as any;
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const currentShares = Number(company.total_shares) || 0;
+    const updates: string[] = [];
+    const paramsList: any[] = [];
+
+    if (body.description !== undefined) {
+      updates.push("description = ?");
+      paramsList.push(body.description);
+    }
+
+    if (body.delisted !== undefined) {
+      updates.push("delisted = ?");
+      paramsList.push(body.delisted ? 1 : 0);
+    }
+
     const newShares = Number(body.total_shares);
+    const currentShares = Number(company.total_shares) || 0;
+    let sharesAdded = 0;
 
-    if (!newShares || newShares <= currentShares) {
-      return NextResponse.json({ error: `New share count must be higher than current (${currentShares})` }, { status: 400 });
+    if (newShares && newShares > currentShares) {
+      sharesAdded = newShares - currentShares;
+      updates.push("total_shares = ?");
+      paramsList.push(newShares);
     }
 
-    const sharesAdded = newShares - currentShares;
-    const description = body.description !== undefined ? body.description : null;
-
-    if (description !== null) {
-      await db.prepare("UPDATE companies SET total_shares = ?, description = ? WHERE id = ?").run(newShares, description, id);
-    } else {
-      await db.prepare("UPDATE companies SET total_shares = ? WHERE id = ?").run(newShares, id);
+    if (updates.length > 0) {
+      paramsList.push(id);
+      await db.prepare(`UPDATE companies SET ${updates.join(", ")} WHERE id = ?`).run(...paramsList);
     }
 
-    return NextResponse.json({ message: `Added ${sharesAdded} shares. Total now: ${newShares}` });
+    if (sharesAdded > 0) {
+      const admin = await db.prepare("SELECT id FROM users WHERE email = ?").get("T-ADMIN@stocksim.com") as { id: number } | undefined;
+      if (admin) {
+        const existingHolding = await db.prepare("SELECT id, shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(admin.id, id) as { id: number; shares_owned: number } | undefined;
+        if (existingHolding) {
+          await db.prepare("UPDATE holdings SET shares_owned = shares_owned + ? WHERE id = ?").run(sharesAdded, existingHolding.id);
+        } else {
+          await db.prepare("INSERT INTO holdings (user_id, company_id, shares_owned) VALUES (?, ?, ?)").run(admin.id, id, sharesAdded);
+        }
+        await issueCertificates(db, id, sharesAdded, admin.id);
+      }
+    }
+
+    return NextResponse.json({ message: "Company updated" });
   } catch (error: any) {
     console.error("Admin update error:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
@@ -64,6 +90,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
     await db.prepare("DELETE FROM orders WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM price_history WHERE company_id = ?").run(id);
+    await db.prepare("DELETE FROM share_certificates WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM holdings WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM transactions WHERE company_id = ?").run(id);
     await db.prepare("DELETE FROM companies WHERE id = ?").run(id);
