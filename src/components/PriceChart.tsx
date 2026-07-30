@@ -161,12 +161,16 @@ export default function PriceChart({
   transactions,
   pendingBuyCount = 0,
   pendingSellCount = 0,
+  historicalBuyShares,
+  historicalSellShares,
 }: {
   priceHistory: PricePoint[];
   currentPrice: number;
   transactions?: Transaction[];
   pendingBuyCount?: number;
   pendingSellCount?: number;
+  historicalBuyShares?: number[];
+  historicalSellShares?: number[];
 }) {
   const [filter, setFilter] = useState<TimeFilter>("7d");
   const [viewMode, setViewMode] = useState<ViewMode>("price");
@@ -266,13 +270,19 @@ export default function PriceChart({
   const bucketCount = groupedTrades?.labels.length ?? 0;
   const buyOrdersData = useMemo(() => {
     if (bucketCount <= 1) return [0];
+    if (historicalBuyShares && historicalBuyShares.length >= bucketCount) {
+      return historicalBuyShares.slice(-bucketCount);
+    }
     return Array(bucketCount).fill(pendingBuyCount);
-  }, [bucketCount, pendingBuyCount]);
+  }, [bucketCount, pendingBuyCount, historicalBuyShares]);
 
   const sellOrdersData = useMemo(() => {
     if (bucketCount <= 1) return [0];
+    if (historicalSellShares && historicalSellShares.length >= bucketCount) {
+      return historicalSellShares.slice(-bucketCount);
+    }
     return Array(bucketCount).fill(pendingSellCount);
-  }, [bucketCount, pendingSellCount]);
+  }, [bucketCount, pendingSellCount, historicalSellShares]);
 
   const tradeChartData = useMemo(() => {
     const datasets: any[] = [];
