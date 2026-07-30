@@ -393,7 +393,7 @@ export default function PriceChart({
     [yScale, showHolders, holdersYScale]
   );
 
-  const maxOrderCount = Math.max(pendingBuyCount, pendingSellCount, 1);
+  const maxOrderCount = Math.max(pendingBuyCount, pendingSellCount, 1) * 1.2;
 
   const tradeOptions = useMemo(
     () => ({
@@ -430,8 +430,8 @@ export default function PriceChart({
                 }
                 return `${val} share${val !== 1 ? "s" : ""} traded`;
               }
-              if (dsIdx === 1) return `${val} buy order${val !== 1 ? "s" : ""} pending`;
-              return `${val} sell order${val !== 1 ? "s" : ""} pending`;
+              if (dsIdx === 1) return `${val.toLocaleString()} share${val !== 1 ? "s" : ""} in buy orders`;
+              return `${val.toLocaleString()} share${val !== 1 ? "s" : ""} in sell orders`;
             },
           },
         },
@@ -470,13 +470,12 @@ export default function PriceChart({
           ticks: {
             color: "#6b7280",
             font: { size: 10 },
-            stepSize: 1,
-            callback: (val: any) => `${val}`,
+            callback: (val: any) => Number.isInteger(val) ? val.toLocaleString() : "",
           },
           border: { display: false },
           title: {
             display: true,
-            text: "Orders",
+            text: "Shares",
             color: "#6b7280",
             font: { size: 10 },
           },
@@ -518,9 +517,9 @@ export default function PriceChart({
               <>
                 <span className="text-sm text-indigo-400 font-medium">{totalTx} traded</span>
                 <span className="text-gray-600">·</span>
-                <span className="text-sm text-green-400 font-medium">{pendingBuyCount} buy orders</span>
+                <span className="text-sm text-green-400 font-medium">{pendingBuyCount.toLocaleString()} buy shares</span>
                 <span className="text-gray-600">·</span>
-                <span className="text-sm text-red-400 font-medium">{pendingSellCount} sell orders</span>
+                <span className="text-sm text-red-400 font-medium">{pendingSellCount.toLocaleString()} sell shares</span>
               </>
             )}
           </div>
@@ -597,11 +596,11 @@ export default function PriceChart({
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(34, 197, 94, 0.7)" }} />
-            <span className="text-gray-400">Buy Orders ({pendingBuyCount})</span>
+            <span className="text-gray-400">Buy Orders ({pendingBuyCount.toLocaleString()})</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
-            <span className="text-gray-400">Sell Orders ({pendingSellCount})</span>
+            <span className="text-gray-400">Sell Orders ({pendingSellCount.toLocaleString()})</span>
           </div>
         </div>
       )}

@@ -35,12 +35,21 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     priceHistory.reverse();
 
-    const effectiveSellPrice = await getLowestPendingSell(id);
-    const effectivePrice = (effectiveSellPrice !== null && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
-    (company as any).share_price = effectivePrice;
-
     const companyData = company as any;
     const availableShares = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
+
+    const effectiveSellPrice = await getLowestPendingSell(id);
+    let effectivePrice = (effectiveSellPrice !== null && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
+    const totalShares = Number(companyData.total_shares) || 1;
+    if (availableShares > 0) {
+      const supplyRatio = availableShares / totalShares;
+      const supplyImpact = Math.min(supplyRatio * 3, 0.15);
+      const supplyAdjusted = Math.round(effectivePrice * (1 - supplyImpact));
+      if (supplyAdjusted < effectivePrice) {
+        effectivePrice = supplyAdjusted;
+      }
+    }
+    (company as any).share_price = effectivePrice;
 
     let shareEvent: any = null;
     const initialShares = Number(companyData.initial_shares) || Number(companyData.total_shares);
@@ -82,8 +91,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       for (const tx of recentTransactions) { tx.status = "confirmed"; }
     }
 
-    const pendingBuyRows = await db.prepare("SELECT COUNT(*) as cnt FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending'").get(id) as any;
-    const pendingSellCount = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number) => s + 1, 0) : 0;
+    const pendingBuyRows = await db.prepare("SELECT shares FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending'").all(id) as any[];
+    const pendingBuyShares = Array.isArray(pendingBuyRows) ? pendingBuyRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
+    const pendingBuyCount = pendingBuyRows.length;
+    const pendingSellShares = availableShares;
+    const pendingSellCount = Array.isArray(pendingSellRows) ? pendingSellRows.length : 0;
 
     return NextResponse.json({
       ...company,
@@ -93,8 +105,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       my_trades: myTrades,
       recent_transactions: recentTransactions,
       shareEvent,
-      pending_buy_count: pendingBuyRows?.cnt ?? 0,
+      pending_buy_count: pendingBuyCount,
       pending_sell_count: pendingSellCount,
+      pending_buy_shares: pendingBuyShares,
+      pending_sell_shares: pendingSellShares,
     }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });

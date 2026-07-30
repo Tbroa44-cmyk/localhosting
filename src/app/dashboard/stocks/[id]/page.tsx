@@ -690,7 +690,7 @@ export default function StockDetailPage() {
             </div>
           ) : (
             <div className="animate-fade-up">
-              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} pendingBuyCount={(company as any)?.pending_buy_count ?? 0} pendingSellCount={(company as any)?.pending_sell_count ?? 0} />
+              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} pendingBuyCount={(company as any)?.pending_buy_shares ?? 0} pendingSellCount={(company as any)?.pending_sell_shares ?? 0} />
               {canTrade && (
                 <button
                   onClick={() => setShowInvestment(!showInvestment)}
