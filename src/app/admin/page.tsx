@@ -113,7 +113,6 @@ export default function AdminPage() {
   const [globalLoading, setGlobalLoading] = useState(true);
   const [appVersion, setAppVersion] = useState("");
   const [migratingCerts, setMigratingCerts] = useState(false);
-  const [certVerifications, setCertVerifications] = useState<Record<number, { ok: boolean; total: number; expected: number } | null>>({});
   const [fixHoldingInput, setFixHoldingInput] = useState({ userId: "", companyId: "", correctShares: "" });
   const [fixingHolding, setFixingHolding] = useState(false);
   const [allHoldings, setAllHoldings] = useState<any[]>([]);
@@ -787,9 +786,6 @@ export default function AdminPage() {
                           </div>
                           <div className="flex gap-1.5">
                             <Link href={`/admin/press-release/${c.id}`} className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Press</Link>
-                            <button onClick={() => { const cv = certVerifications[c.id]; if (cv) { setCertVerifications(prev => { const next = { ...prev }; delete next[c.id]; return next; }); return; } fetch(`/api/admin/companies/${c.id}/verify`).then(r => r.json()).then(d => setCertVerifications(prev => ({ ...prev, [c.id]: d }))).catch(() => showToast("Verify failed", "error")); }} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${certVerifications[c.id] ? (certVerifications[c.id]!.ok ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400") : "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20"}`}>
-                              {certVerifications[c.id] ? (certVerifications[c.id]!.ok ? `✓ ${certVerifications[c.id]!.total}` : `✗ ${certVerifications[c.id]!.total}/${certVerifications[c.id]!.expected}`) : "Verify"}
-                            </button>
                             <button onClick={() => startEditCompany(c)} className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Edit</button>
                             <button onClick={() => handleToggleDelist(c)} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${c.delisted ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" : "bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"}`}>{c.delisted ? "Relist" : "Delist"}</button>
                             <button onClick={() => handleDeleteCompany(c)} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition-colors">Delete</button>

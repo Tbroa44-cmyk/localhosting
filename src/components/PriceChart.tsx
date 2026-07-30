@@ -171,6 +171,9 @@ export default function PriceChart({
   const [filter, setFilter] = useState<TimeFilter>("7d");
   const [viewMode, setViewMode] = useState<ViewMode>("price");
   const [showHolders, setShowHolders] = useState(false);
+  const [showTradesTx, setShowTradesTx] = useState(true);
+  const [showTradesBuy, setShowTradesBuy] = useState(true);
+  const [showTradesSell, setShowTradesSell] = useState(true);
   const hasAnimated = useRef(false);
 
   useEffect(() => {
@@ -272,44 +275,42 @@ export default function PriceChart({
   }, [bucketCount, pendingSellCount]);
 
   const tradeChartData = useMemo(() => {
-    if (!groupedTrades) {
-      return {
-        labels: ["No trades"],
-        datasets: [
-          { label: "Transactions", data: [0], backgroundColor: "rgba(99, 102, 241, 0.7)", borderRadius: 4, yAxisID: "y" },
-          { label: "Buy Orders", data: [0], backgroundColor: "rgba(34, 197, 94, 0.7)", borderRadius: 4, yAxisID: "y1" },
-          { label: "Sell Orders", data: [0], backgroundColor: "rgba(239, 68, 68, 0.7)", borderRadius: 4, yAxisID: "y1" },
-        ],
-      };
+    const datasets: any[] = [];
+    if (showTradesTx) {
+      datasets.push({
+        label: "Transactions",
+        data: groupedTrades ? groupedTrades.transactions : [0],
+        backgroundColor: "rgba(99, 102, 241, 0.7)",
+        borderRadius: 4,
+        yAxisID: "y",
+      });
     }
-
+    if (showTradesBuy) {
+      datasets.push({
+        label: "Buy Orders",
+        data: groupedTrades ? buyOrdersData : [0],
+        backgroundColor: "rgba(34, 197, 94, 0.7)",
+        borderRadius: 4,
+        yAxisID: "y1",
+      });
+    }
+    if (showTradesSell) {
+      datasets.push({
+        label: "Sell Orders",
+        data: groupedTrades ? sellOrdersData : [0],
+        backgroundColor: "rgba(239, 68, 68, 0.7)",
+        borderRadius: 4,
+        yAxisID: "y1",
+      });
+    }
+    if (datasets.length === 0) {
+      datasets.push({ label: "No data", data: [0], backgroundColor: "rgba(75, 85, 99, 0.5)", borderRadius: 4, yAxisID: "y" });
+    }
     return {
-      labels: groupedTrades.labels,
-      datasets: [
-        {
-          label: "Transactions",
-          data: groupedTrades.transactions,
-          backgroundColor: "rgba(99, 102, 241, 0.7)",
-          borderRadius: 4,
-          yAxisID: "y",
-        },
-        {
-          label: "Buy Orders",
-          data: buyOrdersData,
-          backgroundColor: "rgba(34, 197, 94, 0.7)",
-          borderRadius: 4,
-          yAxisID: "y1",
-        },
-        {
-          label: "Sell Orders",
-          data: sellOrdersData,
-          backgroundColor: "rgba(239, 68, 68, 0.7)",
-          borderRadius: 4,
-          yAxisID: "y1",
-        },
-      ],
+      labels: groupedTrades ? groupedTrades.labels : ["No trades"],
+      datasets,
     };
-  }, [groupedTrades, buyOrdersData, sellOrdersData]);
+  }, [groupedTrades, buyOrdersData, sellOrdersData, showTradesTx, showTradesBuy, showTradesSell]);
 
   const yScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 1 };
@@ -420,17 +421,17 @@ export default function PriceChart({
             },
             label: (ctx: any) => {
               const idx = ctx.dataIndex;
-              const dsIdx = ctx.datasetIndex;
+              const label = ctx.dataset.label;
               const val = ctx.parsed.y;
               if (val === 0) return;
-              if (dsIdx === 0) {
+              if (label === "Transactions") {
                 const avgPrice = groupedTrades?.avgPrices[idx];
                 if (avgPrice && avgPrice > 0) {
                   return `${val} share${val !== 1 ? "s" : ""} traded @ avg ${formatCoins(Math.round(avgPrice))}`;
                 }
                 return `${val} share${val !== 1 ? "s" : ""} traded`;
               }
-              if (dsIdx === 1) return `${val.toLocaleString()} share${val !== 1 ? "s" : ""} in buy orders`;
+              if (label === "Buy Orders") return `${val.toLocaleString()} share${val !== 1 ? "s" : ""} in buy orders`;
               return `${val.toLocaleString()} share${val !== 1 ? "s" : ""} in sell orders`;
             },
           },
@@ -444,7 +445,7 @@ export default function PriceChart({
           border: { display: false },
         },
         y: {
-          display: true,
+          display: showTradesTx,
           position: "left" as const,
           grid: { color: "rgba(255,255,255,0.05)" },
           ticks: {
@@ -455,14 +456,14 @@ export default function PriceChart({
           },
           border: { display: false },
           title: {
-            display: true,
+            display: showTradesTx,
             text: "Shares",
             color: "#6b7280",
             font: { size: 10 },
           },
         },
         y1: {
-          display: true,
+          display: showTradesBuy || showTradesSell,
           position: "right" as const,
           min: 0,
           max: maxOrderCount + 1,
@@ -474,7 +475,7 @@ export default function PriceChart({
           },
           border: { display: false },
           title: {
-            display: true,
+            display: showTradesBuy || showTradesSell,
             text: "Shares",
             color: "#6b7280",
             font: { size: 10 },
@@ -486,7 +487,7 @@ export default function PriceChart({
         mode: "index" as const,
       },
     }),
-    [groupedTrades, maxOrderCount]
+    [groupedTrades, maxOrderCount, showTradesTx, showTradesBuy, showTradesSell]
   );
 
   const displayPrice = filteredData.length > 0 ? filteredData[filteredData.length - 1].price / 100 : 0;
@@ -590,18 +591,18 @@ export default function PriceChart({
       </div>
       {viewMode === "trades" && tradeChartData.labels.length > 1 && (
         <div className="flex items-center justify-center gap-4 mt-2 text-xs flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(99, 102, 241, 0.7)" }} />
-            <span className="text-gray-400">Transactions ({totalTx})</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(34, 197, 94, 0.7)" }} />
-            <span className="text-gray-400">Buy Orders ({pendingBuyCount.toLocaleString()})</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.7)" }} />
-            <span className="text-gray-400">Sell Orders ({pendingSellCount.toLocaleString()})</span>
-          </div>
+          <button onClick={() => setShowTradesTx(v => !v)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${showTradesTx ? "bg-indigo-600/20 text-indigo-300 border border-indigo-500/40" : "text-gray-500 border border-gray-700/50"}`}>
+            <span className={`w-3 h-3 rounded-sm transition-colors ${showTradesTx ? "bg-indigo-400" : "bg-gray-600"}`} />
+            Transactions ({totalTx})
+          </button>
+          <button onClick={() => setShowTradesBuy(v => !v)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${showTradesBuy ? "bg-green-600/20 text-green-300 border border-green-500/40" : "text-gray-500 border border-gray-700/50"}`}>
+            <span className={`w-3 h-3 rounded-sm transition-colors ${showTradesBuy ? "bg-green-400" : "bg-gray-600"}`} />
+            Buy Orders ({pendingBuyCount.toLocaleString()})
+          </button>
+          <button onClick={() => setShowTradesSell(v => !v)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${showTradesSell ? "bg-red-600/20 text-red-300 border border-red-500/40" : "text-gray-500 border border-gray-700/50"}`}>
+            <span className={`w-3 h-3 rounded-sm transition-colors ${showTradesSell ? "bg-red-400" : "bg-gray-600"}`} />
+            Sell Orders ({pendingSellCount.toLocaleString()})
+          </button>
         </div>
       )}
     </div>

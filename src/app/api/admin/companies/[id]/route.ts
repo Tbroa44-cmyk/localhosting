@@ -96,11 +96,14 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
     const db = getDb();
 
-    await db.prepare("DELETE FROM orders WHERE company_id = ?").run(id);
-    await db.prepare("DELETE FROM price_history WHERE company_id = ?").run(id);
-    await db.prepare("DELETE FROM share_certificates WHERE company_id = ?").run(id);
-    await db.prepare("DELETE FROM holdings WHERE company_id = ?").run(id);
-    await db.prepare("DELETE FROM transactions WHERE company_id = ?").run(id);
+    const tables = ["orders", "price_history", "share_certificates", "holdings", "transactions"];
+    for (const table of tables) {
+      try {
+        await db.prepare(`DELETE FROM ${table} WHERE company_id = ?`).run(id);
+      } catch (e: any) {
+        console.error(`Failed to delete from ${table}:`, e?.message);
+      }
+    }
     await db.prepare("DELETE FROM companies WHERE id = ?").run(id);
 
     return NextResponse.json({ message: "Company deleted" });
