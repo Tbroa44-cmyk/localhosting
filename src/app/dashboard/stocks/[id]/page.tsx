@@ -155,6 +155,7 @@ export default function StockDetailPage() {
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const prevOrdersRef = useRef<any[]>([]);
   const prevTradesRef = useRef<any[]>([]);
+  const pendingOrderRef = useRef<{ orderType: "buy" | "sell"; orderMode: "market" | "limit"; shares: number; priceCents: number } | null>(null);
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
   const [showInvestment, setShowInvestment] = useState(false);
   const [pressReleases, setPressReleases] = useState<any[]>([]);
@@ -206,7 +207,7 @@ export default function StockDetailPage() {
       fetch(`/api/orders`)
         .then((res) => res.json())
         .then((orders) => {
-          const pending = orders.filter((o: any) => o.company_id === companyId && o.status === "pending");
+          const pending = orders.filter((o: any) => o.company_id === companyId && o.status === "pending" && o.shares > 0);
           const prevPending = prevOrdersRef.current;
           if (prevPending.length > 0) {
             for (const prev of prevPending) {
@@ -251,32 +252,46 @@ export default function StockDetailPage() {
     return () => clearInterval(interval);
   }, [fetchData, status]);
 
-  async function handlePlaceOrder() {
+  function handlePlaceOrder() {
     setOrderError("");
     setOrderSuccess("");
-    setOrderLoading(true);
     playClick();
 
     const shares = Number(orderShares);
     if (!shares || shares <= 0 || !Number.isInteger(shares)) {
       setOrderError("Enter a valid number of shares");
-      setOrderLoading(false);
       return;
     }
 
+    let priceCents = 0;
+    if (orderMode === "limit") {
+      priceCents = Math.round(parseFloat(orderPrice) * 100);
+      if (isNaN(priceCents) || priceCents <= 0) {
+        setOrderError("Enter a valid price");
+        return;
+      }
+    }
+
+    pendingOrderRef.current = { orderType, orderMode, shares, priceCents };
+    setOrderLoading(true);
+    setTradeAnimType(orderType);
+    if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
+  }
+
+  async function submitOrder(params: { orderType: "buy" | "sell"; orderMode: "market" | "limit"; shares: number; priceCents: number }) {
     try {
-      if (orderMode === "market") {
-        const endpoint = orderType === "buy" ? "/api/stocks/buy" : "/api/stocks/sell";
+      if (params.orderMode === "market") {
+        const endpoint = params.orderType === "buy" ? "/api/stocks/buy" : "/api/stocks/sell";
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companyId, shares, requestId: crypto.randomUUID() }),
+          body: JSON.stringify({ companyId, shares: params.shares, requestId: crypto.randomUUID() }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         if (data.duplicate) {
           setOrderSuccess(data.message || "Order already placed");
-        } else if (orderType === "buy") {
+        } else if (params.orderType === "buy") {
           const filled = data.filledShares || 0;
           const pending = data.pendingShares || 0;
           if (pending > 0) {
@@ -294,7 +309,7 @@ export default function StockDetailPage() {
             setUserBalance(data.newBalance);
           }
         } else {
-          const sold = data.filledShares || shares;
+          const sold = data.filledShares || params.shares;
           const pending = data.pendingShares || 0;
           if (pending > 0) {
             setOrderSuccess(data.message || `Listed ${sold} share${sold > 1 ? "s" : ""}, ${pending} pending.`);
@@ -310,22 +325,15 @@ export default function StockDetailPage() {
           }
         }
         window.dispatchEvent(new Event("balance-changed"));
-        setTradeAnimType(orderType);
-        if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
       } else {
-        const priceCents = Math.round(parseFloat(orderPrice) * 100);
-        if (isNaN(priceCents) || priceCents <= 0) throw new Error("Enter a valid price");
-
         const res = await fetch("/api/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companyId, type: orderType, shares, priceCents, requestId: crypto.randomUUID() }),
+          body: JSON.stringify({ companyId, type: params.orderType, shares: params.shares, priceCents: params.priceCents, requestId: crypto.randomUUID() }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         setOrderSuccess(data.message || "Limit order placed!");
-        setTradeAnimType(orderType);
-        if (orderType === "buy") playBuyConfirm(); else playSellConfirm();
         window.dispatchEvent(new Event("balance-changed"));
       }
       fetchData();
@@ -379,7 +387,17 @@ export default function StockDetailPage() {
     <div className="min-h-screen">
       <PageBackground />
       <Navbar />
-      <TradeAnimation type={tradeAnimType} onComplete={() => setTradeAnimType(null)} />
+      <TradeAnimation
+        type={tradeAnimType}
+        onComplete={() => {
+          setTradeAnimType(null);
+          if (pendingOrderRef.current) {
+            const pending = pendingOrderRef.current;
+            pendingOrderRef.current = null;
+            submitOrder(pending);
+          }
+        }}
+      />
       <div className="max-w-6xl mx-auto px-3 md:px-4 py-6 md:py-8 animate-stock-zoom">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-white mb-6 inline-block">
           &larr; Back to Markets

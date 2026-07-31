@@ -78,7 +78,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         myTrades.push({ ...tx, status: "confirmed" });
       }
       for (const o of myPendingOrders as any[]) {
-        myTrades.push({ type: String(o.type), shares: Math.max(0, o.shares), original_shares: Number(o.original_shares) || Math.max(0, o.shares), price_per_share: o.price_per_share, total_amount: Math.max(0, o.shares) * o.price_per_share, created_at: o.created_at, status: "pending", order_id: o.id });
+        const normalizedShares = Math.max(0, Number(o.shares) || 0);
+        myTrades.push({ type: String(o.type), shares: normalizedShares, original_shares: Number(o.original_shares) || Math.max(0, normalizedShares), price_per_share: o.price_per_share, total_amount: normalizedShares * o.price_per_share, created_at: o.created_at, status: normalizedShares <= 0 ? "confirmed" : "pending", order_id: o.id });
       }
       for (const o of myCancelledOrders as any[]) {
         myTrades.push({ type: String(o.type), shares: Math.max(0, o.shares), original_shares: Number(o.original_shares) || Math.max(0, o.shares), price_per_share: o.price_per_share, total_amount: Math.max(0, o.shares) * o.price_per_share, created_at: o.created_at, status: "cancelled" });

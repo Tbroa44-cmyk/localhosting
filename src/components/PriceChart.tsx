@@ -82,149 +82,94 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
   return result;
 }
 
-interface BucketData {
-  tx: number;
-  totalPrice: number;
-}
-
-function groupTransactionsByTime(transactions: Transaction[], filter: TimeFilter) {
-  const now = Date.now();
-  const option = FILTER_OPTIONS.find((f) => f.key === filter);
-  let filtered = transactions;
-
-  if (option?.ms) {
-    const cutoff = now - option.ms;
-    filtered = transactions.filter((t) => new Date(t.created_at).getTime() >= cutoff);
-  }
-
-  let bucketSize: number;
-  let formatLabel: (ts: number) => string;
-
+function getBucketConfig(filter: TimeFilter) {
   switch (filter) {
     case "1h":
-      bucketSize = 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      break;
+      return { bucketSize: 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
     case "1d":
-      bucketSize = 10 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      break;
+      return { bucketSize: 10 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
     case "7d":
-      bucketSize = 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { weekday: "short", hour: "2-digit" });
-      break;
+      return { bucketSize: 60 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleDateString([], { weekday: "short", hour: "2-digit" }) };
     case "1m":
-      bucketSize = 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
-      break;
+      return { bucketSize: 24 * 60 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" }) };
     case "6m":
-      bucketSize = 7 * 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
-      break;
+      return { bucketSize: 7 * 24 * 60 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" }) };
     default:
-      bucketSize = 30 * 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", year: "2-digit" });
+      return { bucketSize: 30 * 24 * 60 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleDateString([], { month: "short", year: "2-digit" }) };
+  }
+}
+
+interface TradeSeries {
+  labels: string[];
+  transactions: number[];
+  avgPrices: number[];
+  buys: number[];
+  sells: number[];
+}
+
+function buildTradeSeries(
+  transactions: Transaction[] | undefined,
+  buyOrders: PendingOrder[] | undefined,
+  sellOrders: PendingOrder[] | undefined,
+  filter: TimeFilter
+): TradeSeries | null {
+  const now = Date.now();
+  const option = FILTER_OPTIONS.find((f) => f.key === filter);
+
+  const inRange = (ts: string) => !option?.ms || new Date(ts).getTime() >= now - option.ms;
+
+  const tx = (transactions || []).filter((t) => inRange(t.created_at));
+  const buys = (buyOrders || []).filter((o) => inRange(o.created_at));
+  const sells = (sellOrders || []).filter((o) => inRange(o.created_at));
+
+  if (tx.length === 0 && buys.length === 0 && sells.length === 0) return null;
+
+  const { bucketSize, formatLabel } = getBucketConfig(filter);
+
+  const allTimes = [
+    ...tx.map((t) => new Date(t.created_at).getTime()),
+    ...buys.map((o) => new Date(o.created_at).getTime()),
+    ...sells.map((o) => new Date(o.created_at).getTime()),
+  ];
+  const minTime = Math.min(...allTimes);
+  const maxTime = Math.max(...allTimes);
+
+  const buckets = new Map<number, { tx: number; totalPrice: number; buys: number; sells: number }>();
+  for (let b = Math.floor(minTime / bucketSize) * bucketSize; b <= maxTime; b += bucketSize) {
+    buckets.set(b, { tx: 0, totalPrice: 0, buys: 0, sells: 0 });
   }
 
-  if (filtered.length === 0) {
-    return { labels: ["No data"], transactions: [0], avgPrices: [0] };
-  }
-
-  const minTime = Math.min(...filtered.map((t) => new Date(t.created_at).getTime()));
-  const maxTime = Math.max(...filtered.map((t) => new Date(t.created_at).getTime()));
-
-  const buckets = new Map<number, BucketData>();
-  let currentBucket = Math.floor(minTime / bucketSize) * bucketSize;
-  while (currentBucket <= maxTime) {
-    buckets.set(currentBucket, { tx: 0, totalPrice: 0 });
-    currentBucket += bucketSize;
-  }
-
-  for (const tx of filtered) {
-    const txTime = new Date(tx.created_at).getTime();
-    const bucketStart = Math.floor(txTime / bucketSize) * bucketSize;
-    const bucket = buckets.get(bucketStart);
+  for (const t of tx) {
+    const b = Math.floor(new Date(t.created_at).getTime() / bucketSize) * bucketSize;
+    const bucket = buckets.get(b);
     if (!bucket) continue;
-    const shares = Number(tx.shares) || 1;
-    const price = Number(tx.price_per_share) || 0;
+    const shares = Number(t.shares) || 1;
     bucket.tx += shares;
-    bucket.totalPrice += shares * price;
+    bucket.totalPrice += shares * (Number(t.price_per_share) || 0);
   }
 
-  const sortedBuckets = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]);
+  for (const o of buys) {
+    const b = Math.floor(new Date(o.created_at).getTime() / bucketSize) * bucketSize;
+    const bucket = buckets.get(b);
+    if (!bucket) continue;
+    bucket.buys += Number(o.shares) || 0;
+  }
+
+  for (const o of sells) {
+    const b = Math.floor(new Date(o.created_at).getTime() / bucketSize) * bucketSize;
+    const bucket = buckets.get(b);
+    if (!bucket) continue;
+    bucket.sells += Number(o.shares) || 0;
+  }
+
+  const sorted = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]);
 
   return {
-    labels: sortedBuckets.map(([ts]) => formatLabel(ts)),
-    transactions: sortedBuckets.map(([, b]) => b.tx),
-    avgPrices: sortedBuckets.map(([, b]) => b.tx > 0 ? b.totalPrice / b.tx : 0),
-  };
-}
-
-function groupOrdersByTime(orders: PendingOrder[], filter: TimeFilter) {
-  const now = Date.now();
-  const option = FILTER_OPTIONS.find((f) => f.key === filter);
-  let filtered = orders;
-
-  if (option?.ms) {
-    const cutoff = now - option.ms;
-    filtered = orders.filter((o) => new Date(o.created_at).getTime() >= cutoff);
-  }
-
-  let bucketSize: number;
-  let formatLabel: (ts: number) => string;
-
-  switch (filter) {
-    case "1h":
-      bucketSize = 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      break;
-    case "1d":
-      bucketSize = 10 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      break;
-    case "7d":
-      bucketSize = 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { weekday: "short", hour: "2-digit" });
-      break;
-    case "1m":
-      bucketSize = 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
-      break;
-    case "6m":
-      bucketSize = 7 * 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
-      break;
-    default:
-      bucketSize = 30 * 24 * 60 * 60 * 1000;
-      formatLabel = (ts) => new Date(ts).toLocaleDateString([], { month: "short", year: "2-digit" });
-  }
-
-  if (filtered.length === 0) {
-    return { labels: ["No data"], shares: [0] };
-  }
-
-  const minTime = Math.min(...filtered.map((o) => new Date(o.created_at).getTime()));
-  const maxTime = Math.max(...filtered.map((o) => new Date(o.created_at).getTime()));
-
-  const buckets = new Map<number, number>();
-  let currentBucket = Math.floor(minTime / bucketSize) * bucketSize;
-  while (currentBucket <= maxTime) {
-    buckets.set(currentBucket, 0);
-    currentBucket += bucketSize;
-  }
-
-  for (const o of filtered) {
-    const t = new Date(o.created_at).getTime();
-    const bucketStart = Math.floor(t / bucketSize) * bucketSize;
-    const existing = buckets.get(bucketStart) || 0;
-    buckets.set(bucketStart, existing + Number(o.shares));
-  }
-
-  const sortedBuckets = Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]);
-
-  return {
-    labels: sortedBuckets.map(([ts]) => formatLabel(ts)),
-    shares: sortedBuckets.map(([, v]) => v),
+    labels: sorted.map(([ts]) => formatLabel(ts)),
+    transactions: sorted.map(([, v]) => v.tx),
+    avgPrices: sorted.map(([, v]) => (v.tx > 0 ? v.totalPrice / v.tx : 0)),
+    buys: sorted.map(([, v]) => v.buys),
+    sells: sorted.map(([, v]) => v.sells),
   };
 }
 
@@ -269,10 +214,10 @@ export default function PriceChart({
     return interpolateGaps(data, now, currentPrice);
   }, [priceHistory, filter, currentPrice]);
 
-  const groupedTrades = useMemo(() => {
-    if (!transactions || transactions.length === 0) return null;
-    return groupTransactionsByTime(transactions, filter);
-  }, [transactions, filter]);
+  const tradeSeries = useMemo(
+    () => buildTradeSeries(transactions, pendingBuyOrders, pendingSellOrders, filter),
+    [transactions, pendingBuyOrders, pendingSellOrders, filter]
+  );
 
   const holdersYScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 10 };
@@ -340,39 +285,12 @@ export default function PriceChart({
     return { labels, datasets };
   }, [filteredData, filter, showHolders]);
 
-  const bucketedBuyOrders = useMemo(() => {
-    if (!pendingBuyOrders || pendingBuyOrders.length === 0) return null;
-    return groupOrdersByTime(pendingBuyOrders, filter);
-  }, [pendingBuyOrders, filter]);
-
-  const bucketedSellOrders = useMemo(() => {
-    if (!pendingSellOrders || pendingSellOrders.length === 0) return null;
-    return groupOrdersByTime(pendingSellOrders, filter);
-  }, [pendingSellOrders, filter]);
-
-  const bucketCount = groupedTrades?.labels.length ?? bucketedBuyOrders?.labels.length ?? bucketedSellOrders?.labels.length ?? 0;
-  const buyOrdersData = useMemo(() => {
-    if (bucketCount <= 1) return [0];
-    if (bucketedBuyOrders && bucketedBuyOrders.labels.length >= bucketCount) {
-      return bucketedBuyOrders.shares.slice(-bucketCount);
-    }
-    return Array(bucketCount).fill(pendingBuyCount);
-  }, [bucketCount, pendingBuyCount, bucketedBuyOrders]);
-
-  const sellOrdersData = useMemo(() => {
-    if (bucketCount <= 1) return [0];
-    if (bucketedSellOrders && bucketedSellOrders.labels.length >= bucketCount) {
-      return bucketedSellOrders.shares.slice(-bucketCount);
-    }
-    return Array(bucketCount).fill(pendingSellCount);
-  }, [bucketCount, pendingSellCount, bucketedSellOrders]);
-
   const tradeChartData = useMemo(() => {
     const datasets: any[] = [];
     if (showTradesTx) {
       datasets.push({
         label: "Transactions",
-        data: groupedTrades ? groupedTrades.transactions : [0],
+        data: tradeSeries ? tradeSeries.transactions : [0],
         backgroundColor: "rgba(99, 102, 241, 0.7)",
         borderRadius: 4,
         yAxisID: "y",
@@ -381,7 +299,7 @@ export default function PriceChart({
     if (showTradesBuy) {
       datasets.push({
         label: "Buy Orders",
-        data: groupedTrades ? buyOrdersData : [0],
+        data: tradeSeries ? tradeSeries.buys : [0],
         backgroundColor: "rgba(34, 197, 94, 0.7)",
         borderRadius: 4,
         yAxisID: "y1",
@@ -390,7 +308,7 @@ export default function PriceChart({
     if (showTradesSell) {
       datasets.push({
         label: "Sell Orders",
-        data: groupedTrades ? sellOrdersData : [0],
+        data: tradeSeries ? tradeSeries.sells : [0],
         backgroundColor: "rgba(239, 68, 68, 0.7)",
         borderRadius: 4,
         yAxisID: "y1",
@@ -400,10 +318,10 @@ export default function PriceChart({
       datasets.push({ label: "No data", data: [0], backgroundColor: "rgba(75, 85, 99, 0.5)", borderRadius: 4, yAxisID: "y" });
     }
     return {
-      labels: groupedTrades ? groupedTrades.labels : ["No trades"],
+      labels: tradeSeries ? tradeSeries.labels : ["No data"],
       datasets,
     };
-  }, [groupedTrades, buyOrdersData, sellOrdersData, showTradesTx, showTradesBuy, showTradesSell]);
+  }, [tradeSeries, showTradesTx, showTradesBuy, showTradesSell]);
 
   const yScale = useMemo(() => {
     if (filteredData.length === 0) return { min: 0, max: 1 };
@@ -487,7 +405,11 @@ export default function PriceChart({
     [yScale, showHolders, holdersYScale]
   );
 
-  const maxOrderCount = Math.max(pendingBuyCount, pendingSellCount, 1) * 1.2;
+  const maxOrderCount = useMemo(() => {
+    if (!tradeSeries) return Math.max(pendingBuyCount, pendingSellCount, 1) * 1.2;
+    const peak = Math.max(...tradeSeries.buys, ...tradeSeries.sells, 1);
+    return peak * 1.2;
+  }, [tradeSeries, pendingBuyCount, pendingSellCount]);
 
   const tradeOptions = useMemo(
     () => ({
@@ -518,7 +440,7 @@ export default function PriceChart({
               const val = ctx.parsed.y;
               if (val === 0) return;
               if (label === "Transactions") {
-                const avgPrice = groupedTrades?.avgPrices[idx];
+                const avgPrice = tradeSeries?.avgPrices[idx];
                 if (avgPrice && avgPrice > 0) {
                   return `${val} share${val !== 1 ? "s" : ""} traded @ avg ${formatCoins(Math.round(avgPrice))}`;
                 }
@@ -580,7 +502,7 @@ export default function PriceChart({
         mode: "index" as const,
       },
     }),
-    [groupedTrades, maxOrderCount, showTradesTx, showTradesBuy, showTradesSell]
+    [tradeSeries, maxOrderCount, showTradesTx, showTradesBuy, showTradesSell]
   );
 
   const displayPrice = filteredData.length > 0 ? filteredData[filteredData.length - 1].price / 100 : 0;
@@ -590,7 +512,7 @@ export default function PriceChart({
 
   const chartKey = `${filter}-${viewMode}-${showHolders}`;
 
-  const totalTx = tradeChartData.datasets[0]?.data.reduce((a: number, b: number) => a + (b as number), 0) || 0;
+  const totalTx = (tradeSeries?.transactions || []).reduce((a, b) => a + b, 0) || 0;
 
   return (
     <div className="glass-card">

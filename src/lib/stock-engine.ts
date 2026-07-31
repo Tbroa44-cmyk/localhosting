@@ -387,6 +387,19 @@ export async function matchOrders(db: any, companyId: number) {
   if (!(await isTradingOpen(db))) return;
 
   try {
+    const stuckOrders = await db.prepare(
+      "SELECT id, shares, status FROM orders WHERE company_id = ? AND status = 'pending'"
+    ).all(companyId) as { id: number; shares: number; status: string }[];
+    for (const so of stuckOrders) {
+      if (Number(so.shares) <= 0) {
+        await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(so.id);
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[matchOrders] stuck-order cleanup skipped:`, e?.message || e);
+  }
+
+  try {
     const integrity = await verifyIntegrity(db, companyId);
     if (!integrity.ok) {
       console.warn(`[matchOrders] Certificate count mismatch (continuing): ${integrity.error}`);

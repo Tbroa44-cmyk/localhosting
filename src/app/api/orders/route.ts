@@ -27,10 +27,12 @@ export async function GET(request: NextRequest) {
       const company = await db.prepare(
         "SELECT ticker, name, share_price FROM companies WHERE id = ?"
       ).get(o.company_id) as any;
+      const normalizedShares = Math.max(0, Number(o.shares) || 0);
       orders.push({
         ...o,
-        shares: Math.max(0, o.shares),
+        shares: normalizedShares,
         original_shares: Math.max(Number(o.original_shares || o.shares), 0),
+        status: o.status === "pending" && normalizedShares <= 0 ? "filled" : o.status,
         ticker: company?.ticker || "???",
         name: company?.name || "Unknown",
         current_price: company?.share_price || 0,

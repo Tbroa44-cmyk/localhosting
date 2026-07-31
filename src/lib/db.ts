@@ -442,6 +442,10 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
     return { changes: 0, lastInsertRowid: 0 };
   }
 
+  if (table === "orders" && typeof updateObj.shares === "number" && updateObj.shares <= 0 && updateObj.status === undefined) {
+    updateObj.status = "filled";
+  }
+
   let filterStr = "";
   if (whereMatch) {
     const { conditions, isOr } = parseWhere(whereMatch[1], whereParams);
