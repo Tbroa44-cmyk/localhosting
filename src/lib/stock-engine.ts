@@ -76,6 +76,39 @@ export async function setPriceFromTrade(db: any, companyId: number, tradePrice: 
   return cappedPrice;
 }
 
+export async function syncMarketOrderPrices(db: any, companyId: number) {
+  try {
+    const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
+    if (!company) return;
+    const newPrice = Math.max(5, Number(company.share_price) || 0);
+    if (newPrice < 5 || newPrice !== Number(company.share_price)) return;
+
+    const marketOrders = await db.prepare(
+      "SELECT id, user_id, type, shares, price_per_share FROM orders WHERE company_id = ? AND status = 'pending' AND is_market_order = 1"
+    ).all(companyId) as { id: number; user_id: number; type: string; shares: number; price_per_share: number }[];
+
+    for (const order of marketOrders) {
+      const shares = Number(order.shares);
+      const oldPrice = Number(order.price_per_share);
+      if (shares <= 0 || oldPrice === newPrice) continue;
+
+      if (order.type === "buy") {
+        const delta = (newPrice - oldPrice) * shares;
+        if (delta > 0) {
+          const result = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(delta, order.user_id, delta);
+          if (result.changes === 0) continue;
+        } else if (delta < 0) {
+          await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(-delta, order.user_id);
+        }
+      }
+
+      await db.prepare("UPDATE orders SET price_per_share = ? WHERE id = ?").run(newPrice, order.id);
+    }
+  } catch (e: any) {
+    console.warn(`[syncMarketOrderPrices] company ${companyId} failed:`, e?.message || e);
+  }
+}
+
 async function getBankFund(db: any): Promise<number> {
   const row = await db.prepare("SELECT * FROM bank_fund WHERE id = 1").all() as { balance: number }[];
   return row[0] ? row[0].balance : 0;
@@ -120,10 +153,10 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     }
 
     if (!(await isTradingOpen(db))) {
-      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price);
+      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price, undefined, true);
     }
 
-    await db.prepare("UPDATE orders SET price_per_share = ? WHERE company_id = ? AND status = 'pending' AND price_per_share != ?").run(company.share_price, companyId, company.share_price);
+    await syncMarketOrderPrices(db, companyId);
 
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' AND user_id != ? ORDER BY price_per_share ASC, created_at ASC"
@@ -181,6 +214,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     const buyImpactPrice = filledFromSells > 0 ? calculateBuyPrice(company.share_price, filledFromSells) : company.share_price;
     const afterFillPrice = await setPriceFromTrade(db, companyId, buyImpactPrice, filledFromSells > 0 ? filledFromSells : undefined);
     company.share_price = afterFillPrice;
+    await syncMarketOrderPrices(db, companyId);
 
     if (remaining > 0) {
       const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
@@ -197,7 +231,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       totalCost += pendingCost;
 
       await db.prepare(
-        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, ?)"
+        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, is_market_order, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, 1, ?)"
       ).run(userId, companyId, remaining, remaining, company.share_price, requestId || null, new Date().toISOString());
       pendingShares = remaining;
     }
@@ -238,7 +272,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
   if (!(await isTradingOpen(db))) {
     const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
     const sellPrice = Math.max(5, Number(company?.share_price) || 5);
-    return await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId);
+    return await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId, true);
   }
 
   const sellTransaction = await db.transaction(async () => {
@@ -269,6 +303,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
 
     await addToBankFund(db, taxAmount);
     await updateCompanyPrice(companyId, newPrice);
+    await syncMarketOrderPrices(db, companyId);
 
     const cancelCertCount = await db.prepare(
       "SELECT COUNT(*) as count FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?"
@@ -297,7 +332,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
   return result;
 }
 
-export async function placeLimitOrder(userId: number, companyId: number, type: "buy" | "sell", shares: number, priceCents: number, requestId?: string) {
+export async function placeLimitOrder(userId: number, companyId: number, type: "buy" | "sell", shares: number, priceCents: number, requestId?: string, isMarketOrder = false) {
   const db = getDb();
 
   return await db.transaction(async () => {
@@ -351,8 +386,8 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     }
 
     const result = await db.prepare(
-      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
-    ).run(userId, companyId, type, shares, shares, priceCents, requestId || null, new Date().toISOString());
+      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, is_market_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)"
+    ).run(userId, companyId, type, shares, shares, priceCents, requestId || null, isMarketOrder ? 1 : 0, new Date().toISOString());
 
     const orderId = result.lastInsertRowid as number;
 
@@ -414,6 +449,8 @@ export async function matchOrders(db: any, companyId: number) {
   }
 
   while (true) {
+    await syncMarketOrderPrices(db, companyId);
+
     const pendingSells = await db.prepare(
       "SELECT * FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending' ORDER BY price_per_share ASC, created_at ASC"
     ).all(companyId) as any[];

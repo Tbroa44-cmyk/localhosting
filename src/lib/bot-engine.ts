@@ -2,7 +2,7 @@ import getDb, { insertPriceHistory } from "@/lib/db";
 import { isTradingOpen, getTradingInfo } from "@/lib/trading-hours";
 import { addShares, removeShares, getHolding } from "@/lib/holdings";
 import { issueCertificates, transferCertificates, reserveCertificates, releaseCertificates, countActive, countTotalForCompany, verifyIntegrity } from "@/lib/certificates";
-import { matchOrders } from "@/lib/stock-engine";
+import { matchOrders, syncMarketOrderPrices } from "@/lib/stock-engine";
 
 const BOT_INITIAL_CASH = 5000;
 const BOT_COOLDOWN_MS = 20000;
@@ -920,10 +920,7 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
   const companies = await db.prepare("SELECT id, share_price FROM companies WHERE total_shares > 0 AND share_price >= 5 AND delisted = 0").all() as { id: number; share_price: number }[];
 
   for (const c of companies) {
-    const price = Number(c.share_price);
-    if (price > 0) {
-      await db.prepare("UPDATE orders SET price_per_share = ? WHERE company_id = ? AND status = 'pending' AND price_per_share != ?").run(price, c.id, price);
-    }
+    await syncMarketOrderPrices(db, c.id);
   }
 
   await adjustPricesByPressure(db, companies);

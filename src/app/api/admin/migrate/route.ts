@@ -29,6 +29,9 @@ export async function POST() {
     try {
       await runSql(`ALTER TABLE companies ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0`);
     } catch {}  // column may already exist
+    try {
+      await runSql(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_market_order INTEGER DEFAULT 0`);
+    } catch {}  // column may already exist
 
     const companies = await db.prepare("SELECT id, total_shares FROM companies").all() as { id: number; total_shares: number }[];
     const holdings = await db.prepare(

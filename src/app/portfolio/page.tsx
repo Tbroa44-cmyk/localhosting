@@ -55,6 +55,7 @@ interface PendingOrder {
   ticker: string;
   name: string;
   current_price: number;
+  is_market_order?: number;
   created_at: string;
 }
 
@@ -432,6 +433,9 @@ export default function PortfolioPage() {
                     <span className={`text-xs font-bold px-2 py-1 rounded ${order.type === "buy" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                       {String(order.type).toUpperCase()}
                     </span>
+                    {order.is_market_order === 1 && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Auto</span>
+                    )}
                     <Link href={`/dashboard/stocks/${order.company_id}`} className="text-white font-medium hover:text-blue-400 transition-colors">
                       {order.ticker}
                     </Link>

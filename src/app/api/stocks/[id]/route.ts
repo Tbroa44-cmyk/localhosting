@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const [priceHistoryResult, allOrdersResult, holderResult, session] = await Promise.all([
       db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
-      db.prepare("SELECT type, shares, original_shares, created_at, status FROM orders WHERE company_id = ?").all(id),
+      db.prepare("SELECT type, shares, original_shares, created_at, status, is_market_order FROM orders WHERE company_id = ?").all(id),
       db.prepare("SELECT user_id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(id),
       getServerSession(authOptions),
     ]);
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
       const [transactions, myPendingOrders, myCancelledOrders, recentTx] = await Promise.all([
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25").all(id, userId),
-        db.prepare("SELECT id, type, shares, original_shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC").all(id, userId),
+        db.prepare("SELECT id, type, shares, original_shares, price_per_share, created_at, is_market_order FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC").all(id, userId),
         db.prepare("SELECT type, shares, original_shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20").all(id, userId),
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id),
       ]);
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       }
       for (const o of myPendingOrders as any[]) {
         const normalizedShares = Math.max(0, Number(o.shares) || 0);
-        myTrades.push({ type: String(o.type), shares: normalizedShares, original_shares: Number(o.original_shares) || Math.max(0, normalizedShares), price_per_share: o.price_per_share, total_amount: normalizedShares * o.price_per_share, created_at: o.created_at, status: normalizedShares <= 0 ? "confirmed" : "pending", order_id: o.id });
+        myTrades.push({ type: String(o.type), shares: normalizedShares, original_shares: Number(o.original_shares) || Math.max(0, normalizedShares), price_per_share: o.price_per_share, total_amount: normalizedShares * o.price_per_share, created_at: o.created_at, status: normalizedShares <= 0 ? "confirmed" : "pending", order_id: o.id, is_market_order: o.is_market_order });
       }
       for (const o of myCancelledOrders as any[]) {
         myTrades.push({ type: String(o.type), shares: Math.max(0, o.shares), original_shares: Number(o.original_shares) || Math.max(0, o.shares), price_per_share: o.price_per_share, total_amount: Math.max(0, o.shares) * o.price_per_share, created_at: o.created_at, status: "cancelled" });
@@ -117,8 +117,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       pending_sell_count: pendingSellCount,
       pending_buy_shares: pendingBuyShares,
       pending_sell_shares: pendingSellShares,
-      pending_buy_orders: graphBuyRows.map((o) => ({ shares: orderBookShares(o), created_at: o.created_at })),
-      pending_sell_orders: graphSellRows.map((o) => ({ shares: orderBookShares(o), created_at: o.created_at })),
+      pending_buy_orders: graphBuyRows.map((o) => ({ shares: orderBookShares(o), created_at: o.created_at, is_market_order: o.is_market_order })),
+      pending_sell_orders: graphSellRows.map((o) => ({ shares: orderBookShares(o), created_at: o.created_at, is_market_order: o.is_market_order })),
     }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
