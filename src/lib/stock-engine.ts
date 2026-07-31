@@ -147,11 +147,16 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         continue;
       }
 
-      const seller = await db.prepare("SELECT * FROM users WHERE id = ?").get(sellOrder.user_id) as { id: number };
+      try {
+        await removeShares(db, sellOrder.user_id, companyId, fillQty, "executeBuy_sell_fill", sellOrder.id);
+      } catch (e: any) {
+        console.warn(`Seller ${sellOrder.user_id} holding unavailable for ${fillQty} shares of ${companyId}, skipping sell order ${sellOrder.id}:`, e?.message || e);
+        continue;
+      }
+
       await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
       await addToBankFund(db, taxAmount);
 
-      await removeShares(db, sellOrder.user_id, companyId, fillQty, "executeBuy_sell_fill", sellOrder.id);
       await transferCertificates(db, companyId, sellOrder.user_id, userId, fillQty);
 
       if (fillQty >= sellOrder.shares) {
@@ -258,12 +263,12 @@ export async function executeSell(userId: number, companyId: number, shares: num
     const newPrice = applyPriceCap(company.share_price, rawNewPrice, shares, company.total_shares);
 
     const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number };
+
+    await removeShares(db, userId, companyId, shares, "executeSell");
     await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, userId);
 
     await addToBankFund(db, taxAmount);
     await updateCompanyPrice(companyId, newPrice);
-
-    await removeShares(db, userId, companyId, shares, "executeSell");
 
     const cancelCertCount = await db.prepare(
       "SELECT COUNT(*) as count FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?"
@@ -427,11 +432,12 @@ export async function matchOrders(db: any, companyId: number) {
 
     if (!matchingBuy) break;
 
-    await fillOrderPair(db, matchingBuy, bestSell);
+    const progress = await fillOrderPair(db, matchingBuy, bestSell);
+    if (!progress) break;
   }
 }
 
-async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
+async function fillOrderPair(db: any, buyOrder: any, sellOrder: any): Promise<boolean> {
   const fillQty = Math.min(Number(buyOrder.shares), Number(sellOrder.shares));
   const fillPrice = Number(sellOrder.price_per_share);
 
@@ -442,13 +448,19 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
   const sellerHolding = await db.prepare("SELECT shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, buyOrder.company_id) as { shares_owned: number } | undefined;
   if (!sellerHolding || Number(sellerHolding.shares_owned) < fillQty) {
     console.warn(`fillOrderPair: seller ${sellOrder.user_id} lacks ${fillQty} shares of ${buyOrder.company_id}, skipping`);
-    return;
+    return false;
+  }
+
+  try {
+    await removeShares(db, sellOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_sell", sellOrder.id);
+  } catch (e: any) {
+    console.warn(`fillOrderPair: seller ${sellOrder.user_id} holding unavailable for ${fillQty} shares of ${buyOrder.company_id}:`, e?.message || e);
+    return false;
   }
 
   await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
   await addToBankFund(db, taxAmount);
 
-  await removeShares(db, sellOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_sell", sellOrder.id);
   await addShares(db, buyOrder.user_id, buyOrder.company_id, fillQty, "fillOrderPair_buy", buyOrder.id);
 
   const certIds = await db.prepare(
@@ -490,6 +502,8 @@ async function fillOrderPair(db: any, buyOrder: any, sellOrder: any) {
 
   await awardXP(db, buyOrder.user_id, fillQty * 1);
   await awardXP(db, sellOrder.user_id, fillQty * 2);
+
+  return true;
 }
 
 export async function getBankBalance(): Promise<number> {

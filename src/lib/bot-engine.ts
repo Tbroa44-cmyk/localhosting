@@ -452,13 +452,14 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
       const taxAmount = Math.round(cost * 0.03);
       const sellerRevenue = cost - taxAmount;
 
-      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
-
       try {
         await removeShares(db, sellOrder.user_id, companyId, fillQty, "bot_buy_fill", sellOrder.id);
       } catch (e: any) {
-        console.error(`Bot buy seller holding error:`, e?.message || e);
+        console.warn(`Bot buy: seller ${sellOrder.user_id} holding unavailable for ${fillQty} shares of ${companyId}, skipping sell order ${sellOrder.id}:`, e?.message || e);
+        continue;
       }
+
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
 
       await addShares(db, botId, companyId, fillQty, "bot_buy_fill", sellOrder.id);
       try {
@@ -539,13 +540,17 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
       const taxAmount = Math.round(grossRevenue * 0.03);
       const netRevenue = grossRevenue - taxAmount;
 
-      const debitResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(grossRevenue, buyOrder.user_id, grossRevenue);
-      if (debitResult.changes === 0) continue;
-
       try {
         await removeShares(db, botId, companyId, fillQty, "bot_sell_fill", buyOrder.id);
       } catch (e: any) {
-        console.error(`Bot sell holding error:`, e?.message || e);
+        console.warn(`Bot sell: bot ${botId} holding unavailable for ${fillQty} shares of ${companyId}, skipping buy order ${buyOrder.id}:`, e?.message || e);
+        continue;
+      }
+
+      const debitResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(grossRevenue, buyOrder.user_id, grossRevenue);
+      if (debitResult.changes === 0) {
+        await addShares(db, botId, companyId, fillQty, "bot_sell_fill_refund", buyOrder.id);
+        continue;
       }
       await addShares(db, buyOrder.user_id, companyId, fillQty, "bot_sell_fill", buyOrder.id);
       try {
@@ -700,14 +705,15 @@ async function botToBotMatch(db: any, bots: { id: number; name: string; config: 
       const taxAmount = Math.round(grossCost * 0.03);
       const sellerRevenue = grossCost - taxAmount;
 
-      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
-      await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(grossCost, buyBotId);
-
       try {
         await removeShares(db, sellOrder.user_id, companyId, fillQty, "bot_match_sell", sellOrder.id);
       } catch (e: any) {
-        console.error(`botToBotMatch seller holding error:`, e?.message || e);
+        console.warn(`botToBotMatch: seller ${sellOrder.user_id} holding unavailable for ${fillQty} shares of ${companyId}, skipping sell order ${sellOrder.id}:`, e?.message || e);
+        continue;
       }
+
+      await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(sellerRevenue, sellOrder.user_id);
+      await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(grossCost, buyBotId);
 
       await addShares(db, buyBotId, companyId, fillQty, "bot_match_buy", buyOrder.id);
 
