@@ -4,7 +4,7 @@ export const revalidate = 0;
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import getDb, { getLowestPendingSell } from "@/lib/db";
+import getDb, { getLowestPendingSell, getAdminUserIds } from "@/lib/db";
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -20,11 +20,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
+    const adminIds = await getAdminUserIds(db);
+    const adminIdSet = new Set(adminIds.map((a) => Number(a)));
+
     const basePrice = Number((company as any).share_price) || 0;
 
     const [priceHistoryResult, allOrdersResult, holderResult, session] = await Promise.all([
       db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
-      db.prepare("SELECT type, shares, original_shares, created_at, status, is_market_order FROM orders WHERE company_id = ?").all(id),
+      db.prepare("SELECT type, shares, original_shares, created_at, status, is_market_order, user_id FROM orders WHERE company_id = ?").all(id),
       db.prepare("SELECT user_id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(id),
       getServerSession(authOptions),
     ]);
@@ -33,6 +36,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const allOrderRows = (allOrdersResult as any[]) || [];
     const pendingSellRows = allOrderRows.filter((o: any) => o.type === "sell" && o.status === "pending");
     const pendingBuyRows = allOrderRows.filter((o: any) => o.type === "buy" && o.status === "pending");
+    const marketSellRows = pendingSellRows.filter((o: any) => !adminIdSet.has(Number(o.user_id)));
+    const marketBuyRows = pendingBuyRows.filter((o: any) => !adminIdSet.has(Number(o.user_id)));
     const graphSellRows = allOrderRows.filter((o: any) => o.type === "sell" && (o.status === "pending" || o.status === "filled"));
     const graphBuyRows = allOrderRows.filter((o: any) => o.type === "buy" && (o.status === "pending" || o.status === "filled"));
     const holderCount = Array.isArray(holderResult) ? new Set(holderResult.map((r: any) => r.user_id)).size : 0;
@@ -40,9 +45,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     priceHistory.reverse();
 
     const companyData = company as any;
-    const availableShares = Math.max(0, Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0);
+    const availableShares = Math.max(0, marketSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0));
 
-    const effectiveSellPrice = await getLowestPendingSell(id);
+    const effectiveSellPrice = await getLowestPendingSell(id, undefined, adminIds);
     let effectivePrice = (effectiveSellPrice !== null && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
     const totalShares = Number(companyData.total_shares) || 1;
     if (availableShares > 0) {
@@ -96,8 +101,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       for (const tx of recentTransactions) { tx.status = "confirmed"; }
     }
 
-    const allBuys = Array.isArray(pendingBuyRows) ? pendingBuyRows as { shares: number; created_at: string }[] : [];
-    const allSells = Array.isArray(pendingSellRows) ? pendingSellRows as { shares: number; created_at: string }[] : [];
+    const allBuys = Array.isArray(marketBuyRows) ? marketBuyRows as { shares: number; created_at: string }[] : [];
+    const allSells = Array.isArray(marketSellRows) ? marketSellRows as { shares: number; created_at: string }[] : [];
     const pendingBuyShares = allBuys.reduce((s, r) => s + (Number(r.shares) || 0), 0);
     const pendingSellShares = availableShares;
     const pendingBuyCount = allBuys.length;

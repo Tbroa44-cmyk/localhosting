@@ -770,7 +770,7 @@ async function botToBotMatch(db: any, bots: { id: number; name: string; config: 
 async function adjustPricesByPressure(db: any, companies: { id: number; share_price: number }[]) {
   let botIds: number[] = [];
   try {
-    const bots = await db.prepare("SELECT id FROM users WHERE role = 'Bot'").all() as { id: number }[];
+    const bots = await db.prepare("SELECT id FROM users WHERE role = 'Bot' OR is_admin = TRUE").all() as { id: number }[];
     botIds = (Array.isArray(bots) ? bots : []).map((b) => b.id);
   } catch {}
 

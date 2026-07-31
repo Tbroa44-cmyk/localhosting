@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { NextRequest, NextResponse } from "next/server";
-import getDb, { getLowestPendingSellsBulk } from "@/lib/db";
+import getDb, { getLowestPendingSellsBulk, getAdminUserIds } from "@/lib/db";
 import { getTradingInfo } from "@/lib/trading-hours";
 
 function getAESTNow(): Date {
@@ -44,7 +44,10 @@ export async function GET(request: NextRequest) {
     ]);
     const companies = companiesRaw as any[];
 
-    const lowestSells = await getLowestPendingSellsBulk();
+    const adminIds = await getAdminUserIds(db);
+    const adminIdSet = new Set(adminIds.map((a) => Number(a)));
+
+    const lowestSells = await getLowestPendingSellsBulk(adminIds);
 
     const settingsRaw = await db.prepare("SELECT trading_days FROM settings WHERE id = 1").get();
     const settings = settingsRaw as any;
@@ -58,7 +61,7 @@ export async function GET(request: NextRequest) {
 
       const [allHistory, pendingSellRows, txCountRows] = await Promise.all([
         db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(company.id) as Promise<any[]>,
-        db.prepare("SELECT shares FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(company.id) as Promise<any[]>,
+        db.prepare("SELECT shares, user_id FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(company.id) as Promise<any[]>,
         db.prepare("SELECT id, type FROM transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 500").all(company.id) as Promise<any[]>,
       ]);
 
@@ -94,7 +97,9 @@ export async function GET(request: NextRequest) {
         if (Array.isArray(holderRows)) holderCount = new Set(holderRows.map((r: any) => r.user_id)).size;
       } catch {}
 
-      const shares_available = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
+      const shares_available = Array.isArray(pendingSellRows)
+        ? pendingSellRows.filter((r: any) => !adminIdSet.has(Number(r.user_id))).reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0)
+        : 0;
 
       const sessionHistory = allHistory.filter((h: any) => Number(h.timestamp) >= sessionStart);
       const recentPrices = sessionHistory.length >= 2

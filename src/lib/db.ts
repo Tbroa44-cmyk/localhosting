@@ -601,12 +601,24 @@ export async function getCompanyPrice(companyId: number): Promise<number> {
   }
 }
 
-export async function getLowestPendingSell(companyId: number, excludeOrderId?: number): Promise<number | null> {
+export async function getAdminUserIds(db: any): Promise<number[]> {
+  try {
+    const rows = await db.prepare("SELECT id FROM users WHERE is_admin = TRUE").all() as { id: number }[];
+    return (Array.isArray(rows) ? rows : []).map((r) => Number(r.id)).filter((id) => id > 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function getLowestPendingSell(companyId: number, excludeOrderId?: number, excludeUserIds?: number[]): Promise<number | null> {
   if (!companyId) return null;
   try {
     let path = `/orders?company_id=eq.${companyId}&type=eq.sell&status=eq.pending&order=price_per_share.asc&limit=1&select=price_per_share`;
     if (excludeOrderId !== undefined && excludeOrderId !== null) {
       path += `&id=neq.${excludeOrderId}`;
+    }
+    if (excludeUserIds && excludeUserIds.length > 0) {
+      path += `&user_id=not.in.(${excludeUserIds.join(",")})`;
     }
     const data = await restFetch(path);
     const rows = Array.isArray(data) ? data : data ? [data] : [];
@@ -618,9 +630,13 @@ export async function getLowestPendingSell(companyId: number, excludeOrderId?: n
   }
 }
 
-export async function getLowestPendingSellsBulk(): Promise<Map<number, number>> {
+export async function getLowestPendingSellsBulk(excludeUserIds?: number[]): Promise<Map<number, number>> {
   try {
-    const data = await restFetch(`/orders?type=eq.sell&status=eq.pending&order=price_per_share.asc&select=company_id,price_per_share`);
+    let path = `/orders?type=eq.sell&status=eq.pending&order=price_per_share.asc&select=company_id,price_per_share`;
+    if (excludeUserIds && excludeUserIds.length > 0) {
+      path += `&user_id=not.in.(${excludeUserIds.join(",")})`;
+    }
+    const data = await restFetch(path);
     const rows = Array.isArray(data) ? data : data ? [data] : [];
     const map = new Map<number, number>();
     for (const row of rows) {
