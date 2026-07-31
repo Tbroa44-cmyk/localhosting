@@ -22,17 +22,19 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const basePrice = Number((company as any).share_price) || 0;
 
-    const [priceHistoryResult, pendingSellRowsResult, pendingBuyRowsResult, holderResult, session] = await Promise.all([
+    const [priceHistoryResult, allOrdersResult, holderResult, session] = await Promise.all([
       db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
-      db.prepare("SELECT shares, created_at FROM orders WHERE company_id = ? AND type = 'sell' AND status = 'pending'").all(id),
-      db.prepare("SELECT shares, created_at FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending'").all(id),
+      db.prepare("SELECT type, shares, original_shares, created_at, status FROM orders WHERE company_id = ?").all(id),
       db.prepare("SELECT user_id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(id),
       getServerSession(authOptions),
     ]);
 
     const priceHistory = priceHistoryResult as any[];
-    const pendingSellRows = pendingSellRowsResult as any[];
-    const pendingBuyRows = pendingBuyRowsResult as any[];
+    const allOrderRows = (allOrdersResult as any[]) || [];
+    const pendingSellRows = allOrderRows.filter((o: any) => o.type === "sell" && o.status === "pending");
+    const pendingBuyRows = allOrderRows.filter((o: any) => o.type === "buy" && o.status === "pending");
+    const graphSellRows = allOrderRows.filter((o: any) => o.type === "sell" && (o.status === "pending" || o.status === "filled"));
+    const graphBuyRows = allOrderRows.filter((o: any) => o.type === "buy" && (o.status === "pending" || o.status === "filled"));
     const holderCount = Array.isArray(holderResult) ? new Set(holderResult.map((r: any) => r.user_id)).size : 0;
 
     priceHistory.reverse();
@@ -101,20 +103,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const pendingBuyCount = allBuys.length;
     const pendingSellCount = allSells.length;
 
-    const historicalBuyShares = priceHistory.map((ph: any, idx: number) => {
-      const ts = new Date(ph.timestamp).getTime();
-      const prevTs = idx > 0 ? new Date(priceHistory[idx - 1].timestamp).getTime() : 0;
-      return allBuys
-        .filter(o => { const t = new Date(o.created_at).getTime(); return t > prevTs && t <= ts; })
-        .reduce((s, o) => s + (Number(o.shares) || 0), 0);
-    });
-    const historicalSellShares = priceHistory.map((ph: any, idx: number) => {
-      const ts = new Date(ph.timestamp).getTime();
-      const prevTs = idx > 0 ? new Date(priceHistory[idx - 1].timestamp).getTime() : 0;
-      return allSells
-        .filter(o => { const t = new Date(o.created_at).getTime(); return t > prevTs && t <= ts; })
-        .reduce((s, o) => s + (Number(o.shares) || 0), 0);
-    });
+    const orderBookShares = (o: any) => Math.max(0, Number(o.original_shares) || Number(o.shares) || 0);
 
     return NextResponse.json({
       ...company,
@@ -128,8 +117,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       pending_sell_count: pendingSellCount,
       pending_buy_shares: pendingBuyShares,
       pending_sell_shares: pendingSellShares,
-      pending_buy_orders: allBuys.map(o => ({ shares: o.shares, created_at: o.created_at })),
-      pending_sell_orders: allSells.map(o => ({ shares: o.shares, created_at: o.created_at })),
+      pending_buy_orders: graphBuyRows.map((o) => ({ shares: orderBookShares(o), created_at: o.created_at })),
+      pending_sell_orders: graphSellRows.map((o) => ({ shares: orderBookShares(o), created_at: o.created_at })),
     }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
