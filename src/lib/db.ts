@@ -1,6 +1,6 @@
 interface WhereCondition {
   column: string;
-  op: "=" | "!=" | "<" | ">";
+  op: "=" | "!=" | "<" | ">" | ">=" | "<=";
   value: any;
   isParam: boolean;
 }
@@ -37,22 +37,28 @@ function parseSingleCondition(s: string, params: any[], paramIdx: number): { con
   s = s.trim();
   if (s.startsWith("(") && s.endsWith(")")) s = s.slice(1, -1).trim();
 
-  const neqMatch = s.match(/(\w+)\s*!=\s*(?:'([^']*)'|(\d+)|(\?))/i);
+  const neqMatch = s.match(/(\w+)\s*!=\s*(?:'([^']*)'|(\d+)|(\?)|(TRUE|FALSE))/i);
   if (neqMatch) {
     const column = neqMatch[1];
     if (neqMatch[4] === "?") return { condition: { column, op: "!=", value: params[paramIdx], isParam: true }, nextIdx: paramIdx + 1 };
+    if (neqMatch[5]) return { condition: { column, op: "!=", value: neqMatch[5].toLowerCase(), isParam: false }, nextIdx: paramIdx };
     return { condition: { column, op: "!=", value: neqMatch[2] ?? Number(neqMatch[3]), isParam: false }, nextIdx: paramIdx };
   }
 
-  const ltMatch = s.match(/(\w+)\s*<\s*(\d+)/i);
-  if (ltMatch) {
-    return { condition: { column: ltMatch[1], op: "<", value: Number(ltMatch[2]), isParam: false }, nextIdx: paramIdx };
+  const cmpMatch = s.match(/(\w+)\s*(<=|>=|<|>)\s*(\d+|\?)/i);
+  if (cmpMatch) {
+    const opMap: Record<string, "=" | "!=" | "<" | ">" | ">=" | "<="> = { "<": "<", ">": ">", "<=": "<=", ">=": ">=" };
+    const column = cmpMatch[1];
+    const op = opMap[cmpMatch[2]];
+    if (cmpMatch[3] === "?") return { condition: { column, op, value: params[paramIdx], isParam: true }, nextIdx: paramIdx + 1 };
+    return { condition: { column, op, value: Number(cmpMatch[3]), isParam: false }, nextIdx: paramIdx };
   }
 
-  const eqMatch = s.match(/(\w+)\s*=\s*(?:'([^']*)'|(\d+)|(\?))/i);
+  const eqMatch = s.match(/(\w+)\s*=\s*(?:'([^']*)'|(\d+)|(\?)|(TRUE|FALSE))/i);
   if (eqMatch) {
     const column = eqMatch[1];
     if (eqMatch[4] === "?") return { condition: { column, op: "=", value: params[paramIdx], isParam: true }, nextIdx: paramIdx + 1 };
+    if (eqMatch[5]) return { condition: { column, op: "=", value: eqMatch[5].toLowerCase(), isParam: false }, nextIdx: paramIdx };
     return { condition: { column, op: "=", value: eqMatch[2] !== undefined ? eqMatch[2] : Number(eqMatch[3]), isParam: false }, nextIdx: paramIdx };
   }
 
@@ -70,6 +76,8 @@ function buildFilterParams(conditions: WhereCondition[], isOr: boolean): { filte
       if (c.op === "!=") return `${c.column}.neq.${val}`;
       if (c.op === "<") return `${c.column}.lt.${val}`;
       if (c.op === ">") return `${c.column}.gt.${val}`;
+      if (c.op === "<=") return `${c.column}.lte.${val}`;
+      if (c.op === ">=") return `${c.column}.gte.${val}`;
       return `${c.column}.eq.${val}`;
     });
     return { filterStr: `or=(${parts.join(",")})`, validConditions };
@@ -81,6 +89,8 @@ function buildFilterParams(conditions: WhereCondition[], isOr: boolean): { filte
     if (c.op === "!=") return `${c.column}=neq.${val}`;
     if (c.op === "<") return `${c.column}=lt.${val}`;
     if (c.op === ">") return `${c.column}=gt.${val}`;
+    if (c.op === "<=") return `${c.column}=lte.${val}`;
+    if (c.op === ">=") return `${c.column}=gte.${val}`;
     return `${c.column}=eq.${val}`;
   });
   return { filterStr: parts.join("&"), validConditions };
