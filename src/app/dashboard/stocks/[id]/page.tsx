@@ -585,6 +585,10 @@ export default function StockDetailPage() {
                         <span>{formatCoins(userBalance)}</span>
                       </div>
                     )}
+                    <div className="flex justify-between text-xs">
+                      <span>Available to buy (from sell orders):</span>
+                      <span>{((company as any)?.available_shares || 0).toLocaleString()}</span>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -619,6 +623,12 @@ export default function StockDetailPage() {
                   <div className="flex justify-between text-xs">
                     <span>Shares available to sell:</span>
                     <span>{availableToSell}</span>
+                  </div>
+                )}
+                {orderType === "buy" && (
+                  <div className="flex justify-between text-xs">
+                    <span>Available to buy (from sell orders):</span>
+                    <span>{((company as any)?.available_shares || 0).toLocaleString()}</span>
                   </div>
                 )}
                 {orderType === "buy" && parseFloat(orderPrice) * 100 >= currentPrice && (

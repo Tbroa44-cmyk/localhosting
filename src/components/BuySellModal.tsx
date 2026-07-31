@@ -16,12 +16,13 @@ interface BuySellModalProps {
   userBalance: number;
   sharesOwned: number;
   isAdmin?: boolean;
+  availableShares?: number;
   onExecute: (companyId: number, shares: number) => Promise<any>;
   onClose: () => void;
   onTradeComplete?: () => void;
 }
 
-export default function BuySellModal({ company, mode, userBalance, sharesOwned, isAdmin, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
+export default function BuySellModal({ company, mode, userBalance, sharesOwned, isAdmin, availableShares = 0, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
   const [shares, setShares] = useState<string | number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -127,6 +128,12 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
           <div className="flex justify-between text-xs">
             <span className="text-gray-500">Your balance:</span>
             <span className="text-gray-400">{formatCoins(userBalance)}</span>
+          </div>
+        )}
+        {mode === "buy" && (
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Available to buy (from sell orders):</span>
+            <span className="text-gray-400">{(availableShares || 0).toLocaleString()}</span>
           </div>
         )}
         {mode === "buy" && isAdmin && (

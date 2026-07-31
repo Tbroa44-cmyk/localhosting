@@ -47,7 +47,7 @@ const NAV_CARDS = [
     ),
     border: "hover:border-blue-500/50",
     text: "text-blue-400",
-    href: "/dashboard",
+    href: "/portfolio",
   },
   {
     key: "wallet",

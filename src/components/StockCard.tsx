@@ -174,6 +174,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
           userBalance={userBalance}
           sharesOwned={sharesOwned}
           isAdmin={isAdmin}
+          availableShares={company.shares_available || 0}
           onExecute={handleExecute}
           onClose={() => setModalOpen(false)}
           onTradeComplete={() => {
