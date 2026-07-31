@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, getUserIdFromRequest } from "@/lib/auth";
 import { placeLimitOrder } from "@/lib/stock-engine";
 import getDb from "@/lib/db";
+import { isMarketOrderRow } from "@/lib/stock-engine";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
         shares: normalizedShares,
         original_shares: Math.max(Number(o.original_shares || o.shares), 0),
         status: o.status === "pending" && normalizedShares <= 0 ? "filled" : o.status,
+        is_market_order: isMarketOrderRow(o) ? 1 : 0,
         ticker: company?.ticker || "???",
         name: company?.name || "Unknown",
         current_price: company?.share_price || 0,

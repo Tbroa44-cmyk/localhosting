@@ -76,6 +76,14 @@ export async function setPriceFromTrade(db: any, companyId: number, tradePrice: 
   return cappedPrice;
 }
 
+export function isMarketOrderRow(o: any): boolean {
+  return !!o && typeof o.request_id === "string" && o.request_id.startsWith("MKT_");
+}
+
+function marketOrderId(requestId?: string | null): string | null {
+  return requestId ? "MKT_" + requestId : null;
+}
+
 export async function syncMarketOrderPrices(db: any, companyId: number) {
   try {
     const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as { share_price: number } | undefined;
@@ -84,10 +92,11 @@ export async function syncMarketOrderPrices(db: any, companyId: number) {
     if (newPrice < 5 || newPrice !== Number(company.share_price)) return;
 
     const marketOrders = await db.prepare(
-      "SELECT id, user_id, type, shares, price_per_share FROM orders WHERE company_id = ? AND status = 'pending' AND is_market_order = 1"
-    ).all(companyId) as { id: number; user_id: number; type: string; shares: number; price_per_share: number }[];
+      "SELECT id, user_id, type, shares, price_per_share, request_id FROM orders WHERE company_id = ? AND status = 'pending'"
+    ).all(companyId) as { id: number; user_id: number; type: string; shares: number; price_per_share: number; request_id: string | null }[];
 
     for (const order of marketOrders) {
+      if (!isMarketOrderRow(order)) continue;
       const shares = Number(order.shares);
       const oldPrice = Number(order.price_per_share);
       if (shares <= 0 || oldPrice === newPrice) continue;
@@ -123,10 +132,11 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
   const db = getDb();
 
   const buyTransaction = await db.transaction(async () => {
+    const marketReqId = marketOrderId(requestId);
     if (requestId) {
       const existing = await db.prepare(
         "SELECT id, status FROM orders WHERE request_id = ? AND user_id = ? AND company_id = ? AND type = 'buy'"
-      ).get(requestId, userId, companyId) as any;
+      ).get(marketReqId, userId, companyId) as any;
       if (existing) {
         return { newBalance: -1, newPrice: 0, totalCost: 0, duplicate: true, message: `Duplicate order ignored (${existing.status})` };
       }
@@ -153,7 +163,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     }
 
     if (!(await isTradingOpen(db))) {
-      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price, undefined, true);
+      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price, requestId, true);
     }
 
     await syncMarketOrderPrices(db, companyId);
@@ -231,8 +241,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       totalCost += pendingCost;
 
       await db.prepare(
-        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, is_market_order, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, 1, ?)"
-      ).run(userId, companyId, remaining, remaining, company.share_price, requestId || null, new Date().toISOString());
+        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, ?)"
+      ).run(userId, companyId, remaining, remaining, company.share_price, marketReqId, new Date().toISOString());
       pendingShares = remaining;
     }
 
@@ -336,10 +346,11 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
   const db = getDb();
 
   return await db.transaction(async () => {
+    const storedRequestId = isMarketOrder ? marketOrderId(requestId) : (requestId || null);
     if (requestId) {
       const existing = await db.prepare(
         "SELECT id, status FROM orders WHERE request_id = ? AND user_id = ? AND company_id = ? AND type = ?"
-      ).get(requestId, userId, companyId, type) as any;
+      ).get(storedRequestId, userId, companyId, type) as any;
       if (existing) {
         return { orderId: existing.id, message: `Duplicate order ignored (${existing.status})`, duplicate: true };
       }
@@ -386,8 +397,8 @@ export async function placeLimitOrder(userId: number, companyId: number, type: "
     }
 
     const result = await db.prepare(
-      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, is_market_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)"
-    ).run(userId, companyId, type, shares, shares, priceCents, requestId || null, isMarketOrder ? 1 : 0, new Date().toISOString());
+      "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
+    ).run(userId, companyId, type, shares, shares, priceCents, storedRequestId, new Date().toISOString());
 
     const orderId = result.lastInsertRowid as number;
 
