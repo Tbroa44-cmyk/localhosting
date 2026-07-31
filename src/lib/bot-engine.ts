@@ -2,9 +2,10 @@ import getDb, { insertPriceHistory } from "@/lib/db";
 import { isTradingOpen, getTradingInfo } from "@/lib/trading-hours";
 import { addShares, removeShares, getHolding } from "@/lib/holdings";
 import { issueCertificates, transferCertificates, reserveCertificates, releaseCertificates, countActive, countTotalForCompany, verifyIntegrity } from "@/lib/certificates";
+import { matchOrders } from "@/lib/stock-engine";
 
 const BOT_INITIAL_CASH = 5000;
-const BOT_COOLDOWN_MS = 10000;
+const BOT_COOLDOWN_MS = 20000;
 const MAX_BOTS = 25;
 
 const BOT_NUMBERS = Array.from({ length: 25 }, (_, i) => String(i + 1));
@@ -504,6 +505,8 @@ async function placeBotBuyOrder(db: any, botId: number, companyId: number, share
     await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?)").run(botId, companyId, shares, shares, price, new Date().toISOString());
   }
 
+  try { await matchOrders(db, companyId); } catch {}
+
   return filledShares > 0 || true;
 }
 
@@ -586,6 +589,8 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
     const result = await db.prepare("INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, created_at) VALUES (?, ?, 'sell', ?, ?, ?, 'pending', ?)").run(botId, companyId, shares, shares, price, new Date().toISOString());
     await reserveCertificates(db, companyId, botId, shares, result.lastInsertRowid as number);
   }
+
+  try { await matchOrders(db, companyId); } catch {}
 
   return true;
 }
@@ -989,7 +994,7 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
     }
 
     if (balance >= 10) {
-      let buyProb = 0.25;
+      let buyProb = 0.12;
       const affordable = companies.filter((c) => {
         const ob = orderBooks[c.id];
         if (ob && ob.lowestSell > 0 && ob.lowestSell <= balance * 0.6) return true;

@@ -222,7 +222,7 @@ export default function StockDetailPage() {
                 });
               } else if (curr.shares < prev.shares) {
                 playOrderProgress();
-                const filledNow = (prev.original_shares || prev.shares) - curr.shares;
+                const filledNow = Math.max(0, (prev.original_shares || prev.shares) - curr.shares);
                 showTradeNotification({
                   stockName: company?.name || "",
                   ticker: company?.ticker || "",
@@ -367,7 +367,7 @@ export default function StockDetailPage() {
 
   const isDelisted = (company as any)?.delisted === 1;
 
-  const reservedSells = myOrders.filter((o) => o.type === "sell").reduce((sum, o) => sum + o.shares, 0);
+  const reservedSells = myOrders.filter((o) => o.type === "sell").reduce((sum, o) => sum + Math.max(0, o.shares), 0);
   const availableToSell = Math.max(0, sharesOwned - reservedSells);
   const reservedBuys = myOrders.filter((o) => o.type === "buy").reduce((sum, o) => sum + o.shares * o.price_per_share, 0);
   const availableBalance = Math.max(0, userBalance - reservedBuys);
@@ -642,7 +642,7 @@ export default function StockDetailPage() {
             <div className="space-y-2">
               {myOrders.map((order) => {
                 const original = order.original_shares || order.shares;
-                const filled = original - order.shares;
+                const filled = Math.min(original, Math.max(0, original - order.shares));
                 const fillPercent = original > 0 ? Math.round((filled / original) * 100) : 0;
                 const isPartial = fillPercent > 0;
                 return (
@@ -690,7 +690,7 @@ export default function StockDetailPage() {
             </div>
           ) : (
             <div className="animate-fade-up">
-              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} pendingBuyCount={(company as any)?.pending_buy_shares ?? 0} pendingSellCount={(company as any)?.pending_sell_shares ?? 0} historicalBuyShares={(company as any)?.historical_buy_shares} historicalSellShares={(company as any)?.historical_sell_shares} />
+              <PriceChart priceHistory={priceHistory} currentPrice={currentPrice} transactions={(company as any)?.recent_transactions} pendingBuyCount={(company as any)?.pending_buy_shares ?? 0} pendingSellCount={(company as any)?.pending_sell_shares ?? 0} pendingBuyOrders={(company as any)?.pending_buy_orders} pendingSellOrders={(company as any)?.pending_sell_orders} />
               {canTrade && (
                 <button
                   onClick={() => setShowInvestment(!showInvestment)}

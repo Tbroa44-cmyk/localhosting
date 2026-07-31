@@ -144,7 +144,7 @@ export default function PortfolioPage() {
   const pendingOrders = orders.filter((o) => o.status === "pending");
 
   const reservedBuys = orders.filter((o) => o.status === "pending" && o.type === "buy").reduce((s, o) => s + o.shares * o.price_per_share, 0);
-  const reservedSells = orders.filter((o) => o.status === "pending" && o.type === "sell").reduce((s, o) => s + o.shares, 0);
+  const reservedSells = orders.filter((o) => o.status === "pending" && o.type === "sell").reduce((s, o) => s + Math.max(0, o.shares), 0);
 
   const earningsChart = useMemo(() => {
     const allTimestamps = new Set<number>();

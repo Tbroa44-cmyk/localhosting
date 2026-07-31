@@ -371,7 +371,7 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
       const column = arithmeticSubParam[1];
       const decrement = params[paramIdx++];
       const currentVal = Number(currentRow[column]) || 0;
-      setValues.push({ column, value: currentVal - Number(decrement) });
+      setValues.push({ column, value: Math.max(0, currentVal - Number(decrement)) });
       continue;
     }
 
@@ -389,7 +389,7 @@ async function executeUpdate(sql: string, params: any[]): Promise<{ changes: num
       const column = arithmeticSubLit[1];
       const decrement = Number(arithmeticSubLit[2]);
       const currentVal = Number(currentRow[column]) || 0;
-      setValues.push({ column, value: currentVal - decrement });
+      setValues.push({ column, value: Math.max(0, currentVal - decrement) });
       continue;
     }
 

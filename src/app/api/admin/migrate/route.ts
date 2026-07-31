@@ -17,6 +17,16 @@ export async function POST() {
     const db = getDb();
 
     try {
+      await runSql(`CREATE TABLE IF NOT EXISTS share_certificates (
+        id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+        company_id INTEGER NOT NULL,
+        owner_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'pending_order', 'cancelled')),
+        order_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+    } catch {}
+    try {
       await runSql(`ALTER TABLE companies ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0`);
     } catch {}  // column may already exist
 

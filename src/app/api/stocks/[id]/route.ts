@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     priceHistory.reverse();
 
     const companyData = company as any;
-    const availableShares = Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0;
+    const availableShares = Math.max(0, Array.isArray(pendingSellRows) ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0) : 0);
 
     const effectiveSellPrice = await getLowestPendingSell(id);
     let effectivePrice = (effectiveSellPrice !== null && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
@@ -78,10 +78,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         myTrades.push({ ...tx, status: "confirmed" });
       }
       for (const o of myPendingOrders as any[]) {
-        myTrades.push({ type: String(o.type), shares: o.shares, original_shares: Number(o.original_shares) || o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "pending", order_id: o.id });
+        myTrades.push({ type: String(o.type), shares: Math.max(0, o.shares), original_shares: Number(o.original_shares) || Math.max(0, o.shares), price_per_share: o.price_per_share, total_amount: Math.max(0, o.shares) * o.price_per_share, created_at: o.created_at, status: "pending", order_id: o.id });
       }
       for (const o of myCancelledOrders as any[]) {
-        myTrades.push({ type: String(o.type), shares: o.shares, original_shares: Number(o.original_shares) || o.shares, price_per_share: o.price_per_share, total_amount: o.shares * o.price_per_share, created_at: o.created_at, status: "cancelled" });
+        myTrades.push({ type: String(o.type), shares: Math.max(0, o.shares), original_shares: Number(o.original_shares) || Math.max(0, o.shares), price_per_share: o.price_per_share, total_amount: Math.max(0, o.shares) * o.price_per_share, created_at: o.created_at, status: "cancelled" });
       }
       myTrades.sort((a, b) => (b.created_at || "") > (a.created_at || "") ? 1 : (b.created_at || "") < (a.created_at || "") ? -1 : 0);
 
@@ -100,13 +100,19 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const pendingBuyCount = allBuys.length;
     const pendingSellCount = allSells.length;
 
-    const historicalBuyShares = priceHistory.map((ph: any) => {
+    const historicalBuyShares = priceHistory.map((ph: any, idx: number) => {
       const ts = new Date(ph.timestamp).getTime();
-      return allBuys.filter(o => new Date(o.created_at).getTime() <= ts).reduce((s, o) => s + (Number(o.shares) || 0), 0);
+      const prevTs = idx > 0 ? new Date(priceHistory[idx - 1].timestamp).getTime() : 0;
+      return allBuys
+        .filter(o => { const t = new Date(o.created_at).getTime(); return t > prevTs && t <= ts; })
+        .reduce((s, o) => s + (Number(o.shares) || 0), 0);
     });
-    const historicalSellShares = priceHistory.map((ph: any) => {
+    const historicalSellShares = priceHistory.map((ph: any, idx: number) => {
       const ts = new Date(ph.timestamp).getTime();
-      return allSells.filter(o => new Date(o.created_at).getTime() <= ts).reduce((s, o) => s + (Number(o.shares) || 0), 0);
+      const prevTs = idx > 0 ? new Date(priceHistory[idx - 1].timestamp).getTime() : 0;
+      return allSells
+        .filter(o => { const t = new Date(o.created_at).getTime(); return t > prevTs && t <= ts; })
+        .reduce((s, o) => s + (Number(o.shares) || 0), 0);
     });
 
     return NextResponse.json({
@@ -121,8 +127,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       pending_sell_count: pendingSellCount,
       pending_buy_shares: pendingBuyShares,
       pending_sell_shares: pendingSellShares,
-      historical_buy_shares: historicalBuyShares,
-      historical_sell_shares: historicalSellShares,
+      pending_buy_orders: allBuys.map(o => ({ shares: o.shares, created_at: o.created_at })),
+      pending_sell_orders: allSells.map(o => ({ shares: o.shares, created_at: o.created_at })),
     }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });

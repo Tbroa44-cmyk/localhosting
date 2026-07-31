@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
       ).get(o.company_id) as any;
       orders.push({
         ...o,
+        shares: Math.max(0, o.shares),
+        original_shares: Math.max(Number(o.original_shares || o.shares), 0),
         ticker: company?.ticker || "???",
         name: company?.name || "Unknown",
         current_price: company?.share_price || 0,
@@ -54,11 +56,11 @@ export async function POST(request: NextRequest) {
     const db = getDb();
     try {
       const userInfo = await db.prepare("SELECT allowed FROM users WHERE id = ?").get(userId) as any;
-      if (userInfo && Number(userInfo.allowed) === 1) {
+      if (userInfo && Number(userInfo.allowed) === 0) {
         return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
       }
     } catch {
-      if ((session?.user as any)?.allowed === 1) {
+      if ((session?.user as any)?.allowed === 0) {
         return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
       }
     }
