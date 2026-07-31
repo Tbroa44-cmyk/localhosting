@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
+    if (!(session.user as any)?.isAdmin) {
+      return NextResponse.json({ error: "This feature is not available yet" }, { status: 403 });
+    }
     const userId = (session.user as any).id;
 
     const status = await getBankStatus(userId);

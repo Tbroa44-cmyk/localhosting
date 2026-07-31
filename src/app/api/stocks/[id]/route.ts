@@ -46,13 +46,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     priceHistory.reverse();
 
     const companyData = company as any;
-    const availableShares = Math.max(0, marketSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0));
+    const availableShares = Math.max(0, pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0));
+    const marketSellShares = Math.max(0, marketSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0));
 
     const effectiveSellPrice = await getLowestPendingSell(id, undefined, adminIds);
     let effectivePrice = (effectiveSellPrice !== null && effectiveSellPrice < basePrice) ? effectiveSellPrice : basePrice;
     const totalShares = Number(companyData.total_shares) || 1;
-    if (availableShares > 0) {
-      const supplyRatio = availableShares / totalShares;
+    if (marketSellShares > 0) {
+      const supplyRatio = marketSellShares / totalShares;
       const supplyImpact = Math.min(supplyRatio * 3, 0.15);
       const supplyAdjusted = Math.round(effectivePrice * (1 - supplyImpact));
       if (supplyAdjusted < effectivePrice) {
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     const allBuys = Array.isArray(marketBuyRows) ? marketBuyRows as { shares: number; created_at: string }[] : [];
-    const allSells = Array.isArray(marketSellRows) ? marketSellRows as { shares: number; created_at: string }[] : [];
+    const allSells = Array.isArray(pendingSellRows) ? pendingSellRows as { shares: number; created_at: string }[] : [];
     const pendingBuyShares = allBuys.reduce((s, r) => s + (Number(r.shares) || 0), 0);
     const pendingSellShares = availableShares;
     const pendingBuyCount = allBuys.length;

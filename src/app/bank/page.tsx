@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import PageBackground from "@/components/PageBackground";
 import ButtonSpinner from "@/components/ButtonSpinner";
@@ -77,6 +78,27 @@ export default function BankPage() {
     }, 3600000);
     return () => { clearInterval(interval); clearInterval(refreshInterval); };
   }, [status, fetchBank]);
+
+  if (status === "authenticated" && !(session.user as any)?.isAdmin) {
+    return (
+      <div className="min-h-screen">
+        <PageBackground />
+        <Navbar />
+        <div className="max-w-2xl mx-auto px-4 py-20 md:py-28 text-center">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-green-400">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14v8m-4-4h8" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-3">Bank</h1>
+          <p className="text-gray-400 text-lg mb-8">This feature is not available yet. Check back soon!</p>
+          <Link href="/account" className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white text-sm font-semibold transition-colors">
+            Back to Account
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   async function handleDeposit() {
     const cents = Math.round(parseFloat(depositAmount) * 100);

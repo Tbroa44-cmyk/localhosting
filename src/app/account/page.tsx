@@ -153,7 +153,7 @@ export default function AccountPage() {
 
         {/* Quick Access — top */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fade-up" style={{ animationDelay: "50ms", animationFillMode: "both" }}>
-          {NAV_CARDS.map((card) => (
+          {NAV_CARDS.filter((card) => card.key !== "bank" || (session?.user as any)?.isAdmin).map((card) => (
             <Link
               key={card.key}
               href={card.href}

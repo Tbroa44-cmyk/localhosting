@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       } catch {}
 
       const shares_available = Array.isArray(pendingSellRows)
-        ? pendingSellRows.filter((r: any) => !adminIdSet.has(Number(r.user_id))).reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0)
+        ? pendingSellRows.reduce((s: number, r: any) => s + (Number(r.shares) || 0), 0)
         : 0;
 
       const recentPrices = allHistory.slice(-20).map((h: any) => Number(h.price) || 0);
