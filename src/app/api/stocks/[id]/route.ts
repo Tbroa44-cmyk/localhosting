@@ -27,13 +27,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const basePrice = Number((company as any).share_price) || 0;
 
     const [priceHistoryResult, allOrdersResult, holderResult, session] = await Promise.all([
-      db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 200").all(id),
+      db.prepare("SELECT price, timestamp, holder_count FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 20000").all(id),
       db.prepare("SELECT type, shares, original_shares, created_at, status, request_id, user_id FROM orders WHERE company_id = ?").all(id),
       db.prepare("SELECT user_id FROM holdings WHERE company_id = ? AND shares_owned > 0").all(id),
       getServerSession(authOptions),
     ]);
 
-    const priceHistory = priceHistoryResult as any[];
+    const priceHistory = (priceHistoryResult as any[]).length > 2000
+      ? (priceHistoryResult as any[]).filter((_, i) => i % Math.ceil((priceHistoryResult as any[]).length / 2000) === 0)
+      : (priceHistoryResult as any[]);
     const allOrderRows = (allOrdersResult as any[]) || [];
     const pendingSellRows = allOrderRows.filter((o: any) => o.type === "sell" && o.status === "pending");
     const pendingBuyRows = allOrderRows.filter((o: any) => o.type === "buy" && o.status === "pending");

@@ -193,6 +193,19 @@ export default function DashboardPage() {
         </div>
       )}
       <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="mb-6">
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white bg-gray-800/60 hover:bg-gray-700 border border-gray-700/60 rounded-lg px-2.5 py-1.5 transition-colors"
+          title="Refresh page"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9" />
+            <path d="M21 3v6h-6" />
+          </svg>
+          Refresh
+        </button>
+      </div>
       <div className="mb-8">
         <h1 className="text-2xl md:text-4xl font-bold mb-2">
           <span className="gradient-text">Stock Market</span>

@@ -77,9 +77,7 @@ function sessionKey(ms: number, sched: MarketSchedule): string | null {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${sched.openHour}`;
 }
 
-function downsampleTo5Min(data: PricePoint[]): PricePoint[] {
-  if (data.length <= 12) return data;
-  const bucketMs = 5 * 60 * 1000;
+function downsample(data: PricePoint[], bucketMs: number): PricePoint[] {
   const out: PricePoint[] = [];
   for (const p of data) {
     const b = Math.floor(p.timestamp / bucketMs) * bucketMs;
@@ -282,7 +280,8 @@ export default function PriceChart({
       data = priceHistory.filter((p) => p.timestamp >= cutoff);
     }
     data = data.filter((p) => (p.price || 0) > 0 && isMarketOpenAt(p.timestamp, schedule));
-    if (filter === "1h") data = downsampleTo5Min(data);
+    if (filter === "1h") data = downsample(data, 5 * 60 * 1000);
+    else if (filter === "1d") data = downsample(data, 10 * 60 * 1000);
     return interpolateGaps(data, currentPrice, schedule);
   }, [priceHistory, filter, currentPrice, schedule]);
 
