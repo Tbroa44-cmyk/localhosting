@@ -144,7 +144,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, user
                 onClick={() => { setModalType("sell"); setModalOpen(true); }}
                 className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
               >
-                Sell
+                Sell ({availableToSell})
               </button>
             ) : (
               <button
