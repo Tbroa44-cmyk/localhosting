@@ -155,27 +155,27 @@ export default function PortfolioPage() {
   const reservedSells = orders.filter((o) => o.status === "pending" && o.type === "sell").reduce((s, o) => s + Math.max(0, o.shares), 0);
 
   const earningsChart = useMemo(() => {
+    const series = holdings.map((h) => ({
+      h,
+      ph: (priceHistories[h.company_id] || []).filter((p: any) => Number(p.price) > 0),
+    }));
     const allTimestamps = new Set<number>();
-    for (const h of holdings) {
-      const ph = priceHistories[h.company_id];
-      if (ph) ph.forEach((p) => allTimestamps.add(p.timestamp));
-    }
+    for (const { ph } of series) ph.forEach((p: any) => allTimestamps.add(p.timestamp));
     if (allTimestamps.size === 0) return null;
 
     const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
 
+    const pointers = series.map(() => 0);
     const portfolioValues: { timestamp: number; value: number }[] = [];
     for (const ts of sortedTimestamps) {
       let totalVal = 0;
-      for (const h of holdings) {
-        const ph = priceHistories[h.company_id];
-        if (!ph) continue;
-        let latestPrice = 0;
-        for (const p of ph) {
-          if (p.timestamp <= ts) latestPrice = p.price;
-          else break;
-        }
-        totalVal += latestPrice * h.shares_owned;
+      for (let i = 0; i < series.length; i++) {
+        const { h, ph } = series[i];
+        if (!ph.length) continue;
+        let ptr = pointers[i];
+        while (ptr + 1 < ph.length && ph[ptr + 1].timestamp <= ts) ptr++;
+        pointers[i] = ptr;
+        totalVal += Number(ph[ptr].price) * Number(h.shares_owned);
       }
       portfolioValues.push({ timestamp: ts, value: totalVal });
     }
@@ -441,7 +441,7 @@ export default function PortfolioPage() {
                       {String(order.type).toUpperCase()}
                     </span>
                     {order.is_market_order === 1 && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Auto</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Market</span>
                     )}
                     <Link href={`/dashboard/stocks/${order.company_id}`} className="text-white font-medium hover:text-blue-400 transition-colors">
                       {order.ticker}

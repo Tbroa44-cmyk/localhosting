@@ -241,6 +241,20 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       }
     }
 
+    let pendingShares = 0;
+    let pendingOrderId: number | undefined;
+    if (remaining > 0) {
+      const reserveCost = remaining * afterFillPrice;
+      const reserveResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(reserveCost, userId, reserveCost);
+      if (reserveResult.changes > 0) {
+        const inserted = await db.prepare(
+          "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, ?)"
+        ).run(userId, companyId, remaining, remaining, afterFillPrice, marketReqId, new Date().toISOString());
+        pendingOrderId = inserted.lastInsertRowid as number;
+        pendingShares = remaining;
+      }
+    }
+
     if (filledShares > 0) {
       await awardXP(db, userId, filledShares * 1);
     }
@@ -252,10 +266,13 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       newPrice: company.share_price,
       totalCost,
       filledShares,
-      pendingShares: 0,
+      pendingShares,
+      orderId: pendingOrderId,
       message: filledShares > 0
-        ? `Bought ${filledShares} share${filledShares > 1 ? "s" : ""}.${remaining > 0 ? ` ${remaining} share${remaining > 1 ? "s" : ""} not available right now.` : ""}`
-        : "No shares are available to buy right now.",
+        ? `Bought ${filledShares} share${filledShares > 1 ? "s" : ""}.${pendingShares > 0 ? ` ${pendingShares} share${pendingShares > 1 ? "s" : ""} queued as a market order - will fill as sellers come.` : ""}`
+        : pendingShares > 0
+          ? `${pendingShares} share${pendingShares > 1 ? "s" : ""} queued as a market order - will fill as sellers come.`
+          : "No shares are available to buy right now.",
     };
   });
 

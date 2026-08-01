@@ -96,7 +96,7 @@ export default function AccountPage() {
 
   async function fetchAccountData() {
     try {
-      const res = await fetch(`/api/portfolio?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/portfolio?userOnly=1&t=${Date.now()}`, { cache: "no-store" });
       const data = await res.json();
       if (data.user) {
         setAccountData({

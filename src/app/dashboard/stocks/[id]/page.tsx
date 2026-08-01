@@ -695,7 +695,7 @@ export default function StockDetailPage() {
                         {order.type.toUpperCase()}
                       </span>
                       {order.is_market_order === 1 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Auto</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Market</span>
                       )}
                       <span className="text-white">
                         {order.shares} shares @ {formatCoins(order.price_per_share)}
@@ -863,7 +863,7 @@ export default function StockDetailPage() {
                           {String(tx.type).toUpperCase().replace("_", " ")}
                         </span>
                         {tx.status === "pending" && tx.is_market_order === 1 && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Auto</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 uppercase tracking-wide" title="Price auto-updates to match the market rate">Market</span>
                         )}
                         <span className="text-white">
                           {tx.status === "pending" && tx.original_shares && tx.original_shares > tx.shares

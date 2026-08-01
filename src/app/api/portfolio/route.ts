@@ -16,11 +16,18 @@ export async function GET(request: NextRequest) {
     }
     const db = getDb();
 
-    const [allUserHoldings, allCompanies, rawTransactions, user] = await Promise.all([
+    const user = await db.prepare(
+      "SELECT id, username, email, balance, xp, level, created_at FROM users WHERE id = ?"
+    ).get(userId) as any;
+
+    if (request.nextUrl?.searchParams?.get("userOnly") === "1") {
+      return NextResponse.json({ user });
+    }
+
+    const [allUserHoldings, allCompanies, rawTransactions] = await Promise.all([
       db.prepare("SELECT company_id, shares_owned FROM holdings WHERE user_id = ?").all(userId),
       db.prepare("SELECT id, name, ticker, share_price, total_shares FROM companies").all(),
       db.prepare("SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 25").all(userId),
-      db.prepare("SELECT id, username, email, balance, xp, level, created_at FROM users WHERE id = ?").get(userId),
     ]) as any[];
 
     const companyMap: Record<number, any> = {};
@@ -47,7 +54,7 @@ export async function GET(request: NextRequest) {
     const companyIds = Object.keys(rawHoldingsMap).map(Number);
     const priceHistoryResults = await Promise.all(
       companyIds.map(cid =>
-        db.prepare("SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp ASC").all(cid)
+        db.prepare("SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 1500").all(cid)
       )
     ) as any[][];
 
@@ -71,7 +78,7 @@ export async function GET(request: NextRequest) {
         total_shares: company?.total_shares || 0,
       });
 
-      priceHistories[cid] = priceHistoryResults[i];
+      priceHistories[cid] = priceHistoryResults[i] ? priceHistoryResults[i].reverse() : [];
     }
 
     const totalValue = holdings.reduce(

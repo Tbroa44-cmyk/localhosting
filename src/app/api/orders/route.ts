@@ -19,15 +19,19 @@ export async function GET(request: NextRequest) {
 
     const db = getDb();
 
-    const rawOrders = await db.prepare(
-      "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC"
-    ).all(userId) as any[];
+    const [rawOrders, allCompanies] = await Promise.all([
+      db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(userId),
+      db.prepare("SELECT id, ticker, name, share_price FROM companies").all(),
+    ]) as [any[], any[]];
+
+    const companyMap = new Map<number, any>();
+    for (const c of allCompanies || []) {
+      companyMap.set(Number(c.id), c);
+    }
 
     const orders = [];
     for (const o of rawOrders) {
-      const company = await db.prepare(
-        "SELECT ticker, name, share_price FROM companies WHERE id = ?"
-      ).get(o.company_id) as any;
+      const company = companyMap.get(Number(o.company_id));
       const normalizedShares = Math.max(0, Number(o.shares) || 0);
       orders.push({
         ...o,
