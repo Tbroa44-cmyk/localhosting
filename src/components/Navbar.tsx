@@ -197,7 +197,7 @@ export default function Navbar() {
             <div className="flex items-center gap-3 pl-3 border-l border-gray-700">
               <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
               <span className="text-green-400 font-semibold">
-                {formatCoins(liveBalance !== null ? liveBalance : ((session.user as any)?.balance || 0))}
+                {liveBalance === null ? "Unknown" : formatCoins(liveBalance)}
               </span>
             </div>
           </div>
@@ -232,7 +232,7 @@ export default function Navbar() {
               <div className="flex items-center justify-between px-2 py-2">
                 <span className="text-sm text-gray-400">{(session.user as any)?.username}</span>
                 <span className="text-green-400 font-semibold text-sm">
-                  {formatCoins(liveBalance !== null ? liveBalance : ((session.user as any)?.balance || 0))}
+                  {liveBalance === null ? "Unknown" : formatCoins(liveBalance)}
                 </span>
               </div>
               <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="block px-2 py-2 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Markets</Link>

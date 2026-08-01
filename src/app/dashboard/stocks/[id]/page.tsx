@@ -315,12 +315,15 @@ export default function StockDetailPage() {
           if (pending > 0) {
             setOrderSuccess(data.message || `Listed ${sold} share${sold > 1 ? "s" : ""}, ${pending} pending.`);
           } else if (sold > 0) {
-            setOrderSuccess(`Sell order listed! ${sold} share${sold > 1 ? "s" : ""} on the market.`);
-            showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "sell", shares: sold, price: company?.share_price || 0, listed: true });
+            setOrderSuccess(data.message || `Sold ${sold} share${sold > 1 ? "s" : ""}.`);
+            showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "sell", shares: sold, price: data.newPrice || company?.share_price || 0 });
+            if (typeof data.filledShares === "number" && data.filledShares > 0) {
+              setSharesOwned((prev) => Math.max(0, prev - sold));
+            }
             if (!data.duplicate && typeof data.orderId === "number") {
               setMyOrders((prev) => [
                 ...prev,
-                { id: data.orderId, company_id: companyId, type: "sell", shares: sold, original_shares: sold, price_per_share: company?.share_price || 0, status: "pending" },
+                { id: data.orderId, company_id: companyId, type: "sell", shares: sold, original_shares: sold, price_per_share: data.newPrice || company?.share_price || 0, status: "pending" },
               ]);
             }
           } else {
@@ -391,6 +394,17 @@ export default function StockDetailPage() {
   const availableToSell = Math.max(0, sharesOwned - reservedSells);
   const reservedBuys = myOrders.filter((o) => o.type === "buy").reduce((sum, o) => sum + o.shares * o.price_per_share, 0);
   const availableBalance = Math.max(0, userBalance - reservedBuys);
+
+  const avgCost = (company as any)?.avg_cost_per_share ?? null;
+  const sellSharesNum = Number(orderShares);
+  let sellEstimate: { profit: number } | null = null;
+  if (orderType === "sell" && avgCost != null && sellSharesNum > 0) {
+    const sellPrice = orderMode === "limit" && orderPrice ? Math.round(parseFloat(orderPrice) * 100) : currentPrice;
+    const gross = sellPrice * sellSharesNum;
+    const net = gross - Math.round(gross * 0.03);
+    const costBasis = avgCost * sellSharesNum;
+    sellEstimate = { profit: Math.round(net - costBasis) };
+  }
 
   const suggestedBuyPrice = orderType === "buy" ? (currentPrice * 0.95) : 0;
   const suggestedSellPrice = orderType === "sell" ? (currentPrice * 1.05) : 0;
@@ -594,7 +608,7 @@ export default function StockDetailPage() {
                     {!isAdmin && (
                       <div className="flex justify-between text-xs">
                         <span>Your balance:</span>
-                        <span>{formatCoins(userBalance)}</span>
+                        <span>{positionLoaded ? formatCoins(userBalance) : "Unknown"}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-xs">
@@ -606,12 +620,20 @@ export default function StockDetailPage() {
                   <>
                     <div className="flex justify-between text-xs text-gray-500">
                       <span>Order type:</span>
-                      <span>Listed on market (waits for buyer)</span>
+                      <span>Sells instantly at market price (fills pending buyers first)</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Shares available to sell:</span>
                       <span>{availableToSell}</span>
                     </div>
+                    {sellEstimate && (
+                      <div className="flex justify-between text-xs">
+                        <span>Est. profit (after 3% tax):</span>
+                        <span className={sellEstimate.profit >= 0 ? "text-green-400" : "text-red-400"}>
+                          {sellEstimate.profit >= 0 ? "+" : ""}{formatCoins(sellEstimate.profit)}
+                        </span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -635,6 +657,14 @@ export default function StockDetailPage() {
                   <div className="flex justify-between text-xs">
                     <span>Shares available to sell:</span>
                     <span>{availableToSell}</span>
+                  </div>
+                )}
+                {orderType === "sell" && sellEstimate && (
+                  <div className="flex justify-between text-xs">
+                    <span>Est. profit (after 3% tax):</span>
+                    <span className={sellEstimate.profit >= 0 ? "text-green-400" : "text-red-400"}>
+                      {sellEstimate.profit >= 0 ? "+" : ""}{formatCoins(sellEstimate.profit)}
+                    </span>
                   </div>
                 )}
                 {orderType === "buy" && (

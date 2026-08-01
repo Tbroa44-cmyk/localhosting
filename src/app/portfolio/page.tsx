@@ -149,6 +149,7 @@ export default function PortfolioPage() {
   }
 
   const userBalance = apiBalance ?? ((session?.user as any)?.balance || 0);
+  const balanceLoaded = apiBalance !== null;
   const pendingOrders = orders.filter((o) => o.status === "pending");
 
   const reservedBuys = orders.filter((o) => o.status === "pending" && o.type === "buy").reduce((s, o) => s + o.shares * o.price_per_share, 0);
@@ -302,14 +303,14 @@ export default function PortfolioPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 md:mb-8">
           <div className="glass-card text-center">
             <div className="text-sm text-gray-400">Cash Balance</div>
-            <div className="text-2xl font-bold text-blue-400">{formatCoins(userBalance)}</div>
+            <div className="text-2xl font-bold text-blue-400">{balanceLoaded ? formatCoins(userBalance) : "Unknown"}</div>
             {reservedBuys > 0 && (
               <div className="text-xs text-yellow-400 mt-1">-{formatCoins(reservedBuys)} reserved</div>
             )}
           </div>
           <div className="glass-card text-center">
             <div className="text-sm text-gray-400">Total Net Worth</div>
-            <div className="text-2xl font-bold gradient-text">{formatCoins(userBalance + totalValue)}</div>
+            <div className="text-2xl font-bold gradient-text">{balanceLoaded ? formatCoins(userBalance + totalValue) : "Unknown"}</div>
           </div>
         </div>
 

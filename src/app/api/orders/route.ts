@@ -64,11 +64,11 @@ export async function POST(request: NextRequest) {
     const db = getDb();
     try {
       const userInfo = await db.prepare("SELECT allowed FROM users WHERE id = ?").get(userId) as any;
-      if (userInfo && Number(userInfo.allowed) === 0) {
+      if (userInfo && Number(userInfo.allowed) === 1) {
         return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
       }
     } catch {
-      if ((session?.user as any)?.allowed === 0) {
+      if ((session?.user as any)?.allowed === 1) {
         return NextResponse.json({ error: "Your account has been banned from trading" }, { status: 403 });
       }
     }

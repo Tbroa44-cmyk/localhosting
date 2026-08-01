@@ -37,8 +37,8 @@ export default function WalletPage() {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [polling, setPolling] = useState(false);
   const [pollTimer, setPollTimer] = useState(0);
+  const [liveBalance, setLiveBalance] = useState<number | null>(null);
 
-  const balance = (session?.user as any)?.balance || 0;
   const isAdmin = (session?.user as any)?.isAdmin;
   const userEmail = (session?.user as any)?.email || "";
 
@@ -53,6 +53,19 @@ export default function WalletPage() {
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
+
+  useEffect(() => {
+    function fetchBalance() {
+      fetch(`/api/user/balance?t=${Date.now()}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((data) => { if (typeof data.balance === "number") setLiveBalance(data.balance); })
+        .catch(() => {});
+    }
+    fetchBalance();
+    const interval = setInterval(fetchBalance, 10000);
+    window.addEventListener("balance-changed", fetchBalance);
+    return () => { clearInterval(interval); window.removeEventListener("balance-changed", fetchBalance); };
+  }, []);
 
   useEffect(() => {
     if (!polling) return;
@@ -130,7 +143,7 @@ export default function WalletPage() {
               </>
             ) : (
               <>
-                <div className="text-5xl font-bold gradient-text">{formatCoins(balance)}</div>
+                <div className="text-5xl font-bold gradient-text">{liveBalance === null ? "Unknown" : formatCoins(liveBalance)}</div>
               </>
             )}
           </div>

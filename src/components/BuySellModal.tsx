@@ -14,6 +14,7 @@ interface BuySellModalProps {
   };
   mode: "buy" | "sell";
   userBalance: number;
+  balanceLoaded?: boolean;
   sharesOwned: number;
   availableToSell?: number;
   isAdmin?: boolean;
@@ -23,7 +24,7 @@ interface BuySellModalProps {
   onTradeComplete?: () => void;
 }
 
-export default function BuySellModal({ company, mode, userBalance, sharesOwned, availableToSell, isAdmin, availableShares = 0, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
+export default function BuySellModal({ company, mode, userBalance, balanceLoaded, sharesOwned, availableToSell, isAdmin, availableShares = 0, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
   const [shares, setShares] = useState<string | number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -129,7 +130,7 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
         {mode === "buy" && !isAdmin && (
           <div className="flex justify-between text-xs">
             <span className="text-gray-500">Your balance:</span>
-            <span className="text-gray-400">{formatCoins(userBalance)}</span>
+            <span className="text-gray-400">{balanceLoaded ? formatCoins(userBalance) : "Unknown"}</span>
           </div>
         )}
         {mode === "buy" && (

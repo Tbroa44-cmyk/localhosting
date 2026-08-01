@@ -74,15 +74,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     let myTrades: any[] = [];
     let recentTransactions: any[] = [];
+    let avgCostPerShare: number | null = null;
 
     if (session?.user) {
       const userId = (session.user as any).id;
 
-      const [transactions, myPendingOrders, myCancelledOrders, recentTx] = await Promise.all([
+      const [transactions, myPendingOrders, myCancelledOrders, recentTx, avgCostResult] = await Promise.all([
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25").all(id, userId),
         db.prepare("SELECT id, type, shares, original_shares, price_per_share, created_at, request_id FROM orders WHERE company_id = ? AND user_id = ? AND status = 'pending' ORDER BY created_at DESC").all(id, userId),
         db.prepare("SELECT type, shares, original_shares, price_per_share, created_at FROM orders WHERE company_id = ? AND user_id = ? AND status = 'cancelled' ORDER BY created_at DESC LIMIT 20").all(id, userId),
         db.prepare("SELECT type, shares, price_per_share, total_amount, created_at FROM transactions WHERE company_id = ? ORDER BY created_at DESC ").all(id),
+        db.prepare("SELECT COALESCE(SUM(shares), 0) as totalShares, COALESCE(SUM(total_amount), 0) as totalCost FROM transactions WHERE company_id = ? AND user_id = ? AND type = 'buy'").get(id, userId),
       ]);
 
       for (const tx of transactions as any[]) {
@@ -96,6 +98,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         myTrades.push({ type: String(o.type), shares: Math.max(0, o.shares), original_shares: Number(o.original_shares) || Math.max(0, o.shares), price_per_share: o.price_per_share, total_amount: Math.max(0, o.shares) * o.price_per_share, created_at: o.created_at, status: "cancelled" });
       }
       myTrades.sort((a, b) => (b.created_at || "") > (a.created_at || "") ? 1 : (b.created_at || "") < (a.created_at || "") ? -1 : 0);
+
+      const totalSharesBought = Number((avgCostResult as any)?.totalShares || 0);
+      const totalBuyCost = Number((avgCostResult as any)?.totalCost || 0);
+      avgCostPerShare = totalSharesBought > 0 ? totalBuyCost / totalSharesBought : null;
 
       recentTransactions = recentTx as any[];
       for (const tx of recentTransactions) { tx.status = "confirmed"; }
@@ -122,6 +128,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       my_trades: myTrades,
       recent_transactions: recentTransactions,
       shareEvent,
+      avg_cost_per_share: avgCostPerShare,
       pending_buy_count: pendingBuyCount,
       pending_sell_count: pendingSellCount,
       pending_buy_shares: pendingBuyShares,

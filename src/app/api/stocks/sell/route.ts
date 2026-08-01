@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions, getUserIdFromRequest } from "@/lib/auth";
-import { placeLimitOrder } from "@/lib/stock-engine";
+import { executeSell } from "@/lib/stock-engine";
 import getDb from "@/lib/db";
 
 export async function POST(request: NextRequest) {
@@ -39,12 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid request ID" }, { status: 400 });
     }
 
-    const company = await db.prepare("SELECT share_price FROM companies WHERE id = ?").get(companyId) as any;
-    if (!company) {
-      return NextResponse.json({ error: "Company not found" }, { status: 404 });
-    }
-    const sellPrice = Math.max(5, Number(company.share_price) || 5);
-    const result = await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId, true);
+    const result = await executeSell(userId, companyId, shares, requestId);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("[Sell] error:", error.message, error.stack?.substring(0, 300));

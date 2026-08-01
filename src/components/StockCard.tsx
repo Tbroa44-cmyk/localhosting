@@ -21,6 +21,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, user
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"buy" | "sell">("buy");
   const [userBalance, setUserBalance] = useState(0);
+  const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [sharesOwned, setSharesOwned] = useState(0);
   const [availableToSell, setAvailableToSell] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -44,6 +45,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, user
           const holding = data.holdings?.find((h: any) => h.company_id === company.id);
           setSharesOwned(holding?.shares_owned || 0);
           setAvailableToSell(holding?.available_to_sell ?? holding?.shares_owned ?? 0);
+          setBalanceLoaded(true);
         })
         .catch(() => {});
     }
@@ -177,6 +179,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, user
           company={{ id: company.id, name: company.name, ticker: company.ticker, share_price: company.share_price }}
           mode={modalType}
           userBalance={userBalance}
+          balanceLoaded={balanceLoaded}
           sharesOwned={sharesOwned}
           availableToSell={availableToSell}
           isAdmin={isAdmin}
@@ -191,6 +194,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, user
                 const holding = data.holdings?.find((h: any) => h.company_id === company.id);
                 setSharesOwned(holding?.shares_owned || 0);
                 setAvailableToSell(holding?.available_to_sell ?? holding?.shares_owned ?? 0);
+                setBalanceLoaded(true);
               })
               .catch(() => {});
           }}

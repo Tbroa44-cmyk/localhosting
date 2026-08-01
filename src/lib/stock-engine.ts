@@ -34,7 +34,7 @@ export function calculateBuyPrice(currentPrice: number, shares: number): number 
 export function calculateSellPrice(currentPrice: number, shares: number, totalShares?: number): number {
   if (totalShares && totalShares > 0) {
     const supplyRatio = shares / totalShares;
-    const impact = Math.min(supplyRatio * 4, 0.85);
+    const impact = Math.min(Math.max(supplyRatio * 4, 0.01), 0.85);
     return Math.max(MIN_SELL_FLOOR, Math.round(currentPrice * (1 - impact)));
   }
   const priceDecrease = currentPrice * PRICE_CHANGE_PERCENT * shares;
@@ -289,7 +289,7 @@ export async function executeSell(userId: number, companyId: number, shares: num
     return await placeLimitOrder(userId, companyId, "sell", shares, sellPrice, requestId, true);
   }
 
-  const sellTransaction = await db.transaction(async () => {
+  return await db.transaction(async () => {
     const company = await db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId) as {
       id: number; share_price: number; total_shares: number; delisted: number;
     } | undefined;
@@ -304,34 +304,86 @@ export async function executeSell(userId: number, companyId: number, shares: num
 
     if (!holding || holding.shares_owned < shares) throw new Error("Not enough shares to sell");
 
-    const grossRevenue = company.share_price * shares;
-    const taxAmount = Math.round(grossRevenue * SELL_TAX_PERCENT);
-    const totalRevenue = grossRevenue - taxAmount;
+    const reservedRows = await db.prepare(
+      "SELECT SUM(shares) as reserved FROM orders WHERE user_id = ? AND company_id = ? AND type = 'sell' AND status = 'pending'"
+    ).all(userId, companyId) as { reserved: number }[];
+    const reserved = reservedRows[0]?.reserved || 0;
+    const availableToSell = (holding.shares_owned || 0) - reserved;
+    if (availableToSell < shares) {
+      throw new Error(`Not enough shares to sell. Available: ${availableToSell}, requested: ${shares}`);
+    }
+
+    await syncMarketOrderPrices(db, companyId);
+
+    const pendingBuys = await db.prepare(
+      "SELECT * FROM orders WHERE company_id = ? AND type = 'buy' AND status = 'pending' AND user_id != ? ORDER BY price_per_share DESC, created_at ASC"
+    ).all(companyId, userId) as any[];
+
+    let remaining = shares;
+    let totalRevenue = 0;
+    let taxPaid = 0;
+
+    for (const buyOrder of pendingBuys) {
+      if (remaining <= 0) break;
+      const fillQty = Math.min(remaining, Number(buyOrder.shares));
+      const fillPrice = Number(buyOrder.price_per_share);
+      const cost = fillPrice * fillQty;
+      const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
+      const sellerRevenue = cost - taxAmount;
+
+      await transferCertificates(db, companyId, userId, buyOrder.user_id, fillQty);
+      await addShares(db, buyOrder.user_id, companyId, fillQty, "executeSell_buy_fill", buyOrder.id);
+
+      if (fillQty >= Number(buyOrder.shares)) {
+        await db.prepare("UPDATE orders SET status = 'filled' WHERE id = ?").run(buyOrder.id);
+      } else {
+        await db.prepare("UPDATE orders SET shares = shares - ? WHERE id = ?").run(fillQty, buyOrder.id);
+      }
+
+      await db.prepare(
+        "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
+      ).run(buyOrder.user_id, companyId, fillQty, fillPrice, cost);
+      await db.prepare(
+        "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
+      ).run(userId, companyId, fillQty, fillPrice, sellerRevenue);
+
+      totalRevenue += sellerRevenue;
+      taxPaid += taxAmount;
+      remaining -= fillQty;
+    }
+
+    if (remaining > 0) {
+      const marketGross = company.share_price * remaining;
+      const marketTax = Math.round(marketGross * SELL_TAX_PERCENT);
+      totalRevenue += marketGross - marketTax;
+      taxPaid += marketTax;
+    }
+
     const rawNewPrice = calculateSellPrice(company.share_price, shares, company.total_shares);
     const newPrice = applyPriceCap(company.share_price, rawNewPrice, shares, company.total_shares);
-
-    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as { balance: number };
 
     await removeShares(db, userId, companyId, shares, "executeSell");
     await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(totalRevenue, userId);
 
-    await addToBankFund(db, taxAmount);
+    await addToBankFund(db, taxPaid);
     await updateCompanyPrice(companyId, newPrice);
     await syncMarketOrderPrices(db, companyId);
 
-    const cancelCertCount = await db.prepare(
-      "SELECT COUNT(*) as count FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?"
-    ).get(companyId, userId, shares) as { count: number } | undefined;
-    const toCancel = cancelCertCount?.count ?? 0;
-    if (toCancel > 0) {
-      await db.prepare(
-        "UPDATE share_certificates SET status = 'cancelled' WHERE id IN (SELECT id FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?)"
-      ).run(companyId, userId, toCancel);
-    }
+    if (remaining > 0) {
+      const cancelCertCount = await db.prepare(
+        "SELECT COUNT(*) as count FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?"
+      ).get(companyId, userId, remaining) as { count: number } | undefined;
+      const toCancel = cancelCertCount?.count ?? 0;
+      if (toCancel > 0) {
+        await db.prepare(
+          "UPDATE share_certificates SET status = 'cancelled' WHERE id IN (SELECT id FROM share_certificates WHERE company_id = ? AND owner_id = ? AND status = 'active' LIMIT ?)"
+        ).run(companyId, userId, toCancel);
+      }
 
-    await db.prepare(
-      "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
-    ).run(userId, companyId, shares, company.share_price, totalRevenue);
+      await db.prepare(
+        "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'sell', ?, ?, ?)"
+      ).run(userId, companyId, remaining, company.share_price, company.share_price * remaining - Math.round(company.share_price * remaining * SELL_TAX_PERCENT));
+    }
 
     await recordPriceHistory(db, companyId, newPrice);
 
@@ -339,11 +391,16 @@ export async function executeSell(userId: number, companyId: number, shares: num
 
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
-    return { newBalance: updatedUser.balance, newPrice, totalRevenue, taxPaid: taxAmount };
+    return {
+      newBalance: updatedUser.balance,
+      newPrice,
+      totalRevenue,
+      taxPaid,
+      filledShares: shares,
+      pendingShares: 0,
+      message: `Sold ${shares} share${shares > 1 ? "s" : ""}. +${formatCoins(totalRevenue)} earned (${formatCoins(taxPaid)} tax).`,
+    };
   });
-
-  const result = sellTransaction;
-  return result;
 }
 
 export async function placeLimitOrder(userId: number, companyId: number, type: "buy" | "sell", shares: number, priceCents: number, requestId?: string, isMarketOrder = false) {
