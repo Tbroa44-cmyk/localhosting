@@ -15,6 +15,7 @@ interface BuySellModalProps {
   mode: "buy" | "sell";
   userBalance: number;
   sharesOwned: number;
+  availableToSell?: number;
   isAdmin?: boolean;
   availableShares?: number;
   onExecute: (companyId: number, shares: number) => Promise<any>;
@@ -22,7 +23,7 @@ interface BuySellModalProps {
   onTradeComplete?: () => void;
 }
 
-export default function BuySellModal({ company, mode, userBalance, sharesOwned, isAdmin, availableShares = 0, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
+export default function BuySellModal({ company, mode, userBalance, sharesOwned, availableToSell, isAdmin, availableShares = 0, onExecute, onClose, onTradeComplete }: BuySellModalProps) {
   const [shares, setShares] = useState<string | number>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -38,7 +39,8 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
   const taxC = formatCoins(taxAmount);
 
   const canAfford = mode === "sell" || isAdmin || userBalance >= totalCost;
-  const hasShares = mode === "buy" || sharesOwned >= numShares;
+  const sellable = availableToSell !== undefined ? availableToSell : sharesOwned;
+  const hasShares = mode === "buy" || sellable >= numShares;
 
   async function handleSubmit() {
     setLoading(true);
@@ -146,6 +148,12 @@ export default function BuySellModal({ company, mode, userBalance, sharesOwned, 
           <div className="flex justify-between text-xs">
             <span className="text-gray-500">Shares you own:</span>
             <span className="text-gray-400">{sharesOwned}</span>
+          </div>
+        )}
+        {mode === "sell" && (
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Available to sell:</span>
+            <span className="text-gray-400">{sellable}</span>
           </div>
         )}
       </div>

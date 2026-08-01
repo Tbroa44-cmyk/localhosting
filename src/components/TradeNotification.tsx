@@ -12,6 +12,7 @@ export interface TradeNotificationData {
   shares: number;
   price: number;
   totalGained?: number;
+  listed?: boolean;
 }
 
 let notifId = 0;
@@ -71,7 +72,12 @@ export default function TradeNotificationContainer() {
               </div>
               <div className="text-xs text-gray-300 mb-1.5">
                 <span className="font-semibold text-white">{n.shares}</span>
-                {n.shares === 1 ? " share" : " shares"} {n.action === "buy" ? "bought" : "sold"} at{" "}
+                {n.shares === 1 ? " share" : " shares"}{" "}
+                {n.listed
+                  ? `listed on market for `
+                  : n.action === "buy"
+                  ? "bought at "
+                  : "sold at "}
                 <span className="font-semibold text-white">{formatCoins(n.price * n.shares)}</span>
               </div>
               {n.totalGained !== undefined && n.totalGained !== 0 && (

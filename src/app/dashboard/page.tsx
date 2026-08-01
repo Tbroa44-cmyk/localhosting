@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const [isBanned, setIsBanned] = useState(false);
   const [banInfo, setBanInfo] = useState<{ banned: boolean; bannedUntil: string | null }>({ banned: false, bannedUntil: null });
   const [userHoldings, setUserHoldings] = useState<Record<number, number>>({});
+  const [userAvailableToSell, setUserAvailableToSell] = useState<Record<number, number>>({});
   const [isMarketOpen, setIsMarketOpen] = useState(true);
 
   useEffect(() => {
@@ -48,10 +49,13 @@ export default function DashboardPage() {
 
       if (portfolioRes && Array.isArray(portfolioRes.holdings)) {
         const map: Record<number, number> = {};
+        const availMap: Record<number, number> = {};
         for (const h of portfolioRes.holdings) {
           map[h.company_id] = h.shares_owned;
+          availMap[h.company_id] = h.available_to_sell ?? h.shares_owned;
         }
         setUserHoldings(map);
+        setUserAvailableToSell(availMap);
       }
 
       setInitialLoading(false);
@@ -69,8 +73,13 @@ export default function DashboardPage() {
           fetch("/api/portfolio").then(r => r.json()).then(data => {
             if (data && Array.isArray(data.holdings)) {
               const map: Record<number, number> = {};
-              for (const h of data.holdings) map[h.company_id] = h.shares_owned;
+              const availMap: Record<number, number> = {};
+              for (const h of data.holdings) {
+                map[h.company_id] = h.shares_owned;
+                availMap[h.company_id] = h.available_to_sell ?? h.shares_owned;
+              }
               setUserHoldings(map);
+              setUserAvailableToSell(availMap);
             }
           }).catch(() => {});
         }
@@ -87,8 +96,13 @@ export default function DashboardPage() {
           fetch("/api/portfolio").then(r => r.json()).then(data => {
             if (data && Array.isArray(data.holdings)) {
               const map: Record<number, number> = {};
-              for (const h of data.holdings) map[h.company_id] = h.shares_owned;
+              const availMap: Record<number, number> = {};
+              for (const h of data.holdings) {
+                map[h.company_id] = h.shares_owned;
+                availMap[h.company_id] = h.available_to_sell ?? h.shares_owned;
+              }
               setUserHoldings(map);
+              setUserAvailableToSell(availMap);
             }
           }).catch(() => {});
         }
@@ -221,22 +235,22 @@ export default function DashboardPage() {
           <p className="text-gray-400 text-sm mb-4">{filtered.length} companies found</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((company, i) => (
-              <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={!!session} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
+              <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={!!session} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
             ))}
           </div>
         </div>
       ) : (
         <>
-          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={sections.topGainers} isLoggedIn={!!session} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
-          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={sections.topLosers} isLoggedIn={!!session} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
-          <Section title="Most Held" subtitle="Companies with the most shareholders" items={sections.mostHeld} isLoggedIn={!!session} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
+          <Section title="Top Gainers Today" subtitle="Biggest winners in the last 24 hours" items={sections.topGainers} isLoggedIn={!!session} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
+          <Section title="Top Losers Today" subtitle="Biggest losers in the last 24 hours" items={sections.topLosers} isLoggedIn={!!session} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
+          <Section title="Most Held" subtitle="Companies with the most shareholders" items={sections.mostHeld} isLoggedIn={!!session} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
 
           <div className="mt-10 mb-6">
             <h2 className="text-2xl font-bold text-white mb-1">All Companies</h2>
             <p className="text-gray-400 text-sm mb-4">{filtered.length} companies</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.map((company, i) => (
-                <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={!!session} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
+                <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={!!session} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
               ))}
             </div>
           </div>
@@ -247,15 +261,15 @@ export default function DashboardPage() {
   );
 }
 
-function AnimatedCard({ company, index, isLoggedIn, userHoldings, isMarketOpen }: { company: any; index: number; isLoggedIn: boolean; userHoldings: Record<number, number>; isMarketOpen: boolean }) {
+function AnimatedCard({ company, index, isLoggedIn, userHoldings, userAvailableToSell, isMarketOpen }: { company: any; index: number; isLoggedIn: boolean; userHoldings: Record<number, number>; userAvailableToSell: Record<number, number>; isMarketOpen: boolean }) {
   return (
     <div className="stock-card-enter" style={{ animationDelay: `${Math.min(index * 50, 400)}ms` }}>
-      <StockCard company={company} isLoggedIn={isLoggedIn} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
+      <StockCard company={company} isLoggedIn={isLoggedIn} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
     </div>
   );
 }
 
-function Section({ title, subtitle, items, isLoggedIn, userHoldings, isMarketOpen }: { title: string; subtitle: string; items: any[]; isLoggedIn: boolean; userHoldings: Record<number, number>; isMarketOpen: boolean }) {
+function Section({ title, subtitle, items, isLoggedIn, userHoldings, userAvailableToSell, isMarketOpen }: { title: string; subtitle: string; items: any[]; isLoggedIn: boolean; userHoldings: Record<number, number>; userAvailableToSell: Record<number, number>; isMarketOpen: boolean }) {
   if (items.length === 0) return null;
 
   return (
@@ -264,7 +278,7 @@ function Section({ title, subtitle, items, isLoggedIn, userHoldings, isMarketOpe
       <p className="text-gray-400 text-sm mb-3">{subtitle}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((company, i) => (
-          <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={isLoggedIn} userHoldings={userHoldings} isMarketOpen={isMarketOpen} />
+          <AnimatedCard key={company.id} company={company} index={i} isLoggedIn={isLoggedIn} userHoldings={userHoldings} userAvailableToSell={userAvailableToSell} isMarketOpen={isMarketOpen} />
         ))}
       </div>
     </div>

@@ -34,6 +34,16 @@ export async function GET(request: NextRequest) {
       rawHoldingsMap[cid] = (rawHoldingsMap[cid] || 0) + Number(h.shares_owned || 0);
     }
 
+    const pendingSellOrders = await db.prepare(
+      "SELECT company_id, shares FROM orders WHERE user_id = ? AND type = 'sell' AND status = 'pending'"
+    ).all(userId) as { company_id: number; shares: number }[];
+
+    const reservedMap: Record<number, number> = {};
+    for (const o of pendingSellOrders) {
+      const cid = Number(o.company_id);
+      reservedMap[cid] = (reservedMap[cid] || 0) + Math.max(0, Number(o.shares) || 0);
+    }
+
     const companyIds = Object.keys(rawHoldingsMap).map(Number);
     const priceHistoryResults = await Promise.all(
       companyIds.map(cid =>
@@ -52,6 +62,8 @@ export async function GET(request: NextRequest) {
 
       holdings.push({
         shares_owned: shares,
+        reserved_sells: reservedMap[cid] || 0,
+        available_to_sell: Math.max(0, shares - (reservedMap[cid] || 0)),
         company_id: cid,
         company_name: company?.name || "Unknown",
         ticker: company?.ticker || "???",

@@ -316,11 +316,16 @@ export default function StockDetailPage() {
             setOrderSuccess(data.message || `Listed ${sold} share${sold > 1 ? "s" : ""}, ${pending} pending.`);
           } else if (sold > 0) {
             setOrderSuccess(`Sell order listed! ${sold} share${sold > 1 ? "s" : ""} on the market.`);
-            showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "sell", shares: sold, price: company?.share_price || 0 });
+            showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "sell", shares: sold, price: company?.share_price || 0, listed: true });
+            if (!data.duplicate && typeof data.orderId === "number") {
+              setMyOrders((prev) => [
+                ...prev,
+                { id: data.orderId, company_id: companyId, type: "sell", shares: sold, original_shares: sold, price_per_share: company?.share_price || 0, status: "pending" },
+              ]);
+            }
           } else {
             setOrderSuccess(`Order placed, waiting for buyers.`);
           }
-          setSharesOwned((prev) => Math.max(0, prev - sold));
           if (typeof data.newBalance === "number" && data.newBalance >= 0) {
             setUserBalance(data.newBalance);
           }

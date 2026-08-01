@@ -11,22 +11,26 @@ interface StockCardProps {
   company: any;
   isLoggedIn: boolean;
   userHoldings?: Record<number, number>;
+  userAvailableToSell?: Record<number, number>;
   isMarketOpen?: boolean;
 }
 
-export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMarketOpen = true }: StockCardProps) {
+export default function StockCard({ company, isLoggedIn, userHoldings = {}, userAvailableToSell = {}, isMarketOpen = true }: StockCardProps) {
   const router = useRouter();
   const [exiting, setExiting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"buy" | "sell">("buy");
   const [userBalance, setUserBalance] = useState(0);
   const [sharesOwned, setSharesOwned] = useState(0);
+  const [availableToSell, setAvailableToSell] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const sharesFromProp = userHoldings[company.id] || 0;
+  const availableFromProp = userAvailableToSell[company.id] ?? sharesFromProp;
   useEffect(() => {
     setSharesOwned(sharesFromProp);
-  }, [sharesFromProp]);
+    setAvailableToSell(availableFromProp);
+  }, [sharesFromProp, availableFromProp]);
 
   useEffect(() => {
     if (modalOpen) {
@@ -39,6 +43,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
           }
           const holding = data.holdings?.find((h: any) => h.company_id === company.id);
           setSharesOwned(holding?.shares_owned || 0);
+          setAvailableToSell(holding?.available_to_sell ?? holding?.shares_owned ?? 0);
         })
         .catch(() => {});
     }
@@ -134,7 +139,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
             >
               Buy
             </button>
-            {sharesOwned > 0 ? (
+            {availableToSell > 0 ? (
               <button
                 onClick={() => { setModalType("sell"); setModalOpen(true); }}
                 className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors"
@@ -173,6 +178,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
           mode={modalType}
           userBalance={userBalance}
           sharesOwned={sharesOwned}
+          availableToSell={availableToSell}
           isAdmin={isAdmin}
           availableShares={company.shares_available || 0}
           onExecute={handleExecute}
@@ -184,6 +190,7 @@ export default function StockCard({ company, isLoggedIn, userHoldings = {}, isMa
                 if (data.user) setUserBalance(data.user.balance || 0);
                 const holding = data.holdings?.find((h: any) => h.company_id === company.id);
                 setSharesOwned(holding?.shares_owned || 0);
+                setAvailableToSell(holding?.available_to_sell ?? holding?.shares_owned ?? 0);
               })
               .catch(() => {});
           }}
