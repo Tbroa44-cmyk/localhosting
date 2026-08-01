@@ -2,6 +2,13 @@
 
 import { useEffect, useRef } from "react";
 
+export interface AnchorRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 interface ConfirmModalProps {
   open: boolean;
   title: string;
@@ -9,11 +16,12 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   danger?: boolean;
+  anchor?: AnchorRect | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ConfirmModal({ open, title, message, confirmText = "Confirm", cancelText = "Cancel", danger = false, onConfirm, onCancel }: ConfirmModalProps) {
+export default function ConfirmModal({ open, title, message, confirmText = "Confirm", cancelText = "Cancel", danger = false, anchor = null, onConfirm, onCancel }: ConfirmModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,6 +33,21 @@ export default function ConfirmModal({ open, title, message, confirmText = "Conf
 
   if (!open) return null;
 
+  const cardStyle: React.CSSProperties = {};
+  if (anchor) {
+    const cardW = 352;
+    const cardH = 172;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = anchor.left + anchor.width / 2 - cardW / 2;
+    let top = anchor.top + anchor.height + 10;
+    left = Math.min(Math.max(left, 12), vw - cardW - 12);
+    if (top + cardH > vh - 12) top = Math.max(anchor.top - cardH - 10, 12);
+    cardStyle.position = "absolute";
+    cardStyle.left = left;
+    cardStyle.top = top;
+  }
+
   return (
     <div
       ref={backdropRef}
@@ -33,8 +56,8 @@ export default function ConfirmModal({ open, title, message, confirmText = "Conf
       onClick={(e) => { if (e.target === backdropRef.current) onCancel(); }}
     >
       <div
-        className="glass-card max-w-sm w-full mx-4"
-        style={{ animation: "modalPop 0.25s cubic-bezier(0.22,1,0.36,1) both" }}
+        className={`glass-card max-w-sm w-full ${anchor ? "" : "mx-4"}`}
+        style={{ animation: "modalPop 0.25s cubic-bezier(0.22,1,0.36,1) both", ...cardStyle }}
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>

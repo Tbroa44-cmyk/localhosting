@@ -86,6 +86,7 @@ export default function PortfolioPage() {
   const [portfolioLoaded, setPortfolioLoaded] = useState(false);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+  const [cancelAnchor, setCancelAnchor] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -127,14 +128,20 @@ export default function PortfolioPage() {
       .catch(() => setOrdersLoaded(true));
   }
 
-  function cancelOrder(orderId: number) {
+  function cancelOrder(orderId: number, e?: React.MouseEvent) {
     setCancelOrderId(orderId);
+    const el = e?.currentTarget as HTMLElement | undefined;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setCancelAnchor({ left: r.left, top: r.top, width: r.width, height: r.height });
+    }
   }
 
   function confirmCancelOrder() {
     if (cancelOrderId === null) return;
     const orderId = cancelOrderId;
     setCancelOrderId(null);
+    setCancelAnchor(null);
     playCancel();
     fetch(`/api/orders/${orderId}`, { method: "DELETE" })
       .then(() => { window.dispatchEvent(new Event("balance-changed")); fetchPortfolio(); })
@@ -447,7 +454,7 @@ export default function PortfolioPage() {
                       <div className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</div>
                     </div>
                     <button
-                      onClick={() => cancelOrder(order.id)}
+                      onClick={(e) => cancelOrder(order.id, e)}
                       className="text-red-400 hover:text-red-300 text-sm font-medium px-3 py-1 rounded bg-red-500/10 hover:bg-red-500/20 transition-colors"
                     >
                       Cancel
@@ -568,8 +575,9 @@ export default function PortfolioPage() {
         confirmText="Cancel Order"
         cancelText="Keep Order"
         danger
+        anchor={cancelAnchor}
         onConfirm={confirmCancelOrder}
-        onCancel={() => setCancelOrderId(null)}
+        onCancel={() => { setCancelOrderId(null); setCancelAnchor(null); }}
       />
     </div>
   );

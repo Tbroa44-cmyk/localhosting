@@ -157,6 +157,7 @@ export default function StockDetailPage() {
   const prevTradesRef = useRef<any[]>([]);
   const pendingOrderRef = useRef<{ orderType: "buy" | "sell"; orderMode: "market" | "limit"; shares: number; priceCents: number } | null>(null);
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+  const [cancelAnchor, setCancelAnchor] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [showInvestment, setShowInvestment] = useState(false);
   const [pressReleases, setPressReleases] = useState<any[]>([]);
   const [pressReleaseTotal, setPressReleaseTotal] = useState(0);
@@ -344,14 +345,20 @@ export default function StockDetailPage() {
     }
   }
 
-  async function handleCancelOrder(orderId: number) {
+  async function handleCancelOrder(orderId: number, e?: React.MouseEvent) {
     setCancelOrderId(orderId);
+    const el = e?.currentTarget as HTMLElement | undefined;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setCancelAnchor({ left: r.left, top: r.top, width: r.width, height: r.height });
+    }
   }
 
   async function confirmCancelOrder() {
     if (cancelOrderId === null) return;
     const orderId = cancelOrderId;
     setCancelOrderId(null);
+    setCancelAnchor(null);
     try {
       playCancel();
       setTradeAnimType("cancel");
@@ -702,7 +709,7 @@ export default function StockDetailPage() {
                       )}
                       <span className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</span>
                       <span
-                        onClick={(e) => { e.stopPropagation(); handleCancelOrder(order.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleCancelOrder(order.id, e); }}
                         className="text-red-400 hover:text-red-300 text-xs font-medium cursor-pointer px-2 py-1 rounded hover:bg-red-500/10"
                       >Cancel</span>
                     </div>
@@ -843,7 +850,7 @@ export default function StockDetailPage() {
                   {(company as any).my_trades?.map((tx: any, i: number) => (
                     <div
                       key={i}
-                      onClick={() => tx.status === "pending" && tx.order_id ? handleCancelOrder(tx.order_id) : undefined}
+                      onClick={(e) => tx.status === "pending" && tx.order_id ? handleCancelOrder(tx.order_id, e) : undefined}
                       className={`flex items-center justify-between py-2 border-b border-gray-800 last:border-0 ${tx.status === "pending" ? "cursor-pointer hover:bg-red-500/10 rounded px-1 transition-colors group" : ""}`}
                     >
                       <div className="flex items-center gap-3">
@@ -915,8 +922,9 @@ export default function StockDetailPage() {
         confirmText="Cancel Order"
         cancelText="Keep Order"
         danger
+        anchor={cancelAnchor}
         onConfirm={confirmCancelOrder}
-        onCancel={() => setCancelOrderId(null)}
+        onCancel={() => { setCancelOrderId(null); setCancelAnchor(null); }}
       />
     </div>
   );

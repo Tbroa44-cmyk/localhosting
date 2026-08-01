@@ -547,11 +547,6 @@ async function placeBotSellOrder(db: any, botId: number, companyId: number, shar
         continue;
       }
 
-      const debitResult = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").run(grossRevenue, buyOrder.user_id, grossRevenue);
-      if (debitResult.changes === 0) {
-        await addShares(db, botId, companyId, fillQty, "bot_sell_fill_refund", buyOrder.id);
-        continue;
-      }
       await addShares(db, buyOrder.user_id, companyId, fillQty, "bot_sell_fill", buyOrder.id);
       try {
         await transferCertificates(db, companyId, botId, buyOrder.user_id, fillQty);
