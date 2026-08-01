@@ -85,7 +85,6 @@ export default function Home() {
           <p className="text-xl text-gray-400 max-w-xl mx-auto mb-4">
             Invest in real time against other users.
           </p>
-          <p className="text-sm text-gray-500">A market simulation</p>
         </div>
 
         {stocks.length > 0 && (
@@ -104,7 +103,6 @@ export default function Home() {
                     <div className="w-8 h-8 bg-blue-500/20 rounded flex items-center justify-center text-blue-400 font-bold text-xs">
                       {stock.ticker?.slice(0, 3)}
                     </div>
-                    <span className="text-xs text-gray-500 font-mono">{stock.ticker}</span>
                   </div>
                   <div className="text-2xl font-bold text-white mb-1">{formatCoins(stock.share_price)}</div>
                   <div className={`text-sm font-medium mb-3 ${isUp ? "text-green-400" : "text-red-400"}`}>
@@ -163,18 +161,13 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-20 grid grid-cols-3 gap-6 text-center max-w-2xl mx-auto">
+        <div className="mt-20 grid grid-cols-2 gap-6 text-center max-w-2xl mx-auto">
           <div className="glass-card !p-4" style={{ transform: "rotate(-0.5deg)" }}>
-            <div className="text-2xl font-bold text-white mb-1">10+</div>
-            <div className="text-xs text-gray-400">Companies</div>
-          </div>
-          <div className="glass-card !p-4" style={{ transform: "rotate(0.3deg)" }}>
-            <div className="text-2xl font-bold gradient-text mb-1">Live</div>
-            <div className="text-xs text-gray-400">Real-time prices</div>
+            <div className="text-2xl font-bold gradient-text">Realtime Market</div>
           </div>
           <div className="glass-card !p-4" style={{ transform: "rotate(-0.8deg)" }}>
-            <div className="text-2xl font-bold text-white mb-1">XP</div>
-            <div className="text-xs text-gray-400">Level up system</div>
+            <div className="text-xs text-gray-400 mb-1">Made by</div>
+            <div className="text-2xl font-bold text-white">Thomas Broad</div>
           </div>
         </div>
       </div>
