@@ -163,7 +163,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     }
 
     if (!(await isTradingOpen(db))) {
-      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price, requestId, true);
+      return await placeLimitOrder(userId, companyId, "buy", shares, company.share_price, requestId, false);
     }
 
     await syncMarketOrderPrices(db, companyId);
@@ -183,6 +183,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
       const cost = fillPrice * fillQty;
       const taxAmount = Math.round(cost * SELL_TAX_PERCENT);
       const sellerRevenue = cost - taxAmount;
+
+      if (buyerBalance < totalCost + cost) break;
 
       const sellerHolding = await db.prepare("SELECT shares_owned FROM holdings WHERE user_id = ? AND company_id = ?").get(sellOrder.user_id, companyId) as { shares_owned: number } | undefined;
       if (!sellerHolding || Number(sellerHolding.shares_owned) < fillQty) {
@@ -212,8 +214,8 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
         "INSERT INTO transactions (user_id, company_id, type, shares, price_per_share, total_amount) VALUES (?, ?, 'buy', ?, ?, ?)"
       ).run(userId, companyId, fillQty, fillPrice, cost);
       await db.prepare(
-        "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?)"
-      ).run(userId, companyId, fillQty, fillPrice, new Date().toISOString());
+        "INSERT INTO orders (user_id, company_id, type, shares, price_per_share, status, request_id, created_at) VALUES (?, ?, 'buy', ?, ?, 'filled', ?, ?)"
+      ).run(userId, companyId, fillQty, fillPrice, marketReqId, new Date().toISOString());
 
       totalCost += cost;
       remaining -= fillQty;
@@ -226,27 +228,7 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
     company.share_price = afterFillPrice;
     await syncMarketOrderPrices(db, companyId);
 
-    if (remaining > 0) {
-      const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-      if (bal.balance < totalCost + remaining * company.share_price) {
-        throw new Error("Insufficient balance");
-      }
-    }
-
-    let pendingShares = 0;
-    if (remaining > 0) {
-      const pendingCost = company.share_price * remaining;
-      const bal = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
-      if (bal.balance < totalCost + pendingCost) throw new Error("Insufficient balance");
-      totalCost += pendingCost;
-
-      await db.prepare(
-        "INSERT INTO orders (user_id, company_id, type, shares, original_shares, price_per_share, status, request_id, created_at) VALUES (?, ?, 'buy', ?, ?, ?, 'pending', ?, ?)"
-      ).run(userId, companyId, remaining, remaining, company.share_price, marketReqId, new Date().toISOString());
-      pendingShares = remaining;
-    }
-
-    const filledShares = shares - pendingShares;
+    const filledShares = shares - remaining;
     if (filledShares > 0) {
       await addShares(db, userId, companyId, filledShares, "executeBuy_fill");
     }
@@ -265,11 +247,16 @@ export async function executeBuy(userId: number, companyId: number, shares: numb
 
     const updatedUser = await db.prepare("SELECT balance FROM users WHERE id = ?").get(userId) as { balance: number };
 
-    if (pendingShares > 0) {
-      return { newBalance: updatedUser.balance, newPrice: company.share_price, totalCost, filledShares, pendingShares, message: `Bought ${filledShares} shares, ${pendingShares} shares pending on market` };
-    }
-
-    return { newBalance: updatedUser.balance, newPrice: company.share_price, totalCost };
+    return {
+      newBalance: updatedUser.balance,
+      newPrice: company.share_price,
+      totalCost,
+      filledShares,
+      pendingShares: 0,
+      message: filledShares > 0
+        ? `Bought ${filledShares} share${filledShares > 1 ? "s" : ""}.${remaining > 0 ? ` ${remaining} share${remaining > 1 ? "s" : ""} not available right now.` : ""}`
+        : "No shares are available to buy right now.",
+    };
   });
 
   const result = buyTransaction;

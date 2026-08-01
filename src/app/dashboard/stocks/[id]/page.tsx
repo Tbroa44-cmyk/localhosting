@@ -298,10 +298,10 @@ export default function StockDetailPage() {
           if (pending > 0) {
             setOrderSuccess(data.message || `Bought ${filled}, ${pending} pending`);
           } else if (filled > 0) {
-            setOrderSuccess(`Market buy executed! ${filled} share${filled > 1 ? "s" : ""} purchased.`);
+            setOrderSuccess(data.message || `Market buy executed! ${filled} share${filled > 1 ? "s" : ""} purchased.`);
             showTradeNotification({ stockName: company?.name || "", ticker: company?.ticker || "", action: "buy", shares: filled, price: company?.share_price || 0 });
           } else {
-            setOrderSuccess(`Order placed, waiting for sellers.`);
+            setOrderSuccess(data.message || "No shares available to buy right now.");
           }
           if (filled > 0) {
             setSharesOwned((prev) => prev + filled);
