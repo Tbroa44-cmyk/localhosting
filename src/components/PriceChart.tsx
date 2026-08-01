@@ -47,37 +47,82 @@ const FILTER_OPTIONS: { key: TimeFilter; label: string; ms: number | null }[] = 
   { key: "all", label: "All", ms: null },
 ];
 
-function interpolateGaps(data: PricePoint[], now: number, currentPrice: number): PricePoint[] {
-  if (data.length === 0) return [{ price: currentPrice, timestamp: now }];
-  if (data.length === 1) {
-    if (data[0].timestamp < now - 60_000) {
-      return [data[0], { price: currentPrice, timestamp: now }];
+interface MarketSchedule {
+  openHour: number;
+  closeHour: number;
+  tradingDays: number[];
+  emergencyClose: boolean;
+  isOpen: boolean;
+}
+
+const AEST_OFFSET_MS = 10 * 3600000;
+
+function toAEST(ms: number): Date {
+  const d = new Date(ms);
+  const utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utcMs + AEST_OFFSET_MS);
+}
+
+function isMarketOpenAt(ms: number, sched: MarketSchedule): boolean {
+  if (sched.emergencyClose) return false;
+  const d = toAEST(ms);
+  if (!sched.tradingDays.includes(d.getDay())) return false;
+  const h = d.getHours();
+  return h >= sched.openHour && h < sched.closeHour;
+}
+
+function sessionKey(ms: number, sched: MarketSchedule): string | null {
+  if (!isMarketOpenAt(ms, sched)) return null;
+  const d = toAEST(ms);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${sched.openHour}`;
+}
+
+function downsampleTo5Min(data: PricePoint[]): PricePoint[] {
+  if (data.length <= 12) return data;
+  const bucketMs = 5 * 60 * 1000;
+  const out: PricePoint[] = [];
+  for (const p of data) {
+    const b = Math.floor(p.timestamp / bucketMs) * bucketMs;
+    const last = out[out.length - 1];
+    if (last && Math.floor(last.timestamp / bucketMs) * bucketMs === b) {
+      out[out.length - 1] = p;
+    } else {
+      out.push(p);
     }
-    return [...data, { price: currentPrice, timestamp: now }];
   }
+  return out;
+}
+
+function interpolateGaps(data: PricePoint[], currentPrice: number, sched: MarketSchedule): (PricePoint | null)[] {
+  if (data.length === 0) return [{ price: currentPrice, timestamp: Date.now() }];
 
   const HOUR_MS = 60 * 60 * 1000;
-  const result: PricePoint[] = [data[0]];
+  const result: (PricePoint | null)[] = [data[0]];
 
   for (let i = 1; i < data.length; i++) {
     const prev = data[i - 1];
     const curr = data[i];
-    const gapMs = curr.timestamp - prev.timestamp;
-    const gapHours = Math.floor(gapMs / HOUR_MS);
+    const prevSession = sessionKey(prev.timestamp, sched);
+    const currSession = sessionKey(curr.timestamp, sched);
 
-    if (gapHours > 1) {
-      for (let h = 1; h < gapHours; h++) {
-        const t = prev.timestamp + h * HOUR_MS;
-        const fraction = h / gapHours;
-        const interpolatedPrice = Math.round(prev.price + (curr.price - prev.price) * fraction);
-        result.push({ price: interpolatedPrice, timestamp: t, holder_count: prev.holder_count });
+    if (prevSession && currSession && prevSession === currSession) {
+      const gapMs = curr.timestamp - prev.timestamp;
+      const gapHours = Math.floor(gapMs / HOUR_MS);
+      if (gapHours > 1) {
+        for (let h = 1; h < gapHours; h++) {
+          const t = prev.timestamp + h * HOUR_MS;
+          if (isMarketOpenAt(t, sched)) {
+            const fraction = h / gapHours;
+            const interpolatedPrice = Math.round(prev.price + (curr.price - prev.price) * fraction);
+            result.push({ price: interpolatedPrice, timestamp: t, holder_count: prev.holder_count });
+          }
+        }
       }
+    } else {
+      result.push(null);
     }
     result.push(curr);
   }
-
-  const lastHolderCount = data[data.length - 1]?.holder_count;
-  result.push({ price: currentPrice, timestamp: now, holder_count: lastHolderCount });
 
   return result;
 }
@@ -85,7 +130,7 @@ function interpolateGaps(data: PricePoint[], now: number, currentPrice: number):
 function getBucketConfig(filter: TimeFilter) {
   switch (filter) {
     case "1h":
-      return { bucketSize: 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+      return { bucketSize: 5 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
     case "1d":
       return { bucketSize: 10 * 60 * 1000, formatLabel: (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
     case "7d":
@@ -111,12 +156,13 @@ function buildTradeSeries(
   transactions: Transaction[] | undefined,
   buyOrders: PendingOrder[] | undefined,
   sellOrders: PendingOrder[] | undefined,
-  filter: TimeFilter
+  filter: TimeFilter,
+  sched: MarketSchedule
 ): TradeSeries | null {
   const now = Date.now();
   const option = FILTER_OPTIONS.find((f) => f.key === filter);
 
-  const inRange = (ts: string) => !option?.ms || new Date(ts).getTime() >= now - option.ms;
+  const inRange = (ts: string) => (!option?.ms || new Date(ts).getTime() >= now - option.ms) && isMarketOpenAt(new Date(ts).getTime(), sched);
 
   const tx = (transactions || []).filter((t) => inRange(t.created_at));
   const buys = (buyOrders || []).filter((o) => inRange(o.created_at));
@@ -136,6 +182,7 @@ function buildTradeSeries(
 
   const buckets = new Map<number, { tx: number; totalPrice: number; buys: number; sells: number }>();
   for (let b = Math.floor(minTime / bucketSize) * bucketSize; b <= maxTime; b += bucketSize) {
+    if (!isMarketOpenAt(b, sched)) continue;
     buckets.set(b, { tx: 0, totalPrice: 0, buys: 0, sells: 0 });
   }
 
@@ -197,6 +244,29 @@ export default function PriceChart({
   const [showTradesBuy, setShowTradesBuy] = useState(true);
   const [showTradesSell, setShowTradesSell] = useState(true);
   const hasAnimated = useRef(false);
+  const [schedule, setSchedule] = useState<MarketSchedule>({ openHour: 0, closeHour: 24, tradingDays: [0, 1, 2, 3, 4, 5, 6], emergencyClose: false, isOpen: true });
+
+  useEffect(() => {
+    let active = true;
+    const load = () => {
+      fetch(`/api/trading-status?t=${Date.now()}`)
+        .then((r) => r.json())
+        .then((d: any) => {
+          if (!active || !d) return;
+          setSchedule({
+            openHour: d.openHour ?? 0,
+            closeHour: d.closeHour ?? 24,
+            tradingDays: Array.isArray(d.tradingDays) && d.tradingDays.length ? d.tradingDays : [0, 1, 2, 3, 4, 5, 6],
+            emergencyClose: !!d.emergencyClose,
+            isOpen: d.isOpen !== false,
+          });
+        })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 60000);
+    return () => { active = false; clearInterval(id); };
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => { hasAnimated.current = true; }, 1500);
@@ -211,25 +281,29 @@ export default function PriceChart({
       const cutoff = now - option.ms;
       data = priceHistory.filter((p) => p.timestamp >= cutoff);
     }
-    return interpolateGaps(data, now, currentPrice);
-  }, [priceHistory, filter, currentPrice]);
+    data = data.filter((p) => (p.price || 0) > 0 && isMarketOpenAt(p.timestamp, schedule));
+    if (filter === "1h") data = downsampleTo5Min(data);
+    return interpolateGaps(data, currentPrice, schedule);
+  }, [priceHistory, filter, currentPrice, schedule]);
 
   const tradeSeries = useMemo(
-    () => buildTradeSeries(transactions, pendingBuyOrders, pendingSellOrders, filter),
-    [transactions, pendingBuyOrders, pendingSellOrders, filter]
+    () => buildTradeSeries(transactions, pendingBuyOrders, pendingSellOrders, filter, schedule),
+    [transactions, pendingBuyOrders, pendingSellOrders, filter, schedule]
   );
 
+  const validPoints = useMemo(() => filteredData.filter((p): p is PricePoint => p !== null), [filteredData]);
+
   const holdersYScale = useMemo(() => {
-    if (filteredData.length === 0) return { min: 0, max: 10 };
-    const holders = filteredData.map((p) => p.holder_count ?? 0);
+    if (validPoints.length === 0) return { min: 0, max: 10 };
+    const holders = validPoints.map((p) => p.holder_count ?? 0);
     const maxH = Math.max(...holders);
     const range = maxH;
     const padding = range > 0 ? Math.max(range * 0.15, 1) : 2;
     return { min: 1, max: Math.ceil(maxH + padding) };
-  }, [filteredData]);
+  }, [validPoints]);
 
   const priceChartData = useMemo(() => {
-    if (filteredData.length === 0) {
+    if (validPoints.length === 0) {
       return {
         labels: ["No data"],
         datasets: [{ data: [0], borderColor: "#3b82f6", backgroundColor: "rgba(59, 130, 246, 0.1)", fill: true, tension: 0.4, pointRadius: 0 }],
@@ -237,6 +311,7 @@ export default function PriceChart({
     }
 
     const labels = filteredData.map((p) => {
+      if (!p) return "";
       const date = new Date(p.timestamp);
       if (filter === "1h") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       if (filter === "1d") return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -244,9 +319,9 @@ export default function PriceChart({
       return date.toLocaleDateString([], { month: "short", day: "numeric" });
     });
 
-    const prices = filteredData.map((p) => p.price / 100);
-    const firstPrice = prices[0];
-    const lastPrice = prices[prices.length - 1];
+    const prices = filteredData.map((p) => (p ? p.price / 100 : null));
+    const firstPrice = validPoints[0].price / 100;
+    const lastPrice = validPoints[validPoints.length - 1].price / 100;
     const isUp = lastPrice >= firstPrice;
     const lineColor = isUp ? "#22c55e" : "#ef4444";
     const bgColor = isUp ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)";
@@ -259,7 +334,8 @@ export default function PriceChart({
         backgroundColor: bgColor,
         fill: true,
         tension: 0.4,
-        pointRadius: filteredData.length < 30 ? 3 : 0,
+        spanGaps: false,
+        pointRadius: validPoints.length < 30 ? 3 : 0,
         pointBackgroundColor: lineColor,
         borderWidth: 2,
         yAxisID: "y",
@@ -267,7 +343,7 @@ export default function PriceChart({
     ];
 
     if (showHolders) {
-      const holders = filteredData.map((p) => p.holder_count ?? 0);
+      const holders = filteredData.map((p) => (p ? (p.holder_count ?? 0) : null));
       datasets.push({
         label: "Holders",
         data: holders,
@@ -275,6 +351,7 @@ export default function PriceChart({
         backgroundColor: "rgba(167, 139, 250, 0.05)",
         fill: true,
         tension: 0.3,
+        spanGaps: false,
         pointRadius: 0,
         pointBackgroundColor: "#a78bfa",
         borderWidth: 1.5,
@@ -283,7 +360,7 @@ export default function PriceChart({
     }
 
     return { labels, datasets };
-  }, [filteredData, filter, showHolders]);
+  }, [filteredData, validPoints, filter, showHolders]);
 
   const tradeChartData = useMemo(() => {
     const datasets: any[] = [];
@@ -324,8 +401,8 @@ export default function PriceChart({
   }, [tradeSeries, showTradesTx, showTradesBuy, showTradesSell]);
 
   const yScale = useMemo(() => {
-    if (filteredData.length === 0) return { min: 0, max: 1 };
-    const prices = filteredData.map((p) => p.price / 100);
+    if (validPoints.length === 0) return { min: 0, max: 1 };
+    const prices = validPoints.map((p) => p.price / 100);
     const minP = Math.min(...prices);
     const maxP = Math.max(...prices);
     const range = maxP - minP;
@@ -334,7 +411,7 @@ export default function PriceChart({
       min: Math.max(0, minP - padding),
       max: maxP + padding,
     };
-  }, [filteredData]);
+  }, [validPoints]);
 
   const priceOptions = useMemo(
     () => ({
@@ -505,8 +582,8 @@ export default function PriceChart({
     [tradeSeries, maxOrderCount, showTradesTx, showTradesBuy, showTradesSell]
   );
 
-  const displayPrice = filteredData.length > 0 ? filteredData[filteredData.length - 1].price / 100 : 0;
-  const startPrice = filteredData.length > 0 ? filteredData[0].price / 100 : 0;
+  const displayPrice = validPoints.length > 0 ? validPoints[validPoints.length - 1].price / 100 : 0;
+  const startPrice = validPoints.length > 0 ? validPoints[0].price / 100 : 0;
   const change = displayPrice - startPrice;
   const changePercent = startPrice > 0 ? ((change / startPrice) * 100).toFixed(2) : "0.00";
 

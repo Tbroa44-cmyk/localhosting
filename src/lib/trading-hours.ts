@@ -5,6 +5,7 @@ export interface TradingStatus {
   message: string;
   openHour: number;
   closeHour: number;
+  tradingDays: number[];
   emergencyClose: boolean;
   emergencyMessage: string;
   nextChange: string;
@@ -80,7 +81,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
 
     if (!settings) {
       return {
-        isOpen: true, message: "Markets open 24/7", openHour: 0, closeHour: 24,
+        isOpen: true, message: "Markets open 24/7", openHour: 0, closeHour: 24, tradingDays: [0, 1, 2, 3, 4, 5, 6],
         emergencyClose: false, emergencyMessage: "", nextChange: "", nextChangeMs: 0,
       };
     }
@@ -103,7 +104,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
     // 1. Emergency close (highest priority)
     if (emergencyClose) {
       return {
-        isOpen: false, message: emergencyMessage, openHour, closeHour,
+        isOpen: false, message: emergencyMessage, openHour, closeHour, tradingDays,
         emergencyClose: true, emergencyMessage, nextChange: "until markets reopen", nextChangeMs: 0,
       };
     }
@@ -116,7 +117,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
         const msUntil = safeMsUntilTarget(target);
         return {
           isOpen: false, message: range.label || `Markets closed: ${range.start_date} to ${range.end_date}`,
-          openHour, closeHour, emergencyClose: false, emergencyMessage,
+          openHour, closeHour, tradingDays, emergencyClose: false, emergencyMessage,
           nextChange: `opens in ${formatMs(msUntil)}`, nextChangeMs: msUntil,
         };
       }
@@ -137,7 +138,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
       const target = addDays(now, daysAhead);
       const targetMs = safeMsUntilTarget({ ...target, hour: openHour, minute: 0 });
       return {
-        isOpen: false, message: "Markets closed today", openHour, closeHour,
+        isOpen: false, message: "Markets closed today", openHour, closeHour, tradingDays,
         emergencyClose: false, emergencyMessage,
         nextChange: `opens in ${formatMs(targetMs)}`, nextChangeMs: targetMs,
       };
@@ -146,7 +147,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
     // 4. Default 24/7 check
     if (tradingEnabled === 1 && openHour === 0 && closeHour === 24 && tradingDays.length === 7) {
       return {
-        isOpen: true, message: "Markets open 24/7", openHour, closeHour,
+        isOpen: true, message: "Markets open 24/7", openHour, closeHour, tradingDays,
         emergencyClose: false, emergencyMessage, nextChange: "", nextChangeMs: 0,
       };
     }
@@ -154,7 +155,7 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
     // 5. Check trading_enabled
     if (tradingEnabled === 0) {
       return {
-        isOpen: false, message: "Markets closed by admin", openHour, closeHour,
+        isOpen: false, message: "Markets closed by admin", openHour, closeHour, tradingDays,
         emergencyClose: false, emergencyMessage, nextChange: "until admin reopens", nextChangeMs: 0,
       };
     }
@@ -166,20 +167,20 @@ export async function getTradingInfo(db?: any): Promise<TradingStatus> {
       const targetMs = safeMsUntilTarget({ ...now, hour: closeHour, minute: 0 });
       return {
         isOpen: true, message: `Markets open ${openHour}:00 - ${closeHour}:00`,
-        openHour, closeHour, emergencyClose: false, emergencyMessage,
+        openHour, closeHour, tradingDays, emergencyClose: false, emergencyMessage,
         nextChange: `closes in ${formatMs(targetMs)}`, nextChangeMs: targetMs,
       };
     } else {
       const targetMs = safeMsUntilTarget({ ...now, hour: openHour, minute: 0 });
       return {
         isOpen: false, message: `Markets closed. Opens at ${openHour}:00`,
-        openHour, closeHour, emergencyClose: false, emergencyMessage,
+        openHour, closeHour, tradingDays, emergencyClose: false, emergencyMessage,
         nextChange: `opens in ${formatMs(targetMs)}`, nextChangeMs: targetMs,
       };
     }
   } catch {
     return {
-      isOpen: true, message: "Markets open", openHour: 0, closeHour: 24,
+      isOpen: true, message: "Markets open", openHour: 0, closeHour: 24, tradingDays: [0, 1, 2, 3, 4, 5, 6],
       emergencyClose: false, emergencyMessage: "", nextChange: "", nextChangeMs: 0,
     };
   }
