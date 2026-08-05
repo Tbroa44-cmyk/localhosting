@@ -914,8 +914,33 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
 
   const companies = await db.prepare("SELECT id, share_price FROM companies WHERE total_shares > 0 AND share_price >= 5 AND delisted = 0").all() as { id: number; share_price: number }[];
 
+  const is24x7 = tradingInfo.openHour === 0 && tradingInfo.closeHour === 24;
+  const aestNow = new Date(now + 10 * 3600000);
+  const minsSinceOpen = is24x7 ? -1 : (aestNow.getUTCHours() * 60 + aestNow.getUTCMinutes()) - tradingInfo.openHour * 60;
+  const openingWindow = tradingInfo.isOpen && minsSinceOpen >= 0 && minsSinceOpen <= 10;
+
+  const lastSessionPrices: Record<number, number> = {};
+  if (openingWindow) {
+    for (const c of companies) {
+      const hist = await db.prepare(
+        "SELECT price, timestamp FROM price_history WHERE company_id = ? ORDER BY timestamp DESC LIMIT 1"
+      ).get(c.id) as { price: number; timestamp: number } | undefined;
+      if (hist) lastSessionPrices[c.id] = Number(hist.price);
+    }
+  }
+
   for (const c of companies) {
     await syncMarketOrderPrices(db, c.id);
+  }
+
+  if (openingWindow) {
+    const pendingCompanyRows = await db.prepare(
+      "SELECT company_id FROM orders WHERE status = 'pending'"
+    ).all() as { company_id: number }[];
+    const pendingCompanyIds = [...new Set(pendingCompanyRows.map((r) => Number(r.company_id)))];
+    for (const cid of pendingCompanyIds) {
+      try { await matchOrders(db, cid); } catch {}
+    }
   }
 
   await adjustPricesByPressure(db, companies);
@@ -941,11 +966,22 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
   const orderBooks: Record<number, any> = {};
   companies.forEach((c, i) => { orderBooks[c.id] = obQueries[i]; });
 
+  let openBias: "buy" | "sell" | null = null;
+  if (openingWindow) {
+    let dips = 0;
+    let ups = 0;
+    for (const c of companies) {
+      const last = lastSessionPrices[c.id];
+      if (!last) continue;
+      if (Number(c.share_price) < last) dips++;
+      else if (Number(c.share_price) > last) ups++;
+    }
+    if (dips > ups) openBias = "buy";
+    else if (ups > dips) openBias = "sell";
+  }
+
   const mmTrades = await marketMake(db, bots);
   totalTrades += mmTrades;
-
-  const matchTrades = await botToBotMatch(db, bots);
-  totalTrades += matchTrades;
 
   const shuffledBots = [...bots].sort(() => Math.random() - 0.5);
 
@@ -960,8 +996,17 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
 
     const prForCompany = (companyId: number) => recentPressReleases[companyId];
 
-    if (hasStocks && Math.random() < 0.2) {
-      const pick = holdings[Math.floor(Math.random() * holdings.length)];
+    const sellGate = openBias === "buy" ? 0.05 : openBias === "sell" ? 0.35 : 0.2;
+    if (hasStocks && Math.random() < sellGate) {
+      let pick = holdings[Math.floor(Math.random() * holdings.length)];
+      if (openBias === "sell") {
+        const upHoldings = holdings.filter((h) => {
+          const last = lastSessionPrices[h.company_id];
+          const company = companies.find((c) => c.id === h.company_id);
+          return !!last && !!company && Number(company.share_price) > last;
+        });
+        if (upHoldings.length > 0) pick = upHoldings[Math.floor(Math.random() * upHoldings.length)];
+      }
       const ob = orderBooks[pick.company_id];
       const company = companies.find((c) => c.id === pick.company_id);
       const currentPrice = company ? Number(company.share_price) : 0;
@@ -992,12 +1037,19 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
     }
 
     if (balance >= 10) {
-      let buyProb = 0.12;
-      const affordable = companies.filter((c) => {
+      let buyProb = openBias === "buy" ? 0.35 : openBias === "sell" ? 0.05 : 0.12;
+      let affordable = companies.filter((c) => {
         const ob = orderBooks[c.id];
         if (ob && ob.lowestSell > 0 && ob.lowestSell <= balance * 0.6) return true;
         return Number(c.share_price) <= balance * 0.6;
       });
+      if (openBias === "buy") {
+        const dip = affordable.filter((c) => {
+          const last = lastSessionPrices[c.id];
+          return !!last && Number(c.share_price) < last;
+        });
+        if (dip.length > 0) affordable = dip;
+      }
       const posPR = affordable.find((c) => { const pr = prForCompany(c.id); return pr && pr.type === "positive"; });
       if (posPR) buyProb += 0.15;
       if (Math.random() < buyProb && affordable.length > 0) {
@@ -1024,6 +1076,9 @@ export async function runBotTick(): Promise<{ botsEnabled: boolean; tradesExecut
       }
     }
   }
+
+  const matchTrades = await botToBotMatch(db, bots);
+  totalTrades += matchTrades;
 
   return {
     botsEnabled: true,

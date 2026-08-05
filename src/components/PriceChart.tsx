@@ -116,8 +116,6 @@ function interpolateGaps(data: PricePoint[], currentPrice: number, sched: Market
           }
         }
       }
-    } else {
-      result.push(null);
     }
     result.push(curr);
   }
